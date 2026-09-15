@@ -8,7 +8,7 @@ export function writeText(file:string,text:string){ ensureDir(path.dirname(file)
 export function appendText(file:string,text:string){ ensureDir(path.dirname(file)); fs.appendFileSync(file,text); }
 export function readJson<T=any>(file:string):T { return JSON.parse(readText(file)); }
 export function writeJson(file:string,value:any){ writeText(file,JSON.stringify(value,null,2)+'\n'); }
-export function sha256Text(value:string){ return crypto.createHash('sha256').update(value).digest('hex'); }
+export function sha256Text(value:crypto.BinaryLike){ return crypto.createHash('sha256').update(value).digest('hex'); }
 export function sha256File(file:string){ return sha256Text(fs.readFileSync(file)); }
 export function exists(file:string){ return fs.existsSync(file); }
 export function copyDir(src:string,dest:string){ ensureDir(dest); for(const ent of fs.readdirSync(src,{withFileTypes:true})){ const s=path.join(src,ent.name), d=path.join(dest,ent.name); if(ent.isDirectory()) copyDir(s,d); else fs.copyFileSync(s,d); } }
