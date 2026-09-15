@@ -4,9 +4,21 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-15
+
 ### Added
 
-- Placeholder for future changes.
+- Lossless ACP tool-state accumulation in `CursorExecutorHarness`: maintains composite identity `sessionId:toolCallId`, preserves `rawInput`/`rawOutput` across incremental stream chunks, extracts exit codes from various key formats, and tracks mutation sequence ordering.
+- Append-only observation journal (`executor-observations.jsonl`) and historical ACP event replayer in `CursorExecutorHarness`.
+- Strengthened quality evidence corroboration in `EvidenceVerifier`: wrapper-normalized command matching, command chain decomposition, execution order vs file mutation checks, and diagnostic reporting on corroboration failures.
+- Authoritative Git verification in `GitRepository`: `diffCheck(baseRef)` and untracked-aware SHA256 `patchFingerprint()`.
+- Automated recovery workflow: `ai-harness recover [--run <id>] [--stage <name>] [--dry-run] [--apply]` backed by `RecoveryManager` to safely recover and unblock runs stalled by telemetry corroboration issues without manual JSON file editing.
+- Synthetic and real-world ACP regression test suites covering multi-chunk streaming, exit code extraction, and Git patch fingerprinting.
+
+### Changed
+
+- Updated executor prompt contract to instruct standalone, separate invocations of quality gates and Git diff check commands after file modifications are completed.
+- Orchestrator now verifies quality epochs and authoritatively validates git diff hygiene during evidence verification.
 
 ## [1.0.0] - 2026-09-15
 

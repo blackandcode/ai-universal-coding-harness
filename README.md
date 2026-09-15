@@ -1,8 +1,8 @@
 # AI Universal Coding Harness
 
-[![CI](https://github.com/blackandcode/ai-universal-coding-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/blackandcode/ai-universal-coding-harness/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/ai-universal-coding-harness.svg)](https://www.npmjs.com/package/ai-universal-coding-harness)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![CI](https://github.com/blackandcode/ai-universal-coding-harness/actions/workflows/ci.yml/badge.svg)
+![npm](https://img.shields.io/npm/v/ai-universal-coding-harness.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 
 **One CLI for autonomous, staged software delivery across coding-agent harnesses.**
 
@@ -11,6 +11,8 @@ AI Universal Coding Harness connects an **executor** that plans/codes/tests with
 ```text
 Stage specs → plan → implement → quality gate → review → one Git commit per stage
 ```
+
+
 
 ## Install
 
@@ -61,6 +63,8 @@ Clear local run history while keeping project configuration:
 ai-harness runs reset --force
 ```
 
+
+
 ## Stage contract
 
 ```text
@@ -98,6 +102,8 @@ Global defaults, tracked project overrides, and local overrides are supported.
 - No automatic push or merge.
 - Cross-platform: Linux, macOS, Windows, and WSL.
 
+
+
 ## Documentation
 
 Start with [docs/README.md](docs/README.md).
@@ -113,9 +119,11 @@ Start with [docs/README.md](docs/README.md).
 - [State and resume](docs/state-and-resume.md)
 - [Publishing to npm with OIDC](docs/publishing.md)
 
+
+
 ## Release
 
-Current version: **1.0.0**. See [CHANGELOG.md](CHANGELOG.md).
+Current version: **1.0.1**. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

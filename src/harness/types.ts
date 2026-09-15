@@ -1,4 +1,4 @@
-import {ExecutionEvidence,FinalVerdict,PermissionVerdict,PlanReviewVerdict,QuestionVerdict} from '../types.js';
+import {ExecutionEvidence,FinalVerdict,PermissionVerdict,PlanReviewVerdict,QuestionVerdict,CommandObservation} from '../types.js';
 import {PermissionRequest} from '../permissions/PermissionEngine.js';
 
 export interface HarnessInfo { id:string; label:string; role:'executor'|'reviewer'; model:string; }
@@ -25,7 +25,10 @@ export interface ExecutorSession {
   prompt(text:string):Promise<{text:string;result:any}>;
   stop():Promise<void>;
   cancel?():Promise<void>;
-  observedCommands():Array<{command:string;exit_code:number|null;status:string;tool_id:string}>;
+  observedCommands():CommandObservation[];
+  currentSequence?():number;
+  lastMutationSeq?():number;
+  setQualityEpoch?(epochId:string):void;
 }
 
 export interface ExecutorHarness {

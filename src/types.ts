@@ -83,6 +83,32 @@ export interface UiEvent {
   payload: Record<string, any>;
 }
 
+export interface CommandObservation {
+  observation_id: string;
+  run_id?: string;
+  stage?: string;
+  attempt?: number;
+  session_id: string;
+  tool_id: string;
+  tool_call_id: string;
+  sequence: number;
+  timestamp: string;
+  source: 'acp' | 'broker' | 'replay';
+  command: string;
+  normalized_command: string;
+  command_confidence: 'high' | 'medium' | 'low';
+  status: 'completed' | 'failed' | 'error' | 'in_progress' | 'pending';
+  exit_code: number | null;
+  cwd?: string;
+  quality_epoch_id?: string;
+}
+
+export interface GitDiffCheckResult {
+  ok: boolean;
+  issues: string[];
+  output: string;
+}
+
 export interface ExecutionEvidence {
   stage: string;
   attempt: number;
@@ -95,6 +121,8 @@ export interface ExecutionEvidence {
   changed_files: string[];
   unresolved: string[];
   observed_quality?: any;
+  patch_fingerprint?: string;
+  quality_epoch_id?: string;
 }
 
 export interface PlanReviewVerdict {

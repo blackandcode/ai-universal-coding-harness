@@ -46,9 +46,12 @@ Useful options:
 
 ```bash
 ai-harness resume [--run <run-id>]
+ai-harness recover [--run <run-id>] [--stage <stage>] [--dry-run] [--apply]
 ai-harness status [--run <run-id>]
 ai-harness tail [--run <run-id>]
 ```
+
+`ai-harness recover` allows recovering stalled runs where quality checks completed in ACP logs without modifying state files by hand. Run with `--dry-run` (default) to inspect changes, or `--apply` to update state and create atomic backups.
 
 ## Run history
 
