@@ -1,100 +1,128 @@
 ---
 name: nodejs-engineering
-description: Apply to Node.js 24+ applications, services, workers, CLIs and runtime code, including async behavior, errors, streams, shutdown, observability, environment handling and performance.
+description: Apply to Node.js 24+ services, workers, CLIs and runtime code. Covers TypeScript 7 integration, native TypeScript type stripping, ESM/module resolution, lifecycle, async ownership, cancellation, errors, streams, shutdown, observability, security and performance.
 ---
 
-# Node.js Engineering
+# Node.js 24+ + TypeScript 7 Engineering
 
-Target Node.js 24 or later. Prefer runtime-native platform APIs when they are stable and meet the need; add dependencies when they materially improve correctness or maintainability.
+Node runtime decisions and TypeScript module decisions must agree. Do not configure TypeScript as if Node were a bundler.
 
-## Workflow
+## Baseline
 
-1. Inspect `engines.node`, package manager, module type and runtime scripts.
-2. Identify lifecycle boundaries: startup, requests/jobs, background tasks, shutdown.
-3. Make ownership of resources explicit.
-4. Implement cancellation, timeout and error behavior intentionally.
-5. Add observability at system boundaries.
-6. Verify shutdown and failure paths as well as happy paths.
+- Node.js 24+.
+- Built-in TypeScript type stripping is stable from Node 24.12.0 onward.
+- TypeScript 7 is the primary checker.
+- Prefer ESM for new projects unless package/runtime compatibility requires CommonJS.
 
-## Runtime rules
+## First choose execution mode
 
-### Async ownership
+### Mode A — emit JavaScript then run Node
 
-Every promise should have an owner. Await it, return it, aggregate it, or explicitly detach it with a defined error path.
+Use `module: NodeNext` / `moduleResolution: NodeNext`. TypeScript/bundler produces deployable JavaScript. This is the default for services that need emit, source maps, transforms, declaration output, packaging, or predictable artifact deployment.
 
-Use `Promise.all` for truly independent work. Do not serialize independent I/O by default.
+### Mode B — Node executes `.ts` directly
 
-### Cancellation and timeouts
+Use only when the project is deliberately written as erasable TypeScript. Node strips types but does **not** typecheck and does not honor arbitrary `tsconfig` transforms.
 
-Use `AbortSignal` where supported. Propagate cancellation from incoming requests/jobs to downstream I/O when appropriate. Network calls must not wait forever.
+Recommended checker config includes:
 
-### Error handling
+```json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "noEmit": true,
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "strict": true
+  }
+}
+```
 
-- Throw/return domain-specific errors with useful context.
-- Preserve causes (`new Error(message, { cause })`) when wrapping errors.
-- Do not catch only to log and rethrow unless the added log context is meaningful and will not duplicate higher-level reporting.
-- Never expose secrets, tokens or full sensitive payloads in logs.
+Direct Node TypeScript must avoid syntax requiring JS generation, including runtime enums, runtime namespaces, parameter properties, and TypeScript import aliases. Decorator support follows Node/JavaScript runtime support, not TypeScript transpilation assumptions.
 
-### Streams
+Always run TS7 type checking separately.
 
-Prefer streams for large/unbounded data. Respect backpressure. Use pipeline utilities that correctly propagate failures and cleanup.
+## Module rules
 
-### Graceful shutdown
+- Use Node-resolvable ESM specifiers.
+- Do not use legacy `moduleResolution: node`/`node10`.
+- Do not use `baseUrl`.
+- Prefer package subpath `imports` (`#/*`) for internal aliases.
+- `paths` can help the checker but does not rewrite Node runtime resolution.
+- Under native type stripping, type-only imports must be explicitly marked `type`.
 
-Services must handle termination signals and stop accepting new work before closing dependent resources.
+## Async ownership
 
-Shutdown order commonly resembles:
+Every promise has an owner. Await it, return it, aggregate it, or intentionally detach it with a defined error/observability strategy.
 
-1. mark unhealthy/not-ready;
-2. stop accepting new requests/jobs;
+Start independent I/O concurrently. Do not serialize independent operations by default.
+
+## Cancellation and deadlines
+
+Use `AbortSignal` where supported. Propagate request/job cancellation downstream. External I/O should have bounded time behavior; do not leave network/database calls waiting indefinitely without a deliberate policy.
+
+## Errors
+
+- Preserve causes when wrapping: `new Error(message, { cause })`.
+- Use domain-specific errors/results where callers need to branch on failure type.
+- Do not catch merely to log and rethrow duplicate noise.
+- Never log secrets/tokens/full sensitive payloads.
+
+## Resource lifetime
+
+Make ownership explicit for servers, sockets, database pools, queues, workers, file handles, timers, and subscriptions.
+
+Where Node/library resources implement modern disposal protocols, `using` / `await using` can be considered when runtime/tooling compatibility is verified. Do not wrap every resource merely to use the syntax.
+
+## Streams
+
+Use streams for large or unbounded data. Respect backpressure. Prefer pipeline utilities that propagate errors and cleanup correctly.
+
+## Graceful shutdown
+
+Typical service order:
+
+1. become unready/unhealthy for new traffic;
+2. stop accepting requests/jobs;
 3. wait for bounded in-flight work;
-4. close queues, database pools and clients;
-5. flush telemetry if supported;
-6. exit naturally.
+4. close queues/pools/clients/workers;
+5. flush telemetry where supported;
+6. allow natural process exit.
 
-Do not call `process.exit()` as routine control flow.
+Do not use `process.exit()` as routine flow control.
 
-### Environment/config
+## Environment/config
 
-Read, validate and normalize environment configuration during startup. Fail early on invalid required values. Pass typed config to application code instead of reading `process.env` throughout the codebase.
+Read, validate, and normalize environment/config once at startup. Pass typed config inward. Do not read `process.env` throughout business logic.
 
-### Logging/observability
+Under TS7, add `types: ["node"]` to the relevant Node tsconfig rather than relying on ambient `@types` discovery.
 
-Use structured logs. Include request/job correlation identifiers where available. Log events, not prose dumps. Emit metrics/traces for behavior that operators need to reason about.
+## Observability
 
-### Performance
+Use structured logs, correlation IDs where available, metrics for operational behavior, and traces for distributed dependencies. Log events/fields rather than giant object dumps.
 
-Measure before optimizing. Investigate event-loop delay, allocation/GC, I/O concurrency, payload size, database/query behavior and serialization before applying micro-optimizations.
+## Performance
 
-Avoid CPU-heavy synchronous work in request paths. Move expensive CPU-bound work to worker threads/processes when justified.
+Measure before optimizing. Investigate event-loop delay, CPU profiles, allocations/GC, I/O concurrency, database/query behavior, serialization, and payload sizes before micro-tuning TypeScript/JavaScript syntax.
 
-## TypeScript on Node 24+
+Move genuinely CPU-heavy request work to worker threads/processes when justified.
 
-Node's native TypeScript support can execute supported erasable TypeScript. Treat this as a runtime execution option, not a type checker.
+## Security
 
-- Keep `tsc --noEmit` as a quality gate.
-- Use native type stripping only when project syntax/configuration is compatible.
-- Use the normal compiler/bundler pipeline when the project relies on TypeScript transforms, build output, declaration generation or toolchain behavior Node does not provide.
+Validate untrusted inputs, parameterize database operations, avoid shell interpolation with untrusted values, apply least privilege, and keep secrets out of source/logs/client bundles.
 
-## Module policy
+## TS7 tooling caveat
 
-Prefer ESM for new Node 24+ projects unless ecosystem compatibility requires CommonJS. Respect the existing repository model; do not mix module systems casually.
-
-## Security baseline
-
-- Validate untrusted input.
-- Use parameterized queries.
-- Avoid shell interpolation with untrusted data.
-- Apply least-privilege credentials.
-- Keep secrets out of source, logs and client bundles.
-- Treat deserialization as a boundary.
-
-## Completion gate
-
-Run project typecheck, tests and lint; for services also verify startup and shutdown behavior when practical.
+If a Node tool imports TypeScript's compiler API (custom loaders, AST tooling, codegen, typed linting), verify TS7 support. TypeScript 7.0's compiler API transition may require the official TS6 side-by-side compatibility package for that tool even while the application is typechecked with TS7.
 
 ## References
 
+- `references/typescript-7-node24.md`
 - `references/async-errors-shutdown.md`
 - `references/performance-observability.md`
+- `../typescript-engineering/references/tooling-compatibility.md`
 - `scripts/check-node-project.mjs`

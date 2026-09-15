@@ -1,53 +1,64 @@
 ---
 name: quality-engineering
-description: Apply when configuring or reviewing linting, formatting, CI quality gates, package-manager discipline, dependencies and Node/TypeScript project supply-chain hygiene.
+description: Apply when configuring/reviewing linting, formatting, CI, package-manager discipline, dependencies and supply-chain hygiene for TypeScript 7, Node 24+, and React 19+ projects.
 ---
 
-# Quality Engineering
+# Quality Engineering for TS7 / Node 24 / React 19
 
-## Quality gate order
+## Quality gate model
 
-A typical project gate is:
+A modern gate normally contains:
 
-1. install from lockfile;
-2. format/check formatting;
-3. lint;
-4. TypeScript typecheck;
-5. unit/integration tests;
-6. build/package validation when applicable.
+1. deterministic install from lockfile;
+2. formatting check;
+3. lint (including React Hooks rules where applicable);
+4. TypeScript 7 typecheck;
+5. unit/integration/component tests;
+6. production build/package validation;
+7. package-consumer/declaration checks for published libraries.
 
-CI must fail when a required gate fails.
+A successful Vite/esbuild/SWC/Babel build is not a substitute for TypeScript typechecking.
+
+## TypeScript 7 tooling compatibility
+
+Before upgrading tools that parse TypeScript or use type information, determine whether they invoke `tsc`, parse syntax independently, or import the compiler API.
+
+TypeScript 7.0 does not expose the previous compiler API. Use current tool versions with explicit TS7 support. When a concrete tool still needs TS6 APIs, use the official TS6 side-by-side compatibility package temporarily instead of downgrading application source conventions.
+
+### typescript-eslint
+
+Use the latest compatible `typescript-eslint` release and verify TS7 support. Do not silence compatibility warnings or disable typed lint rules globally just to complete an upgrade.
+
+Prefer flat ESLint config when the repository already uses modern ESLint. Do not introduce a second lint/format stack without reason.
+
+## React linting
+
+Treat Rules of Hooks and React Compiler-related diagnostics as correctness signals. Fix component/effect design before suppressing rules.
+
+React 19 projects should not retain `react-test-renderer` as the default test strategy for new tests; use Testing Library/integration/E2E approaches as appropriate.
 
 ## Package manager
 
-Use the repository's existing lockfile/package manager. Do not regenerate a project with a different package manager casually.
-
-Use deterministic CI installation (`npm ci`, frozen-lockfile equivalents).
-
-## Linting and formatting
-
-Prefer one coherent setup. Biome or ESLint flat config + a formatter are both valid; follow repository standards. Do not create duplicate/contradictory formatting systems.
-
-Treat React Hooks linting and unsafe TypeScript escape hatches as meaningful signals rather than noise to disable globally.
+Use the existing lockfile/package manager. In CI use deterministic/frozen installation.
 
 ## Dependencies
 
-- Add a dependency only when its value exceeds maintenance and supply-chain cost.
-- Prefer actively maintained packages with clear ownership and compatible licenses.
-- Review transitive impact for security-sensitive/runtime-critical additions.
+- Add packages only when value exceeds maintenance and supply-chain cost.
+- Prefer maintained libraries with clear compatibility and ownership.
+- Verify Node 24, React 19, and TS7 declaration/tooling support for core dependencies.
+- For React libraries, avoid dependencies that rely on private React internals.
 - Keep lockfiles committed.
-- Avoid unreviewed install scripts in high-security environments.
 
-## CI
+## CI runtime
 
-Pin runtime versions deliberately. Cache package-manager data rather than mutable build artifacts unless the build system has safe cache semantics.
+Pin an intentional Node version/range. If using native TS stripping, require Node >=24.12 rather than a vague 24.x runner that may predate stable behavior.
 
-For reusable/open-source packages, test supported Node versions derived from the compatibility policy.
+For TS7's parallel checker/builders, start with defaults. Tune checker/builder concurrency only from measured CI CPU/memory behavior.
 
-## Secrets
+## Secrets and supply chain
 
-Never print secrets in CI logs. Use short-lived/OIDC credentials when platform support exists instead of long-lived static tokens.
+Never print secrets in CI. Prefer short-lived/OIDC credentials when supported. Review install scripts for sensitive environments. Pin/verify third-party CI actions according to repository security policy.
 
 ## Script
 
-Use `scripts/run-quality-gates.mjs` for a conservative local check that invokes only scripts already defined by the project.
+`scripts/run-quality-gates.mjs` invokes only quality scripts already declared by the project.

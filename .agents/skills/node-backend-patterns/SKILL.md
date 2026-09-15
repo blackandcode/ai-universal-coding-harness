@@ -51,3 +51,7 @@ Use small typed adapters around third-party clients when they isolate vendor sem
 ## Frameworks
 
 Express, Fastify and other frameworks are transport adapters. Follow the existing project choice. Do not migrate frameworks without a task-level reason.
+
+## TypeScript 7 integration
+
+Keep transport schemas/runtime validation authoritative at external boundaries and derive/narrow domain inputs from them. Under TS7, do not rely on ambient global types or legacy Node module resolution. Backend packages should use the Node module profile from `typescript-engineering`/`nodejs-engineering`, with explicit Node global types and runtime-resolvable imports.

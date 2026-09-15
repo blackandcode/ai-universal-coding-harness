@@ -1,90 +1,230 @@
 ---
 name: typescript-engineering
-description: Apply to normal TypeScript and TSX implementation, refactoring, API modeling, tsconfig work, code review, and type-safety improvements in TypeScript 6.x or 7.x projects.
+description: Primary TypeScript 7 engineering skill. Apply to TypeScript/TSX implementation, refactoring, tsconfig/module work, migrations, package/library design, code review, and any Node or React work whose correctness depends on TypeScript configuration or types.
 ---
 
-# TypeScript Engineering
+# TypeScript 7 Engineering
 
-Use TypeScript as a design tool, not merely a syntax layer over JavaScript.
+TypeScript 7 is the primary baseline. TypeScript 6.0 is a transition/compatibility compiler, not the design target for new work.
 
-## Supported baseline
+## Non-negotiable workflow
 
-- TypeScript latest 6.x or 7.x.
-- Always verify against the repository's installed compiler.
-- Do not introduce TS7-only assumptions when the project intentionally remains on TS6.
-- Run `tsc --noEmit` (or the repository equivalent) before considering type-related work complete.
+1. Inspect `package.json`, package manager/lockfile, installed TypeScript version, all `tsconfig*.json`, package `type`, `exports`/`imports`, and build/test/lint scripts.
+2. Determine the execution model before changing TypeScript configuration:
+   - Node executes emitted JavaScript;
+   - Node executes erasable TypeScript directly;
+   - a bundler owns module resolution/emission;
+   - a package/library emits declarations and/or JavaScript.
+3. Determine whether any tool imports the TypeScript compiler API. TypeScript 7.0 does not expose the legacy compiler API.
+4. Model domain and boundary types before implementing control flow.
+5. Make the smallest coherent change.
+6. Run the repository's TS7 typecheck plus relevant lint/tests/build.
+7. Never “fix” a TS7 error by restoring removed TS6/legacy flags.
 
-## Workflow
+## TS7 defaults are architecture, not trivia
 
-1. Inspect `package.json`, `tsconfig*.json`, package manager lockfile, module type, and existing scripts.
-2. Preserve the repository's module/build model unless the task explicitly changes it.
-3. Model the domain before implementing control flow.
-4. Treat data crossing an external boundary as `unknown` until validated.
-5. Implement the smallest coherent change.
-6. Run typecheck, relevant tests, and lint.
-7. Remove temporary compatibility code and stale types introduced by the change.
+TypeScript 7 adopts modern defaults. Agents must understand their effects even when the options are omitted:
 
-## Core rules
+- `strict: true`
+- `module: esnext`
+- modern current-year `target` (ES2025 for TS7.0)
+- `noUncheckedSideEffectImports: true`
+- `libReplacement: false`
+- stable type ordering is always on
+- `rootDir` defaults to the directory containing `tsconfig.json`
+- `types` defaults to `[]`
 
-### Make invalid states hard to represent
+For long-lived projects, prefer explicitly documenting options whose value is part of the project's runtime/build contract (`module`, `moduleResolution`, `target`, `jsx`, `rootDir`, `types`, `noEmit`, declaration options), rather than relying on a floating default.
 
-Prefer discriminated unions and explicit variants over objects containing many unrelated optional fields.
+## Removed/legacy configuration must not be reintroduced
 
-```ts
-// Prefer
+In TS7 do not use or recommend:
 
-type PaymentState =
-  | { kind: 'idle' }
-  | { kind: 'processing'; requestId: string }
-  | { kind: 'succeeded'; transactionId: string }
-  | { kind: 'failed'; reason: string };
+- `target: es5`
+- `downlevelIteration`
+- `moduleResolution: node` / `node10` / `classic`
+- `module: amd`, `umd`, `system`, `systemjs`, or `none`
+- `baseUrl`
+- `outFile`
+- `esModuleInterop: false`
+- `allowSyntheticDefaultImports: false`
+- `alwaysStrict: false`
+- legacy `module Foo {}` namespace syntax
+- import assertions using `asserts`; use import attributes with `with`
+- `/// <reference no-default-lib="true"/>`
+- `ignoreDeprecations` as a TS7 migration strategy
+
+Do not use a removed flag to preserve old behavior. Change the architecture to the modern equivalent.
+
+## Module-resolution decision
+
+Choose by runtime, not habit.
+
+### Direct Node.js runtime
+
+Use Node-aware semantics:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2025",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "verbatimModuleSyntax": true
+  }
+}
 ```
 
-Use exhaustive switches with a `never` assertion when all variants should be handled.
+Prefer `package.json#imports` subpath imports such as `#/*` when aliases are needed. Do not assume TypeScript `paths` rewrites runtime imports; it does not.
 
-### Semantic identifiers
+### Bundler-owned application (React/Vite/etc.)
 
-Do not pass every identifier as interchangeable `string` when mixing them would be a real defect. Use branded/opaque types or small domain wrappers when the benefit is meaningful.
+Prefer the bundler model:
 
-### Boundary validation
+```json
+{
+  "compilerOptions": {
+    "target": "ES2025",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "verbatimModuleSyntax": true
+  }
+}
+```
 
-Network payloads, environment variables, JSON files, user input, message queues and untrusted database shapes are not trusted merely because a TypeScript interface exists.
+For React, combine this with `jsx: react-jsx` unless the framework explicitly requires `preserve`.
 
-- Parse/validate once at the boundary.
-- Convert into trusted domain types.
-- Keep internal functions free of repeated defensive parsing.
-- Prefer deriving static types from runtime schemas or authoritative generated contracts when possible.
+### Libraries/packages
 
-### Avoid compiler lies
+The public contract is the emitted package, not source compilation alone. Verify:
 
-- Prefer `unknown` to `any`.
-- Avoid broad type assertions.
-- Prefer `satisfies` when checking object conformance without losing inference.
-- Use non-null assertions only when an invariant is truly established and cannot be expressed better.
-- Never silence a compiler error just to get a build through.
+- `exports` conditions and `types` resolution;
+- `.d.ts` output from a clean build;
+- ESM/CJS contract if both are intentionally supported;
+- consumer typechecking in a fixture project;
+- `isolatedDeclarations` when it fits the library and improves parallel declaration work;
+- no source-only aliases that consumers cannot resolve.
 
-### APIs and functions
+## Explicit global types
 
-- Prefer narrow parameters over large context bags unless the bag is a deliberate domain object.
-- Keep side effects at boundaries; prefer pure transformations for business rules.
-- Return meaningful domain results instead of sentinel values.
-- Avoid `boolean` parameters that create unrelated behavior modes; prefer named options or separate functions when clearer.
-- Do not add generic abstractions before at least two concrete use cases demonstrate the shared shape.
+Because TS7 defaults `types` to `[]`, add only the global-affecting packages each project actually needs. Typical examples:
 
-### Async code
+```json
+{
+  "compilerOptions": {
+    "types": ["node"]
+  }
+}
+```
 
-- Start independent work concurrently and await as late as practical.
-- Do not use `async` when no asynchronous boundary exists.
-- Avoid forgotten promises; intentionally `await`, return, aggregate, or explicitly detach with an error strategy.
-- Propagate cancellation with `AbortSignal` for operations that can be cancelled.
+For a Vite React app that uses Vite globals:
 
-### Collections and indexing
+```json
+{
+  "compilerOptions": {
+    "types": ["vite/client"]
+  }
+}
+```
 
-With `noUncheckedIndexedAccess`, account for missing array/indexed values rather than asserting them away. Prefer maps/records keyed by constrained identifiers where lookup semantics matter.
+For test globals, add the test framework's global types only if the project actually uses global APIs. Prefer explicit imports when practical.
 
-## Recommended compiler posture
+Do not restore old ambient enumeration with `types: ["*"]` unless compatibility absolutely requires it.
 
-Prefer a strict configuration. Evaluate these according to repository compatibility:
+## Type-system design
+
+### Make invalid states difficult to represent
+
+Use discriminated unions and explicit variants instead of bags of unrelated optional properties.
+
+```ts
+type RequestState<T> =
+  | { status: 'idle' }
+  | { status: 'loading'; requestId: string }
+  | { status: 'success'; value: T }
+  | { status: 'error'; error: AppError };
+```
+
+Use exhaustive checks where all variants must be handled.
+
+### Preserve inference instead of defeating it
+
+- Prefer `satisfies` when validating an object's shape while preserving inference.
+- Prefer `as const` for literal data when immutability/literal inference is intended.
+- Use `const` type parameters when API callers need literal information preserved and the abstraction genuinely benefits.
+- Do not add explicit annotations that merely duplicate obvious inference; add them at public boundaries or when they improve stability/readability.
+
+### No compiler lies
+
+- `unknown` at untrusted boundaries, then validate/narrow.
+- Avoid broad `any` and assertions.
+- Never use `as unknown as X` as routine plumbing.
+- Non-null assertions require a real invariant; prefer making the invariant explicit in types/control flow.
+- `@ts-ignore` is prohibited for normal fixes. Prefer a narrow `@ts-expect-error` with a reason only when intentionally testing/bridging a known type issue.
+
+### Semantic types
+
+Use branded/opaque identifiers where confusing values would be a real domain defect. Do not brand every string mechanically.
+
+## Boundary-first typing
+
+HTTP, JSON, environment variables, message queues, storage blobs, browser storage, user input, third-party SDK responses, and loosely constrained database results are untrusted.
+
+- Validate once at the boundary.
+- Convert to trusted domain types.
+- Derive static types from the runtime schema/authoritative contract when practical.
+- Do not define a TypeScript interface and call that validation.
+
+## Side effects and imports
+
+Keep `noUncheckedSideEffectImports` enabled. A side-effect import is part of program behavior and must resolve correctly.
+
+Use explicit type imports under `verbatimModuleSyntax`:
+
+```ts
+import { createUser, type User } from './users.js';
+```
+
+Do not depend on the compiler silently rewriting value imports into type-only imports.
+
+## TS7 performance and parallelism
+
+TS7 parallelizes parsing, checking, emit, and project builds. Do not cargo-cult worker counts.
+
+- Start with defaults.
+- Use `--checkers` only after measuring CPU/memory tradeoffs.
+- Use `--builders` for project-reference build parallelism only after considering multiplicative concurrency with `--checkers`.
+- Use `--singleThreaded` for debugging/reproducibility/resource-constrained environments, not as the default.
+- In constrained CI, lowering checker/build concurrency can reduce memory pressure.
+
+## TypeScript 6 bridge policy
+
+TypeScript 6.0.x may remain temporarily when:
+
+- a tool needs the legacy programmatic compiler API;
+- migration is being staged;
+- a package ecosystem blocker has been verified.
+
+When comparing TS6 and TS7 during migration, TS6's `stableTypeOrdering` can help expose differences, but it is a migration diagnostic only, not a permanent project feature.
+
+Do not design new source code around TS6-only compatibility.
+
+## Compiler API and tooling compatibility
+
+TypeScript 7.0 ships the `tsc` compiler and LSP but does not expose the previous compiler API. Before upgrading lint rules, code generators, AST transforms, API extractors, or custom tools that import `typescript`:
+
+1. verify explicit TS7 support;
+2. use the newest compatible tool release;
+3. if a legacy API is still required, follow the official TS7 side-by-side compatibility approach using `@typescript/typescript6` rather than downgrading the main typecheck blindly;
+4. keep TS7 `tsc` as the project correctness gate.
+
+See `references/tooling-compatibility.md`.
+
+## Quality options beyond `strict`
+
+Evaluate these as intentional project rules:
 
 ```json
 {
@@ -92,40 +232,34 @@ Prefer a strict configuration. Evaluate these according to repository compatibil
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
-    "useUnknownInCatchVariables": true,
-    "verbatimModuleSyntax": true,
     "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "noUncheckedSideEffectImports": true
   }
 }
 ```
 
-Do not copy settings blindly. `module`, `moduleResolution`, JSX options, declaration emit and build output must match how the code is consumed.
-
-## TypeScript 6/7 compatibility
-
-TypeScript 7 changed compiler implementation and performance substantially while aiming for high semantic compatibility. Therefore:
-
-- Treat the checked-in TypeScript version as authoritative.
-- Do not rewrite code merely because TS7 is faster.
-- Verify config options and tooling integrations before migrating.
-- For libraries, test generated declarations and consumer resolution as part of migration.
+`noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` are strong recommendations for new code, but do not enable them across a mature codebase without planning the migration.
 
 ## Completion gate
 
-At minimum run the repository equivalents of:
+A change is not complete because the transpiler built it. Run the repository equivalents of:
 
 ```bash
 npm run typecheck
-npm test
 npm run lint
+npm test
+npm run build
 ```
 
-If those scripts do not exist, inspect project tooling before inventing replacements.
+Only run scripts that exist or are intentionally introduced as part of the task. For library work, also verify packed/consumer declarations.
 
 ## References
 
-- `references/type-system-discipline.md`
+- `references/typescript-7.md`
 - `references/tsconfig-and-modules.md`
+- `references/tooling-compatibility.md`
+- `references/type-system-discipline.md`
 - `references/boundaries.md`
 - `scripts/check-typescript-project.mjs`

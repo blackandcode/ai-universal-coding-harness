@@ -1,88 +1,174 @@
 ---
 name: react-engineering
-description: Apply when creating, reviewing or refactoring React 19+ components, hooks, state, forms, async UI and performance-sensitive TSX code.
+description: Apply to React 19+ / React 19.3 TSX work. Covers TypeScript 7 configuration and React typing changes, modern refs/JSX, state/composition, Actions, Suspense, React Compiler, performance, accessibility, testing, and library compatibility.
 ---
 
-# React 19+ Engineering
+# React 19.3 + TypeScript 7 Engineering
 
-Target React 19 or later. Prefer composition, predictable state ownership and measurable performance improvements over defensive memoization everywhere.
+React and TypeScript configuration are one system. Do not apply old React TypeScript patterns that conflict with React 19 types or TS7 project defaults.
 
-## Component design
+## Baseline
 
-- Components should express UI/domain concepts, not arbitrary file-size limits.
-- Prefer composition over mode-heavy components with many boolean props.
-- Use explicit variant components when variants have materially different behavior.
-- Keep state close to the narrowest common owner that needs it.
-- Separate application/domain logic from presentation when doing so improves testing or reuse.
-- Do not mirror props into state unless there is a deliberate synchronization model.
+- React 19+; current guidance aligned with React 19.3.
+- TypeScript 7 is preferred.
+- Use current `@types/react` and `@types/react-dom` matching the React major when the project uses DefinitelyTyped packages.
+- React 19 requires the modern JSX transform.
+- For bundler-owned apps, prefer TS7 `module: Preserve` + `moduleResolution: Bundler` unless the framework specifies another model.
 
-## React 19 posture
+## React-specific TS7 configuration
 
-- Prefer React 19 APIs and patterns when the repository baseline allows them.
-- Do not introduce `forwardRef` solely for ref passing when React 19 ref-as-prop semantics are appropriate.
-- Use `use()` where it improves integration with supported resources/context and fits the framework/runtime model; do not mechanically replace every existing hook.
-- Use Actions/form action patterns when they simplify pending/error/result state for mutations.
-- Treat Server Components as framework/runtime capabilities; do not assume plain React applications support an RSC architecture automatically.
+A typical Vite-style React app:
 
-## Hooks
+```json
+{
+  "compilerOptions": {
+    "target": "ES2025",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "types": ["vite/client"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "noUncheckedSideEffectImports": true
+  }
+}
+```
 
-- Hooks must obey the Rules of Hooks.
-- Effects are for synchronization with external systems, not a generic mechanism to derive values.
-- Derive render-time values directly when possible.
-- Event-driven work belongs in event handlers rather than effects.
-- Cleanup subscriptions, timers and external resources.
-- Avoid unstable object/function dependencies by fixing ownership/design before suppressing lint rules.
+Do not put Node/test globals into the browser tsconfig unless browser source actually needs them. Prefer separate configs for app, Node tooling, and tests.
 
-## State
+## React 19 TypeScript rules
+
+### `ref` is a prop for function components
+
+New function components usually do not need `forwardRef` solely to forward a ref.
+
+```tsx
+type InputProps = React.ComponentProps<'input'> & {
+  ref?: React.Ref<HTMLInputElement>;
+};
+
+function Input({ ref, ...props }: InputProps) {
+  return <input ref={ref} {...props} />;
+}
+```
+
+Do not mechanically rewrite third-party or compatibility components if their public API requires `forwardRef`, but do not introduce it by default for new React 19-only components.
+
+### Callback refs can return cleanup functions
+
+Avoid accidental implicit returns:
+
+```tsx
+// Avoid: assignment expression is returned.
+<div ref={(node) => (instance = node)} />
+
+// Prefer.
+<div ref={(node) => { instance = node; }} />
+```
+
+### `useRef` requires an initial argument
+
+Use `useRef(null)` or `useRef(undefined)` intentionally. React 19's `RefObject` model is mutable; do not carry old `MutableRefObject` assumptions into new code.
+
+### `ReactElement` props default to `unknown`
+
+Do not introspect arbitrary element props unsafely. If element props genuinely need to be inspected, parameterize the element type or narrow explicitly.
+
+### JSX namespace is scoped
+
+Do not add global `namespace JSX` augmentations for React 19. Use `React.JSX` or augment the module matching the configured JSX runtime (`react`, `react/jsx-runtime`, or `react/jsx-dev-runtime`).
+
+### `useReducer` favors inference
 
 Prefer:
 
-1. local component state;
-2. lifted state when siblings need the same owner;
-3. context for genuinely cross-tree concerns;
-4. an external store only when the state model actually needs it.
+```tsx
+const [state, dispatch] = useReducer(reducer, initialState);
+```
 
-Do not move server/cache state into generic client state stores without a concrete reason.
+Annotate reducer parameters/public types where inference needs help instead of forcing the old `React.Reducer<...>` type argument pattern.
 
-## Async UI
+## Component design
 
-Avoid request waterfalls. Start independent work concurrently where architecture permits. Use Suspense boundaries deliberately for progressive rendering where supported by the framework/data layer.
+- Components should model UI/domain concepts, not arbitrary size limits.
+- Prefer composition over components controlled by many boolean mode props.
+- Use discriminated prop unions for mutually exclusive variants.
+- Keep state in the narrowest owner that requires it.
+- Do not mirror props into state without an explicit synchronization model.
+- Keep server/cache state in its data layer rather than duplicating it into generic client stores.
 
-Expose pending, success, empty and failure states intentionally.
+## Effects
 
-## Performance
+Effects synchronize React with external systems. They are not the default place for derived state or event logic.
 
-Prioritize:
+- Derive values during render when possible.
+- Put user-driven operations in event handlers/actions.
+- Clean up subscriptions/resources.
+- Fix unstable ownership/dependencies rather than disabling Hooks lint rules.
 
-1. eliminating network/data waterfalls;
-2. reducing unnecessary shipped code;
-3. improving server/data work where applicable;
-4. avoiding unnecessary renders in measured hot paths;
-5. micro-optimizations last.
+## Actions and async UI
 
-Do not add `useMemo`, `useCallback` or `memo` automatically. React's compiler/runtime capabilities and component design may make manual memoization unnecessary; use it where identity stability or measured behavior requires it.
+Use React 19 Actions/form patterns when they simplify mutation pending/error/result state. Do not wrap ordinary synchronous state changes in Actions unnecessarily.
 
-Avoid large barrel imports when they cause excessive bundles or slow tooling. Prefer direct imports when the dependency supports them and measurement shows a benefit.
+Avoid request waterfalls. Start independent work concurrently in the data layer/framework. Use Suspense boundaries where the data/runtime architecture actually supports suspension.
+
+Explicitly design pending, success, empty, error, and retry states.
+
+## React Compiler
+
+React Compiler is compatible with React 19 and can remove much manual memoization pressure.
+
+When the repository enables React Compiler:
+
+- write components according to the Rules of React;
+- do not add `useMemo`, `useCallback`, or `memo` by reflex;
+- preserve manual memoization when identity semantics are part of an API or measurement proves it is needed;
+- use compiler diagnostics/lint integration instead of guessing whether code can be optimized;
+- library authors may compile library output, but must test published output and version compatibility.
+
+When React Compiler is not enabled, still do not memoize everything. Measure meaningful render costs.
+
+## React 19.3 features
+
+React 19.3 stabilizes APIs including View Transitions and Fragment Refs. Use them when they solve an actual product/UI problem; do not treat them as mandatory modernization chores.
+
+Server/client APIs such as browser-only suspension or Server Component behavior depend on the runtime/framework. Do not assume a plain React/Vite app has an RSC environment.
+
+## Performance order
+
+Optimize in this order:
+
+1. network/data waterfalls;
+2. unnecessary shipped code;
+3. expensive server/data work;
+4. unnecessary renders in measured hot paths;
+5. micro-optimizations.
+
+Prefer direct imports if a library's barrel exports materially harm bundle/tool performance. Verify with tooling rather than applying this universally.
+
+## Security and trusted HTML
+
+Avoid `dangerouslySetInnerHTML` unless content has a defined sanitization/trust policy. React 19.3 can work with browser Trusted Types; use them where the application enforces Trusted Types/CSP rather than coercing trusted objects back into unsafe strings.
 
 ## Accessibility
 
-Semantic HTML and keyboard behavior are implementation requirements, not polish. Preserve labels, focus order, accessible names and appropriate status/error announcements.
-
-## TypeScript + React
-
-- Avoid `React.FC` as a default requirement; type props directly unless the repository standard prefers it.
-- Model mutually exclusive component modes with discriminated unions.
-- Type event handlers and refs precisely.
-- Do not use `any` for third-party event/data boundaries; validate/narrow appropriately.
-- Prefer children/composition over highly polymorphic prop bags.
+Semantic HTML, labels, keyboard interaction, focus management, accessible names, and status/error announcements are implementation requirements.
 
 ## Testing
 
-Test observable behavior. Prefer accessible queries that resemble how a user interacts with the page. Keep tests resilient to harmless DOM implementation changes.
+Test observable behavior through accessible interactions. React 19 deprecates `react-test-renderer`; prefer Testing Library-style component tests or appropriate integration/E2E tests.
+
+Keep typechecking separate from test execution unless the test runner truly uses the TS7 checker.
 
 ## References
 
-- `references/react-19.md`
+- `references/react-19-typescript-7.md`
+- `references/react-19.3.md`
+- `references/react-compiler.md`
 - `references/performance.md`
 - `references/composition.md`
+- `../typescript-engineering/references/tooling-compatibility.md`
 - `scripts/check-react-project.mjs`
