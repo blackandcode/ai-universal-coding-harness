@@ -78,13 +78,18 @@ its acceptance criteria and test gates.
 
 ## Stage order
 
-| Stage | Purpose |
-|---|---|
-| 01 | Modern toolchain, formatting, linting, test infrastructure |
-| 02 | Strict TypeScript core/domain/config/CLI refactor |
-| 03 | Harness, ACP, permissions, evidence and recovery hardening |
-| 04 | React 19 + Ink 7 UI and CLI presentation modernization |
-| 05 | Documentation, complete test matrix, CI/package/release v2.0.0 |
+| Stage | Purpose                                                             |
+| ----- | ------------------------------------------------------------------- |
+| 01    | Modern toolchain, formatting, linting, test infrastructure          |
+| 02    | Strict TypeScript core/domain/config/CLI refactor                   |
+| 03    | Harness, ACP, permissions, evidence and recovery hardening          |
+| 06    | Reviewer routing, fallback, large diffs and orchestrator resilience |
+| 04    | React 19 + Ink 7 UI and CLI presentation modernization              |
+| 05    | Documentation, complete test matrix, CI/package/release v2.0.0      |
+
+### Stage 06 Architectural Note
+
+`Stage 06` was introduced based on the incident analysis of run `20260915T193118Z-76e14b`. It addresses reviewer provider failures (usage limits, quota exhaustion, process crashes without `result.json`) through automatic fallback to Cursor Gemini High, routes large diffs (>300k chars) to high-context models, and isolates permission checks to lightweight, cost-optimized reviewers. It executes immediately after Stage 03 establishes modular harness adapters and before Stage 04 modernizes the presentation layer.
 
 ## Quality rule for every stage
 

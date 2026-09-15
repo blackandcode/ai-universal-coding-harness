@@ -1,0 +1,39 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+export function findNpmCli() {
+  if (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath)) {
+    return process.env.npm_execpath;
+  }
+  const nodeDir = path.dirname(process.execPath);
+  const candidates = [
+    path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    path.join(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+export function spawnNpm(args, options = {}) {
+  const npmCli = findNpmCli();
+  let result;
+  if (npmCli) {
+    result = spawnSync(process.execPath, [npmCli, ...args], {
+      windowsHide: true,
+      ...options,
+    });
+  } else {
+    const cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    result = spawnSync(cmd, args, {
+      windowsHide: true,
+      shell: process.platform === 'win32',
+      ...options,
+    });
+  }
+  return result;
+}

@@ -1,6 +1,19 @@
 import fs from 'node:fs';
-import {spawnSync} from 'node:child_process';
-const command=fs.existsSync('package-lock.json')?'ci':'install';
-const args=[command,'--ignore-scripts','--no-audit','--no-fund'];
-const r=spawnSync(process.platform==='win32'?'npm.cmd':'npm',args,{stdio:'inherit',windowsHide:true});
-process.exit(r.status??1);
+import { spawnNpm } from './lib/npm-invoke.mjs';
+
+if (!fs.existsSync('package-lock.json')) {
+  console.error('package-lock.json must be committed for deterministic CI installation.');
+  process.exit(2);
+}
+
+const args = ['ci', '--ignore-scripts', '--no-audit', '--no-fund'];
+const result = spawnNpm(args, {
+  stdio: 'inherit',
+});
+
+if (result.error) {
+  console.error('Failed to spawn npm:', result.error);
+  process.exit(1);
+}
+
+process.exit(result.status ?? 1);

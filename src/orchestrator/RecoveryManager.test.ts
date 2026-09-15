@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {execSync} from 'node:child_process';
-import {RecoveryManager} from './RecoveryManager.js';
-import {RunStateStore} from '../state/RunStateStore.js';
-import {GitRepository} from '../git/GitRepository.js';
+import { execSync } from 'node:child_process';
+import { RecoveryManager } from './RecoveryManager.js';
+import { RunStateStore } from '../state/RunStateStore.js';
+import { GitRepository } from '../git/GitRepository.js';
 
 test('RecoveryManager resets recovered stage to attempt 1 with corroborated evidence', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'recovery-test-'));
@@ -46,20 +46,26 @@ test('RecoveryManager resets recovered stage to attempt 1 with corroborated evid
           name: stageName,
           selector: '01',
           status: 'failed',
-          manifest: { name: stageName, selector: '01', source: 'test', relative_path: stageName, sha256: {} }
-        }
+          manifest: {
+            name: stageName,
+            selector: '01',
+            source: 'test',
+            relative_path: stageName,
+            sha256: {},
+          },
+        },
       ],
       executor_harness: 'cursor',
       reviewer_harness: 'codex',
       quality_cmd: 'npm run check',
-      current_stage_index: 0
+      current_stage_index: 0,
     });
 
     // Write stage-state.json at attempt 3 failed
     store.saveStage(runId, stageName, {
       phase: 'quality',
       attempt: 3,
-      reviewer_feedback: 'Fix findings'
+      reviewer_feedback: 'Fix findings',
     });
 
     // Write evidence.json in stageDir
@@ -73,14 +79,14 @@ test('RecoveryManager resets recovered stage to attempt 1 with corroborated evid
       focused_tests: [],
       quality_summary: 'All checks passed',
       changed_files: [],
-      unresolved: []
+      unresolved: [],
     };
     fs.writeFileSync(path.join(stageDir, 'evidence.json'), JSON.stringify(evidence, null, 2));
 
     // Write ACP log with passing checks
     const acpLines = [
       'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t1","title":"Run","status":"completed","rawInput":{"command":"npm run check"},"rawOutput":{"exit_code":0}}}}',
-      'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t2","title":"Run","status":"completed","rawInput":{"command":"git diff --check"},"rawOutput":{"exit_code":0}}}}'
+      'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t2","title":"Run","status":"completed","rawInput":{"command":"git diff --check"},"rawOutput":{"exit_code":0}}}}',
     ];
     fs.writeFileSync(path.join(stageDir, 'executor-acp.jsonl'), acpLines.join('\n') + '\n');
 

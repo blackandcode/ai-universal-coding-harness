@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {parseAcpEvents} from './CursorExecutorHarness.js';
+import { parseAcpEvents } from './CursorExecutorHarness.js';
 
 test('parseAcpEvents accumulates state across multi-chunk tool calls', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-test-'));
@@ -17,11 +17,15 @@ test('parseAcpEvents accumulates state across multi-chunk tool calls', () => {
       // Chunk 2: tool_call_update in progress (rawInput omitted by ACP stream)
       'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"tool_cmd_1","status":"in_progress"}}}',
       // Chunk 3: tool_call_update completed with exitCode
-      'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"tool_cmd_1","status":"completed","rawOutput":{"exitCode":0,"output":"All passed"}}}}'
+      'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-1","update":{"sessionUpdate":"tool_call_update","toolCallId":"tool_cmd_1","status":"completed","rawOutput":{"exitCode":0,"output":"All passed"}}}}',
     ];
     fs.writeFileSync(eventsFile, lines.join('\n') + '\n', 'utf8');
 
-    const observed = parseAcpEvents(eventsFile, { runId: 'run-1', stageName: 'stage-01', attempt: 1 });
+    const observed = parseAcpEvents(eventsFile, {
+      runId: 'run-1',
+      stageName: 'stage-01',
+      attempt: 1,
+    });
     assert.equal(observed.length, 1);
     assert.equal(observed[0].tool_call_id, 'tool_cmd_1');
     assert.equal(observed[0].command, 'npm run check');
@@ -44,7 +48,7 @@ test('parseAcpEvents extracts exit codes from various key formats', () => {
       // exit_code
       'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t2","title":"Run","status":"completed","rawInput":{"command":"cmd2"},"rawOutput":{"exit_code":0}}}}',
       // failed status fallback
-      'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t3","title":"Run","status":"failed","rawInput":{"command":"cmd3"},"rawOutput":{}}}}'
+      'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t3","title":"Run","status":"failed","rawInput":{"command":"cmd3"},"rawOutput":{}}}}',
     ];
     fs.writeFileSync(eventsFile, lines.join('\n') + '\n', 'utf8');
 
@@ -64,7 +68,7 @@ test('parseAcpEvents extracts commands from backtick titles when rawInput is emp
 
   try {
     const lines = [
-      'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t1","title":"`git diff --check`","status":"completed","rawInput":{},"rawOutput":{"exitCode":0}}}}'
+      'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t1","title":"`git diff --check`","status":"completed","rawInput":{},"rawOutput":{"exitCode":0}}}}',
     ];
     fs.writeFileSync(eventsFile, lines.join('\n') + '\n', 'utf8');
 
@@ -79,25 +83,30 @@ test('parseAcpEvents extracts commands from backtick titles when rawInput is emp
 });
 
 test('parseAcpEvents correctly parses Stage 07 real-world fixture', () => {
-  const realStage07Log = '/home/black/workspace/wp-plugins-development/wordpress-empower-redirector/.ai-orchestrator/runs/20260915T130020Z-3a5689/stages/stage-07-quality-improvement-ip-rules-and-denial-destination-usability/executor-acp.jsonl';
+  const realStage07Log =
+    '/home/black/workspace/wp-plugins-development/wordpress-empower-redirector/.ai-orchestrator/runs/20260915T130020Z-3a5689/stages/stage-07-quality-improvement-ip-rules-and-denial-destination-usability/executor-acp.jsonl';
   if (!fs.existsSync(realStage07Log)) {
     return; // Skip if external repo log not present in current environment
   }
 
   const observed = parseAcpEvents(realStage07Log, {
-    stageName: 'stage-07-quality-improvement-ip-rules-and-denial-destination-usability'
+    stageName: 'stage-07-quality-improvement-ip-rules-and-denial-destination-usability',
   });
 
   assert.ok(observed.length > 0, 'Should extract observations from real Stage 07 ACP log');
-  const checkCmd = observed.find(o => o.command.includes('npm run check'));
+  const checkCmd = observed.find((o) => o.command.includes('npm run check'));
   assert.ok(checkCmd, 'Should find npm run check');
   // Check that the latest completed npm run check has exit code 0
-  const completedChecks = observed.filter(o => o.command.includes('npm run check') && o.status === 'completed');
+  const completedChecks = observed.filter(
+    (o) => o.command.includes('npm run check') && o.status === 'completed',
+  );
   assert.ok(completedChecks.length > 0, 'Should have completed npm run check');
   const latestCheck = completedChecks[completedChecks.length - 1];
   assert.equal(latestCheck.exit_code, 0);
 
-  const allDiffChecks = observed.filter(o => o.command.includes('git diff --check') && o.status === 'completed');
+  const allDiffChecks = observed.filter(
+    (o) => o.command.includes('git diff --check') && o.status === 'completed',
+  );
   assert.ok(allDiffChecks.length > 0, 'Should find completed git diff --check');
   const latestDiffCheck = allDiffChecks[allDiffChecks.length - 1];
   assert.equal(latestDiffCheck.exit_code, 0);

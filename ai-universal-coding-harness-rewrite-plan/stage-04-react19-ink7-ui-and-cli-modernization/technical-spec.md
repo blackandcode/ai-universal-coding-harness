@@ -7,8 +7,8 @@ Use the modern React JSX runtime:
 ```jsonc
 {
   "compilerOptions": {
-    "jsx": "react-jsx"
-  }
+    "jsx": "react-jsx",
+  },
 }
 ```
 

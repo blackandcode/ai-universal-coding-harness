@@ -10,7 +10,14 @@ export type RunStatus =
   | 'completed';
 
 export type StageStatus = 'pending' | 'running' | 'completed' | 'failed';
-export type StagePhase = 'pending' | 'plan' | 'implementation' | 'quality' | 'review' | 'commit' | 'completed';
+export type StagePhase =
+  | 'pending'
+  | 'plan'
+  | 'implementation'
+  | 'quality'
+  | 'review'
+  | 'commit'
+  | 'completed';
 export type PermissionMode = 'auto_safe' | 'allow_all' | 'allowlist' | 'ask_reviewer';
 
 export interface StageManifest {

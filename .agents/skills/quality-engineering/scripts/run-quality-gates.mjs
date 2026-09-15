@@ -11,7 +11,13 @@ for (const name of candidates) {
     continue;
   }
   console.error(`[run] npm run ${name}`);
-  const r = spawnSync('npm', ['run', name], { stdio: 'inherit', shell: process.platform === 'win32' });
-  if (r.status !== 0) { failed = true; break; }
+  const r = spawnSync('npm', ['run', name], {
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
+  if (r.status !== 0) {
+    failed = true;
+    break;
+  }
 }
 process.exit(failed ? 1 : 0);

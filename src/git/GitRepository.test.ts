@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {execSync} from 'node:child_process';
-import {GitRepository} from './GitRepository.js';
+import { execSync } from 'node:child_process';
+import { GitRepository } from './GitRepository.js';
 
 test('GitRepository.diffCheck returns ok on clean repo', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-repo-test-'));
@@ -80,7 +80,10 @@ test('GitRepository.reviewDiff handles untracked directories with -uall and non-
 
     // Untracked binary file
     const binaryFile = path.join(nestedDir, 'image.png');
-    fs.writeFileSync(binaryFile, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00]));
+    fs.writeFileSync(
+      binaryFile,
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00]),
+    );
 
     const git = new GitRepository(tmpDir);
     const diff = git.reviewDiff();

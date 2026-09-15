@@ -1,6 +1,6 @@
 ---
 description: TypeScript implementation conventions for orchestrator source and tests
-globs: "src/**/*.ts"
+globs: "src/**/*.{ts,tsx}"
 alwaysApply: false
 ---
 - Prefer small modules with explicit responsibility boundaries.
@@ -8,3 +8,8 @@ alwaysApply: false
 - Normalize external payloads at adapter boundaries instead of leaking protocol-specific structures into the engine.
 - Prefer Node standard library APIs for cross-platform operations.
 - Do not add OS-specific shell assumptions to core code.
+- Target ES2024 and strict NodeNext module resolution with explicit `.js` import extensions.
+- Enforce `verbatimModuleSyntax: true`: use explicit `import type` annotations for all type-only imports.
+- Maintain single-file transpilability (`isolatedModules: true`) and verify side-effect imports (`noUncheckedSideEffectImports: true`).
+- Ambient type scopes are explicitly constrained via `types: ["node"]`.
+- TSX rendering targets React 19 / Ink 7 via `jsx: "react-jsx"`.

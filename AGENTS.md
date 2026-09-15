@@ -29,14 +29,19 @@ Maintain a cross-platform TypeScript CLI that orchestrates staged AI software de
 - Preserve cross-platform behavior: no Bash/unzip/Unix-only runtime assumptions.
 - Target project harness subprocesses must use the intended repository working directory when project-native rules/skills/tools are expected.
 - npm release automation uses Trusted Publishing/OIDC and must not introduce long-lived npm publish tokens.
+- Node runtime minimum is `>=24.18.0`, specified in `.nvmrc` and enforced by `package.json`.
+- Code formatting is managed by Oxfmt; linting is managed by Oxlint.
 
 ## Quality
 
 Before completing code changes:
 
 ```bash
+npm run format:check
+npm run lint
 npm run typecheck
 npm test
+npm run test:cli
 npm run verify
 npm pack --dry-run
 ```

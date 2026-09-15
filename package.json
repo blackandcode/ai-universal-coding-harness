@@ -2,33 +2,30 @@
   "name": "ai-universal-coding-harness",
   "version": "1.0.3",
   "description": "A cross-platform CLI that orchestrates autonomous coding harnesses through structured stages, review, quality gates, and clean Git history.",
-  "type": "module",
-  "license": "MIT",
-  "engines": {
-    "node": ">=24.18.0"
-  },
-  "bin": {
-    "ai-harness": "./dist/bin.js",
-    "ai-universal-coding-harness": "./dist/bin.js"
-  },
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/blackandcode/ai-universal-coding-harness.git"
-  },
+  "keywords": [
+    "agents",
+    "ai",
+    "automation",
+    "cli",
+    "codex",
+    "coding-agent",
+    "cursor",
+    "harness",
+    "orchestrator",
+    "typescript"
+  ],
   "homepage": "https://github.com/blackandcode/ai-universal-coding-harness#readme",
   "bugs": {
     "url": "https://github.com/blackandcode/ai-universal-coding-harness/issues"
   },
-  "publishConfig": {
-    "access": "public"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blackandcode/ai-universal-coding-harness.git"
+  },
+  "bin": {
+    "ai-harness": "./dist/bin.js",
+    "ai-universal-coding-harness": "./dist/bin.js"
   },
   "files": [
     "dist/",
@@ -40,17 +37,34 @@
     "CHANGELOG.md",
     "LICENSE"
   ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "tsc -p tsconfig.json && node scripts/postbuild.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json && node scripts/postbuild.mjs",
     "compile": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:unit": "node scripts/run-tests.mjs",
-    "test": "npm run build && npm run test:unit",
-    "verify": "npm run typecheck && npm test && npm run test:cli && node scripts/package-check.mjs",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "lint": "oxlint && node scripts/verify-oxlint-rules.mjs",
+    "test:unit": "npm run build && node scripts/run-tests.mjs",
+    "test:coverage": "npm run build && node scripts/run-tests.mjs --coverage",
+    "test:cli": "node scripts/cli-smoke.mjs",
+    "test": "npm run test:unit",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run test:cli && node scripts/package-check.mjs",
+    "check": "npm run verify",
     "prepare": "npm run build",
-    "prepack": "npm run verify",
-    "test:cli": "node scripts/cli-smoke.mjs"
+    "prepack": "npm run verify"
   },
   "dependencies": {
     "adm-zip": "0.6.1",
@@ -62,18 +76,11 @@
     "@types/node": "24.13.4",
     "@types/react": "19.2.18",
     "ink-testing-library": "4.0.0",
+    "oxfmt": "0.68.0",
+    "oxlint": "1.83.0",
     "typescript": "7.0.2"
   },
-  "keywords": [
-    "ai",
-    "coding-agent",
-    "cli",
-    "orchestrator",
-    "cursor",
-    "codex",
-    "agents",
-    "typescript",
-    "automation",
-    "harness"
-  ]
+  "engines": {
+    "node": ">=24.18.0"
+  }
 }

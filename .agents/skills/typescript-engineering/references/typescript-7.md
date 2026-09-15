@@ -31,16 +31,16 @@ If TS7 rejects a TS6-deprecated option, remove/migrate the option. Do not seek a
 
 Common migrations:
 
-| Legacy | Modern direction |
-|---|---|
-| `moduleResolution: node/node10` | `NodeNext` for Node, `Bundler` for bundlers |
-| `moduleResolution: classic` | `NodeNext` or `Bundler` |
-| `baseUrl` | explicit relative `paths`, package imports, or workspace/package imports |
-| `outFile` | bundler |
-| `target: es5` | modern target or external downlevel compiler |
-| `module: amd/umd/system/none` | ESM/CJS through modern runtime/bundler |
-| import `asserts` | import attributes `with` |
-| implicit global `@types` discovery | explicit `types` |
+| Legacy                             | Modern direction                                                         |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| `moduleResolution: node/node10`    | `NodeNext` for Node, `Bundler` for bundlers                              |
+| `moduleResolution: classic`        | `NodeNext` or `Bundler`                                                  |
+| `baseUrl`                          | explicit relative `paths`, package imports, or workspace/package imports |
+| `outFile`                          | bundler                                                                  |
+| `target: es5`                      | modern target or external downlevel compiler                             |
+| `module: amd/umd/system/none`      | ESM/CJS through modern runtime/bundler                                   |
+| import `asserts`                   | import attributes `with`                                                 |
+| implicit global `@types` discovery | explicit `types`                                                         |
 
 ## `rootDir`
 

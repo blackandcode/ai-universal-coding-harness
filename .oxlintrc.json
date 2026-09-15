@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "node", "promise", "unicorn"],
+  "env": {
+    "node": true,
+    "es2024": true
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-unreachable": "error",
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-constant-condition": "warn",
+    "no-unsafe-negation": "error",
+    "no-extra-boolean-cast": "warn",
+    "no-self-compare": "error",
+    "promise/no-new-statics": "error",
+    "promise/valid-params": "error",
+    "no-async-promise-executor": "error",
+    "unicorn/no-await-in-promise-methods": "error",
+    "unicorn/no-single-promise-in-promise-methods": "error",
+    "unicorn/no-thenable": "error",
+    "unicorn/no-unnecessary-await": "error",
+    "node/no-exports-assign": "error",
+    "node/no-new-require": "error",
+    "react/rules-of-hooks": "error",
+    "react/jsx-key": "error",
+    "react/jsx-no-duplicate-props": "error",
+    "typescript/no-explicit-any": "warn"
+  }
+}

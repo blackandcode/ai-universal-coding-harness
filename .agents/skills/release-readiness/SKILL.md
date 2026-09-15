@@ -2,6 +2,7 @@
 name: release-readiness
 description: Use before publishing a GitHub or npm release of AI Universal Coding Harness. Covers semantic versioning, changelog, cross-platform CI, package contents, npm Trusted Publishing (OIDC), and CLI smoke checks.
 ---
+
 # Release Readiness
 
 1. Confirm semantic version in `package.json` and `src/version.ts` matches.

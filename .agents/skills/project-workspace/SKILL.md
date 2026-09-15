@@ -2,6 +2,7 @@
 name: project-workspace
 description: Use when changing project initialization, .ai-orchestrator local state, run history cleanup, stage input/runtime layout, configuration precedence, or repository locking.
 ---
+
 # Project Workspace
 
 - `ai-harness init` must remain safe and idempotent.

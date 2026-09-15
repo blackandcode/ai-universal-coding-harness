@@ -2,6 +2,7 @@
 name: orchestrator-development
 description: Use when changing AI Universal Coding Harness core flow, state, permissions, Git lifecycle, configuration, project initialization, or terminal UI. Ensures harness-neutral architecture and autonomy invariants.
 ---
+
 # Orchestrator Development
 
 1. Read `AGENTS.md` and the relevant `/docs` architecture page before editing.

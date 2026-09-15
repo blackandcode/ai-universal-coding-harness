@@ -51,9 +51,7 @@ This naturally tracks React 19 DOM/ref typing better than manually duplicating d
 Prefer inference from a well-typed reducer:
 
 ```ts
-type Action =
-  | { type: 'increment' }
-  | { type: 'reset'; value: number };
+type Action = { type: 'increment' } | { type: 'reset'; value: number };
 
 function reducer(state: State, action: Action): State {
   // ...

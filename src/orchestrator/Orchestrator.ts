@@ -1,72 +1,630 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {CONFIG} from '../core/config.js';
-import {ROOT,STAGE_INPUT_ROOT,STAGE_RUNTIME_ROOT} from '../core/paths.js';
-import {copyDir,ensureDir,makeReadOnlyTree,makeWritableTree,removeTree,sha256Text,writeJson,writeText} from '../core/fs.js';
-import {iso,utcStamp} from '../core/time.js';
-import {GitRepository} from '../git/GitRepository.js';
-import {BranchManager} from '../git/BranchManager.js';
-import {RunStateStore} from '../state/RunStateStore.js';
-import {HarnessRegistry} from '../harness/registry.js';
-import {ReviewerHarness,ExecutorSession} from '../harness/types.js';
-import {PermissionEngine,PermissionRequest} from '../permissions/PermissionEngine.js';
-import {StageSource} from '../stages/StageSource.js';
-import {frozenStageContext,relevantSkills,skillIndex} from '../stages/context.js';
-import {PlanCoordinator} from '../stages/PlanCoordinator.js';
-import {validateEvidence,verifyEvidenceAgainstObserved} from '../quality/EvidenceVerifier.js';
-import {EventBus} from '../ui/EventBus.js';
-import {RunState,SelectedStage,QuestionVerdict,FinalVerdict} from '../types.js';
+import { CONFIG } from '../core/config.js';
+import { ROOT, STAGE_INPUT_ROOT, STAGE_RUNTIME_ROOT } from '../core/paths.js';
+import {
+  copyDir,
+  ensureDir,
+  makeReadOnlyTree,
+  removeTree,
+  sha256Text,
+  writeJson,
+  writeText,
+} from '../core/fs.js';
+import { iso, utcStamp } from '../core/time.js';
+import { GitRepository } from '../git/GitRepository.js';
+import { BranchManager } from '../git/BranchManager.js';
+import { RunStateStore } from '../state/RunStateStore.js';
+import { HarnessRegistry } from '../harness/registry.js';
+import type { ReviewerHarness, ExecutorSession } from '../harness/types.js';
+import { PermissionEngine, type PermissionRequest } from '../permissions/PermissionEngine.js';
+import { StageSource } from '../stages/StageSource.js';
+import { frozenStageContext, relevantSkills, skillIndex } from '../stages/context.js';
+import { PlanCoordinator } from '../stages/PlanCoordinator.js';
+import { validateEvidence, verifyEvidenceAgainstObserved } from '../quality/EvidenceVerifier.js';
+import { EventBus } from '../ui/EventBus.js';
+import type { RunState, SelectedStage, QuestionVerdict, FinalVerdict } from '../types.js';
 
 export class Orchestrator {
-  git=new GitRepository(ROOT); store=new RunStateStore(); registry=new HarnessRegistry(); branch=new BranchManager(this.git,s=>this.store.save(s)); activeExecutor:ExecutorSession|null=null;
-  constructor(public events:EventBus){}
+  git = new GitRepository(ROOT);
+  store = new RunStateStore();
+  registry = new HarnessRegistry();
+  branch = new BranchManager(this.git, (s) => this.store.save(s));
+  activeExecutor: ExecutorSession | null = null;
+  constructor(public events: EventBus) {}
 
-  ensureExclude(){ const p=path.join(ROOT,'.git','info','exclude'); if(!fs.existsSync(path.dirname(p)))return; const lines=['.ai-orchestrator/']; let txt=fs.existsSync(p)?fs.readFileSync(p,'utf8'):''; for(const l of lines)if(!txt.split(/\r?\n/).includes(l))txt+=`${txt.endsWith('\n')||!txt?'':'\n'}${l}\n`; fs.writeFileSync(p,txt); }
-
-  createRun(input:{stageSource:string;selectors:string[];feature?:string;branch?:string;base?:string;qualityCmd?:string;executorHarness?:string;reviewerHarness?:string}){
-    this.ensureExclude(); const source=new StageSource(input.stageSource); try{
-      const baseRef=input.base||'HEAD'; const baseCommit=this.git.run(['rev-parse',baseRef]).stdout.trim(); const originalBranch=this.git.currentBranch(); const runId=`${utcStamp()}-${Math.random().toString(16).slice(2,8)}`; const runDir=this.store.runDir(runId); ensureDir(path.join(runDir,'input','stages'));
-      const stages:SelectedStage[]=[]; for(const selector of input.selectors){ const dir=source.resolve(selector,input.feature||''); const manifest=source.manifest(dir,selector); const dest=path.join(runDir,'input','stages',manifest.name); copyDir(dir,dest); makeReadOnlyTree(dest); stages.push({name:manifest.name,selector,status:'pending',manifest}); }
-      const suffix=stages.length===1?stages[0].name.replace(/^stage-/,'s'):`${stages[0].name.match(/^stage-(\d+)/)?.[1]||'xx'}-to-${stages.at(-1)?.name.match(/^stage-(\d+)/)?.[1]||'xx'}`; const branch=input.branch||`${CONFIG.BRANCH_PREFIX}/${runId}-${suffix}`;
-      const executorId=input.executorHarness||CONFIG.EXECUTOR_HARNESS, reviewerId=input.reviewerHarness||CONFIG.REVIEWER_HARNESS; const executorInfo=this.registry.executor(executorId,{events:this.events}).info, reviewerInfo=this.registry.reviewer(reviewerId,{events:this.events,runDir,stageName:'_run',stageContext:'',skillsText:'',runLog:path.join(runDir,'run.log')}).info; const state:RunState={version:1,run_id:runId,created_at:iso(),status:'created',workspace:ROOT,base_ref:baseRef,base_commit:baseCommit,original_branch:originalBranch,original_head:this.git.head(),branch,branch_created:false,stage_source:path.resolve(input.stageSource),feature:input.feature||null,stages,executor_harness:executorId,reviewer_harness:reviewerId,executor_label:executorInfo.label,reviewer_label:reviewerInfo.label,quality_cmd:input.qualityCmd||CONFIG.QUALITY_CMD}; this.store.save(state); return state;
-    } finally {source.close();}
+  ensureExclude() {
+    const p = path.join(ROOT, '.git', 'info', 'exclude');
+    if (!fs.existsSync(path.dirname(p))) return;
+    const lines = ['.ai-orchestrator/'];
+    let txt = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+    for (const l of lines)
+      if (!txt.split(/\r?\n/).includes(l)) txt += `${txt.endsWith('\n') || !txt ? '' : '\n'}${l}\n`;
+    fs.writeFileSync(p, txt);
   }
 
-  prepareFrozenInputs(state:RunState){ const root=STAGE_INPUT_ROOT; removeTree(root); ensureDir(root); for(const s of state.stages){const src=path.join(this.store.runDir(state.run_id),'input','stages',s.name),dest=path.join(root,s.name);copyDir(src,dest);makeReadOnlyTree(dest);} try{fs.chmodSync(root,0o555)}catch{} }
-  private specDigest(stage:SelectedStage){return sha256Text(JSON.stringify(stage.manifest.sha256||{}));}
-  private patchFingerprint(){return this.git.patchFingerprint();}
-  private boundedDiff(paths?:string[]){const d=this.git.reviewDiff(paths);return d.length>CONFIG.MAX_DIFF_CHARS?d.slice(0,CONFIG.MAX_DIFF_CHARS)+`\n...[diff truncated: total ${d.length} chars exceeds limit ${CONFIG.MAX_DIFF_CHARS}. If you need context on specific truncated files, return verdict NEEDS_CONTEXT with requested_paths]`:d;}
-
-  private planPrompt(stage:string){return `Work in PLAN mode for ${stage}.\n\nRead ALL frozen inputs under .ai-orchestrator/stage-input/${stage}/, relevant .agents/skills/**/SKILL.md and .cursor/skills/**/SKILL.md, .cursor/rules, AGENTS.md, current implementation, and tests. Submit one comprehensive plan through the executor harness plan mechanism. The plan must cover exact files/components, all functional and technical requirements, edge cases, migrations, tests, documentation, and quality gates. Do not implement yet. When reviewer feedback arrives, revise the ENTIRE plan and incorporate ALL findings together rather than addressing one item at a time.`;}
-  private executionPrompt(stage:string,plan:string,carry:string,feedback:string,attempt:number,quality:string){return `You are the implementation executor for ${stage}. Work autonomously on the dedicated AI branch.\n\nNON-NEGOTIABLE:\n- Read and follow relevant .agents/skills/**/SKILL.md and .cursor/skills/**/SKILL.md, .cursor/rules, and AGENTS.md.\n- Frozen requirements in .ai-orchestrator/stage-input/${stage}/ are immutable.\n- Implement ALL requirements in the approved plan and frozen specs.\n- Do not create/switch/merge/rebase/reset branches, commit, push, stash, or rewrite Git history. The orchestrator owns Git lifecycle.\n- Request permissions normally. Permission denials apply only to that operation; choose another safe approach and continue.\n- If you need a product/design decision, ask a concrete multiple-choice question; the reviewer will answer autonomously.\n\nAPPROVED PLAN:\n${plan}\n\nMANDATORY PLAN-REVIEW CARRY-OVER:\n${carry||'_None._'}\n\n${feedback?`REWORK INSTRUCTIONS FROM FINAL REVIEW / QUALITY:\n${feedback}\n`:''}IMPLEMENTATION ATTEMPT: ${attempt}\n\nAfter all code edits are complete, run quality checks as STANDALONE separate commands (do NOT combine or chain with && or ;):\n1. First, run focused tests if applicable.\n2. Next, execute the full deterministic quality gate alone:\n   ${quality}\n3. Then, execute the diff hygiene check alone:\n   git diff --check\nFix any failures and rerun the commands standalone until both exit with code 0. No file edits should take place after running these quality checks.\n\nFinally write .ai-orchestrator/stage-runtime/${stage}/evidence.json with:\n{\n  \"stage\": \"${stage}\",\n  \"attempt\": ${attempt},\n  \"status\": \"PASS\" or \"FAIL\",\n  \"quality_command\": ${JSON.stringify(quality)},\n  \"quality_exit_code\": integer,\n  \"git_diff_check_exit_code\": integer,\n  \"focused_tests\": [{\"command\":\"...\",\"exit_code\":0,\"summary\":\"...\"}],\n  \"quality_summary\": \"...\",\n  \"changed_files\": [\"...\"],\n  \"unresolved\": []\n}\nOnly set PASS when the full quality command and git diff --check both completed with exit code 0 and no required item remains unresolved.`;}
-
-  async preflight(stateOrInput:{executor_harness?:string;reviewer_harness?:string}){await this.registry.loadConfigured();const exec=this.registry.executor(stateOrInput.executor_harness||CONFIG.EXECUTOR_HARNESS,{events:this.events});const rev=this.registry.reviewer(stateOrInput.reviewer_harness||CONFIG.REVIEWER_HARNESS,{events:this.events,runDir:ROOT,stageName:'_preflight',stageContext:'',skillsText:'',runLog:path.join(ROOT,'.ai-orchestrator','preflight.log')});const [a,b]=await Promise.all([exec.preflight(),rev.preflight()]);if(!a.ok||!b.ok)throw new Error(`Harness preflight failed:\nExecutor: ${a.details.join('; ')}\nReviewer: ${b.details.join('; ')}`);return{executor:a,reviewer:b};}
-
-  private async questionDecision(reviewer:ReviewerHarness,payload:any,cache:Map<string,any>,stageName:string,state:RunState){const key=sha256Text(JSON.stringify({title:payload.title||'',questions:payload.questions||[]}));let v:QuestionVerdict=cache.get(key);if(!v){v=await reviewer.answerQuestions({title:payload.title,questions:payload.questions});if(v.verdict==='ANSWER')cache.set(key,v);}const answers:any[]=[];for(const q of payload.questions||[]){const a=(v.answers||[]).find(x=>x.question_id===q.id);let ids=(a?.selected_option_ids||[]).filter((id:string)=>(q.options||[]).some((o:any)=>o.id===id));if(!ids.length&&q.options?.length)ids=[q.options[0].id];answers.push({questionId:q.id,selectedOptionIds:ids});}this.store.appendHuman(state.run_id,stageName,'DECISIONS.md','Executor question answered',`**Question:** ${(payload.questions||[]).map((q:any)=>q.prompt).join(' | ')}\n\n**Reviewer verdict:** ${v.verdict}\n\n**Rationale:** ${v.rationale||'Autonomous fallback selected the first available option.'}`);return{answers,rationale:v.rationale||'Autonomous fallback used.'};}
-
-  private async permissionDecision(engine:PermissionEngine,reviewer:ReviewerHarness,req:PermissionRequest,stageName:string,state:RunState){const cached=engine.cached(req);let d=cached||engine.deterministic(req);if(!d){const v=await reviewer.decidePermission({request:req.raw,signature:engine.signature(req),permission_mode:CONFIG.PERMISSION_MODE,command:req.command||'',note:'No permission-call quota exists. Deny only this exact operation if unsafe; the executor must continue with another approach.'});d=engine.fromReviewer(req,v);}engine.remember(req,d);this.store.appendHuman(state.run_id,stageName,'DECISIONS.md','Permission decision',`- **Decision:** ${d.allow?'ALLOW':'DENY'}\n- **Source:** ${d.source}\n- **Signature:** \`${d.signature}\`\n- **Reason:** ${d.reason}`);return{allow:d.allow,reason:d.reason||d.source};}
-
-  async executeStage(state:RunState,index:number){const stage=state.stages[index];this.branch.ensureCreated(state);this.branch.assertActive(state);this.prepareFrozenInputs(state);state.status='running';state.current_stage_index=index;state.current_phase='plan';stage.status='running';this.store.save(state);this.events.emit('stage.started',{stage:stage.name,index:index+1,total:state.stages.length});this.store.appendHuman(state.run_id,stage.name,'STAGE.md','Stage started',`- **Started:** ${iso()}\n- **Branch:** \`${state.branch}\`\n- **Base commit:** \`${this.git.head()}\``);
-    const stageRunDir=this.store.stageDir(state.run_id,stage.name);ensureDir(stageRunDir);for(const [file,title] of [['PLAN_REVIEW_HISTORY.md','Plan Review History'],['DECISIONS.md','Decisions'],['EXECUTION.md','Execution'],['FINAL_REVIEW.md','Final Review']] as any){const p=path.join(stageRunDir,file);if(!fs.existsSync(p))writeText(p,`# ${title}\n\n`);}const runLog=path.join(this.store.runDir(state.run_id),'run.log');const frozenDir=path.join(STAGE_INPUT_ROOT,stage.name);const stageContext=frozenStageContext(frozenDir);const skillsText=relevantSkills(skillIndex(ROOT),stageContext);const reviewer=this.registry.reviewer(state.reviewer_harness,{events:this.events,runDir:this.store.runDir(state.run_id),stageName:stage.name,stageContext,skillsText,runLog});const permission=new PermissionEngine(ROOT,CONFIG.PERMISSION_MODE,CONFIG.permissionsFile);const planCoord=new PlanCoordinator({runId:state.run_id,stage,stageContext,reviewer,store:this.store});const runtime0=this.store.loadStage(state.run_id,stage.name);const reused=planCoord.reusable();if(reused){this.events.emit('reviewer.plan',{verdict:'APPROVE',summary:'Reusing validated approved plan.'});this.store.appendHuman(state.run_id,stage.name,'STAGE.md','Approved plan reused','Plan/spec hashes matched; planning and plan review were skipped.');}
-    const qcache=new Map<string,any>();const executorHarness=this.registry.executor(state.executor_harness,{events:this.events});const session=await executorHarness.createSession({workspace:ROOT,runLog,eventsFile:path.join(stageRunDir,'executor-acp.jsonl'),focusFile:path.join(stageRunDir,'executor-focus.log'),resumeSessionId:runtime0.executor_session_id||runtime0.cursor_session_id,callbacks:{onPlan:(plan,meta)=>planCoord.submit(plan),onQuestion:(p)=>this.questionDecision(reviewer,p,qcache,stage.name,state),onPermission:(req,p)=>this.permissionDecision(permission,reviewer,req,stage.name,state),onSessionId:(id)=>this.store.saveStage(state.run_id,stage.name,{executor_session_id:id})}});this.activeExecutor=session;
-    try{
-      let approved=reused?.plan||'';if(!approved){await session.setMode('plan');let turns=0;while(!approved&&turns<CONFIG.MAX_PLAN_REVIEWS+4){turns++;const r=await session.prompt(this.planPrompt(stage.name));approved=planCoord.plan;if(!approved&&r.text.trim()){const d=await planCoord.submit(r.text.trim());if(d.accepted)approved=planCoord.plan;}}if(!approved)approved=planCoord.forceAccept(`1. Read all frozen stage specifications and applicable skills.\n2. Implement every functional and technical requirement for ${stage.name}.\n3. Add/update all required tests and documentation.\n4. Run focused tests, ${state.quality_cmd}, and git diff --check; fix failures.`,`Executor did not submit a plan through ACP after the bounded planning interaction. Autonomous fallback accepted a complete requirements-driven plan.`);}
-      const carry=planCoord.reviewerCarryover;await session.setMode('agent');state.current_phase='implementation';this.store.save(state);let feedback='';let approvedFinal:FinalVerdict|null=null;let finalEvidence:any=null;
-      let pendingResumedEvidence:any=null;if((runtime0.phase==='quality'||runtime0.phase==='review')&&runtime0.evidence_file&&runtime0.patch_fingerprint===this.patchFingerprint()&&fs.existsSync(runtime0.evidence_file)){try{pendingResumedEvidence={ok:true,e:JSON.parse(fs.readFileSync(runtime0.evidence_file,'utf8')),resumed:true};this.events.emit('log',{level:'info',message:'Reusing previously corroborated quality evidence for unchanged patch.'});}catch{}}
-      for(let attempt=1;attempt<=CONFIG.MAX_EXECUTION_ATTEMPTS;attempt++){this.branch.assertActive(state);this.events.emit('stage.attempt',{stage:stage.name,attempt});
-        let ev:any=null;
-        if(attempt===1&&pendingResumedEvidence){ev=pendingResumedEvidence;pendingResumedEvidence=null;}
-        let epochId='';if(!ev){const runtimeEvidence=path.join(STAGE_RUNTIME_ROOT,stage.name,'evidence.json');ensureDir(path.dirname(runtimeEvidence));try{fs.unlinkSync(runtimeEvidence)}catch{}epochId=`${state.run_id}-${stage.name}-${attempt}-${Date.now()}`;session.setQualityEpoch?.(epochId);await session.prompt(this.executionPrompt(stage.name,approved,carry,feedback,attempt,state.quality_cmd));ev=validateEvidence(runtimeEvidence,stage.name,attempt);}
-        if(!ev?.ok){feedback=`Execution evidence invalid: ${ev?.reason||'missing'}. Re-run required checks and regenerate evidence.json.`;this.events.emit('quality.result',{status:'FAIL',summary:feedback});this.store.appendHuman(state.run_id,stage.name,'EXECUTION.md',`Attempt ${attempt} — invalid evidence`,feedback);this.store.saveStage(state.run_id,stage.name,{phase:'implementation',attempt,reviewer_feedback:feedback,evidence_file:undefined,patch_fingerprint:undefined,executor_session_id:session.id});state.current_phase='implementation';this.store.save(state);continue;}
-        const diffCheck=this.git.diffCheck();const observed=verifyEvidenceAgainstObserved(ev.e,session.observedCommands(),{stage:stage.name,attempt,quality_epoch_id:epochId||undefined,expected_patch_fingerprint:this.patchFingerprint(),last_mutation_sequence:session.lastMutationSeq?.(),orchestrator_diff_check_ok:diffCheck.ok});if(!ev.resumed&&!observed.ok){feedback=`Execution evidence could not be corroborated against executor ACP results:\n${observed.issues.map((x:string)=>`- ${x}`).join('\n')}\nRerun the exact quality commands and regenerate evidence.json.`;this.events.emit('quality.result',{status:'FAIL',summary:feedback});this.store.appendHuman(state.run_id,stage.name,'EXECUTION.md',`Attempt ${attempt} — evidence mismatch`,feedback);this.store.saveStage(state.run_id,stage.name,{phase:'implementation',attempt,reviewer_feedback:feedback,evidence_file:undefined,patch_fingerprint:undefined,executor_session_id:session.id});state.current_phase='implementation';this.store.save(state);continue;}ev.e.observed_quality=observed;ev.e.patch_fingerprint=this.patchFingerprint();const saved=path.join(stageRunDir,`evidence-attempt-${attempt}.json`);writeJson(saved,ev.e);writeText(path.join(stageRunDir,`evidence-attempt-${attempt}.md`),`# Execution evidence — attempt ${attempt}\n\n\`\`\`json\n${JSON.stringify(ev.e,null,2)}\n\`\`\`\n`);this.events.emit('quality.result',{...ev.e,summary:ev.e.quality_summary});this.store.appendHuman(state.run_id,stage.name,'EXECUTION.md',`Attempt ${attempt} — corroborated evidence`,`- **Status:** ${ev.e.status}\n- **Quality:** ${ev.e.quality_command} → ${ev.e.quality_exit_code}\n- **git diff --check:** ${ev.e.git_diff_check_exit_code}\n- **Summary:** ${ev.e.quality_summary||''}`);if(ev.e.status!=='PASS'||Number(ev.e.quality_exit_code)!==0||Number(ev.e.git_diff_check_exit_code)!==0||(ev.e.unresolved||[]).length){feedback=`Deterministic quality evidence is not green. Resolve without reviewer execution.\n${JSON.stringify(ev.e,null,2).slice(0,30000)}`;this.store.saveStage(state.run_id,stage.name,{phase:'implementation',attempt,reviewer_feedback:feedback,evidence_file:undefined,patch_fingerprint:undefined,executor_session_id:session.id});state.current_phase='implementation';this.store.save(state);continue;}this.store.saveStage(state.run_id,stage.name,{phase:'quality',attempt,evidence_file:saved,patch_fingerprint:this.patchFingerprint(),reviewer_feedback:feedback,executor_session_id:session.id});
-        state.current_phase='review';this.store.save(state);this.events.emit('review.started',{stage:stage.name,attempt});const payload={approved_plan:approved,plan_reviewer_carryover:carry,evidence:ev.e,git_status:this.git.statusShort(),diff_stat:this.git.diffStat(),changed_files:this.git.changedFiles(),diff:this.boundedDiff()};let verdict=await reviewer.reviewImplementation(payload);if(verdict.verdict==='NEEDS_CONTEXT'&&verdict.requested_paths?.length){verdict=await reviewer.reviewImplementation({...payload,requested_context_diff:this.boundedDiff(verdict.requested_paths)});}this.events.emit('review.result',{verdict:verdict.verdict,summary:verdict.summary});writeJson(path.join(stageRunDir,`review-attempt-${attempt}.json`),verdict);writeText(path.join(stageRunDir,`review-attempt-${attempt}.md`),`# Final review — attempt ${attempt}\n\n- **Verdict:** ${verdict.verdict}\n- **Summary:** ${verdict.summary}\n\n${(verdict.findings||[]).map((x:any)=>`- **${x.severity||'n/a'} / ${x.area||''}:** ${x.finding||x}\n  - Required fix: ${x.required_fix||''}`).join('\n')}\n`);if(verdict.verdict==='APPROVE'){approvedFinal=verdict;finalEvidence=ev.e;break;}feedback=verdict.rework_instructions||verdict.summary||'Address all reviewer findings.';this.store.appendHuman(state.run_id,stage.name,'EXECUTION.md',`Attempt ${attempt} — reviewer rework`,feedback);this.store.saveStage(state.run_id,stage.name,{phase:'implementation',attempt,reviewer_feedback:feedback,evidence_file:undefined,patch_fingerprint:undefined,executor_session_id:session.id});state.current_phase='implementation';this.store.save(state);
+  createRun(input: {
+    stageSource: string;
+    selectors: string[];
+    feature?: string;
+    branch?: string;
+    base?: string;
+    qualityCmd?: string;
+    executorHarness?: string;
+    reviewerHarness?: string;
+  }) {
+    this.ensureExclude();
+    const source = new StageSource(input.stageSource);
+    try {
+      const baseRef = input.base || 'HEAD';
+      const baseCommit = this.git.run(['rev-parse', baseRef]).stdout.trim();
+      const originalBranch = this.git.currentBranch();
+      const runId = `${utcStamp()}-${Math.random().toString(16).slice(2, 8)}`;
+      const runDir = this.store.runDir(runId);
+      ensureDir(path.join(runDir, 'input', 'stages'));
+      const stages: SelectedStage[] = [];
+      for (const selector of input.selectors) {
+        const dir = source.resolve(selector, input.feature || '');
+        const manifest = source.manifest(dir, selector);
+        const dest = path.join(runDir, 'input', 'stages', manifest.name);
+        copyDir(dir, dest);
+        makeReadOnlyTree(dest);
+        stages.push({ name: manifest.name, selector, status: 'pending', manifest });
       }
-      if(!approvedFinal) throw new Error(`Stage failed to reach approved green implementation after ${CONFIG.MAX_EXECUTION_ATTEMPTS} execution attempts.`);
-      this.branch.assertActive(state);state.current_phase='commit';this.store.save(state);this.events.emit('commit.started',{stage:stage.name});const sha=this.git.commit(stage.name,[`AI-Orchestrator-Run: ${state.run_id}`,`Stage-Spec-SHA256: ${this.specDigest(stage)}`,`Reviewer: ${approvedFinal.summary||'APPROVE'}`]);this.store.appendHuman(state.run_id,stage.name,'FINAL_REVIEW.md','Approved',`**Summary:** ${approvedFinal.summary}\n\n**Commit:** \`${sha}\``);this.store.saveStage(state.run_id,stage.name,{phase:'completed',commit_sha:sha});stage.status='completed';state.current_phase='completed';this.store.save(state);this.events.emit('stage.committed',{stage:stage.name,sha});this.events.emit('stage.completed',{stage:stage.name});
-    } finally {await session.stop();this.activeExecutor=null;}
+      const suffix =
+        stages.length === 1
+          ? stages[0].name.replace(/^stage-/, 's')
+          : `${stages[0].name.match(/^stage-(\d+)/)?.[1] || 'xx'}-to-${stages.at(-1)?.name.match(/^stage-(\d+)/)?.[1] || 'xx'}`;
+      const branch = input.branch || `${CONFIG.BRANCH_PREFIX}/${runId}-${suffix}`;
+      const executorId = input.executorHarness || CONFIG.EXECUTOR_HARNESS,
+        reviewerId = input.reviewerHarness || CONFIG.REVIEWER_HARNESS;
+      const executorInfo = this.registry.executor(executorId, { events: this.events }).info,
+        reviewerInfo = this.registry.reviewer(reviewerId, {
+          events: this.events,
+          runDir,
+          stageName: '_run',
+          stageContext: '',
+          skillsText: '',
+          runLog: path.join(runDir, 'run.log'),
+        }).info;
+      const state: RunState = {
+        version: 1,
+        run_id: runId,
+        created_at: iso(),
+        status: 'created',
+        workspace: ROOT,
+        base_ref: baseRef,
+        base_commit: baseCommit,
+        original_branch: originalBranch,
+        original_head: this.git.head(),
+        branch,
+        branch_created: false,
+        stage_source: path.resolve(input.stageSource),
+        feature: input.feature || null,
+        stages,
+        executor_harness: executorId,
+        reviewer_harness: reviewerId,
+        executor_label: executorInfo.label,
+        reviewer_label: reviewerInfo.label,
+        quality_cmd: input.qualityCmd || CONFIG.QUALITY_CMD,
+      };
+      this.store.save(state);
+      return state;
+    } finally {
+      source.close();
+    }
   }
 
-  async run(state:RunState,startIndex=0){await this.registry.loadConfigured();state.status='running';this.store.save(state);this.events.emit('run.started',{run_id:state.run_id,branch:state.branch,workspace:state.workspace,stageTotal:state.stages.length});for(let i=startIndex;i<state.stages.length;i++){if(state.stages[i].status==='completed')continue;try{await this.executeStage(state,i);}catch(e:any){state=this.store.load(state.run_id);state.status=this.classifyError(e);state.blocked_stage=state.stages[i].name;state.error=e.message;this.store.save(state);this.events.emit('stage.blocked',{stage:state.stages[i].name,status:state.status,reason:e.message});this.events.emit('run.blocked',{status:state.status,reason:e.message,branch:state.branch});throw e;}}state=this.store.load(state.run_id);state.status='completed';state.completed_at=iso();this.store.save(state);this.events.emit('run.completed',{branch:state.branch,workspace:state.workspace});return state;}
-  private classifyError(e:any){const m=String(e?.message||e);if(/timeout|temporar|exited|connection|unavailable/i.test(m))return'retryable_error';if(/credential|authentication|network|external dependency/i.test(m))return'external_dependency';if(/contradict|specification/i.test(m))return'specification_blocked';return'failed';}
-  async cancel(){try{await this.activeExecutor?.cancel?.()}catch{} }
+  prepareFrozenInputs(state: RunState) {
+    const root = STAGE_INPUT_ROOT;
+    removeTree(root);
+    ensureDir(root);
+    for (const s of state.stages) {
+      const src = path.join(this.store.runDir(state.run_id), 'input', 'stages', s.name),
+        dest = path.join(root, s.name);
+      copyDir(src, dest);
+      makeReadOnlyTree(dest);
+    }
+    try {
+      fs.chmodSync(root, 0o555);
+    } catch {}
+  }
+  private specDigest(stage: SelectedStage) {
+    return sha256Text(JSON.stringify(stage.manifest.sha256 || {}));
+  }
+  private patchFingerprint() {
+    return this.git.patchFingerprint();
+  }
+  private boundedDiff(paths?: string[]) {
+    const d = this.git.reviewDiff(paths);
+    return d.length > CONFIG.MAX_DIFF_CHARS
+      ? d.slice(0, CONFIG.MAX_DIFF_CHARS) +
+          `\n...[diff truncated: total ${d.length} chars exceeds limit ${CONFIG.MAX_DIFF_CHARS}. If you need context on specific truncated files, return verdict NEEDS_CONTEXT with requested_paths]`
+      : d;
+  }
+
+  private planPrompt(stage: string) {
+    return `Work in PLAN mode for ${stage}.\n\nRead ALL frozen inputs under .ai-orchestrator/stage-input/${stage}/, relevant .agents/skills/**/SKILL.md and .cursor/skills/**/SKILL.md, .cursor/rules, AGENTS.md, current implementation, and tests. Submit one comprehensive plan through the executor harness plan mechanism. The plan must cover exact files/components, all functional and technical requirements, edge cases, migrations, tests, documentation, and quality gates. Do not implement yet. When reviewer feedback arrives, revise the ENTIRE plan and incorporate ALL findings together rather than addressing one item at a time.`;
+  }
+  private executionPrompt(
+    stage: string,
+    plan: string,
+    carry: string,
+    feedback: string,
+    attempt: number,
+    quality: string,
+  ) {
+    return `You are the implementation executor for ${stage}. Work autonomously on the dedicated AI branch.\n\nNON-NEGOTIABLE:\n- Read and follow relevant .agents/skills/**/SKILL.md and .cursor/skills/**/SKILL.md, .cursor/rules, and AGENTS.md.\n- Frozen requirements in .ai-orchestrator/stage-input/${stage}/ are immutable.\n- Implement ALL requirements in the approved plan and frozen specs.\n- Do not create/switch/merge/rebase/reset branches, commit, push, stash, or rewrite Git history. The orchestrator owns Git lifecycle.\n- Request permissions normally. Permission denials apply only to that operation; choose another safe approach and continue.\n- If you need a product/design decision, ask a concrete multiple-choice question; the reviewer will answer autonomously.\n\nAPPROVED PLAN:\n${plan}\n\nMANDATORY PLAN-REVIEW CARRY-OVER:\n${carry || '_None._'}\n\n${feedback ? `REWORK INSTRUCTIONS FROM FINAL REVIEW / QUALITY:\n${feedback}\n` : ''}IMPLEMENTATION ATTEMPT: ${attempt}\n\nAfter all code edits are complete, run quality checks as STANDALONE separate commands (do NOT combine or chain with && or ;):\n1. First, run focused tests if applicable.\n2. Next, execute the full deterministic quality gate alone:\n   ${quality}\n3. Then, execute the diff hygiene check alone:\n   git diff --check\nFix any failures and rerun the commands standalone until both exit with code 0. No file edits should take place after running these quality checks.\n\nFinally write .ai-orchestrator/stage-runtime/${stage}/evidence.json with:\n{\n  \"stage\": \"${stage}\",\n  \"attempt\": ${attempt},\n  \"status\": \"PASS\" or \"FAIL\",\n  \"quality_command\": ${JSON.stringify(quality)},\n  \"quality_exit_code\": integer,\n  \"git_diff_check_exit_code\": integer,\n  \"focused_tests\": [{\"command\":\"...\",\"exit_code\":0,\"summary\":\"...\"}],\n  \"quality_summary\": \"...\",\n  \"changed_files\": [\"...\"],\n  \"unresolved\": []\n}\nOnly set PASS when the full quality command and git diff --check both completed with exit code 0 and no required item remains unresolved.`;
+  }
+
+  async preflight(stateOrInput: { executor_harness?: string; reviewer_harness?: string }) {
+    await this.registry.loadConfigured();
+    const exec = this.registry.executor(stateOrInput.executor_harness || CONFIG.EXECUTOR_HARNESS, {
+      events: this.events,
+    });
+    const rev = this.registry.reviewer(stateOrInput.reviewer_harness || CONFIG.REVIEWER_HARNESS, {
+      events: this.events,
+      runDir: ROOT,
+      stageName: '_preflight',
+      stageContext: '',
+      skillsText: '',
+      runLog: path.join(ROOT, '.ai-orchestrator', 'preflight.log'),
+    });
+    const [a, b] = await Promise.all([exec.preflight(), rev.preflight()]);
+    if (!a.ok || !b.ok)
+      throw new Error(
+        `Harness preflight failed:\nExecutor: ${a.details.join('; ')}\nReviewer: ${b.details.join('; ')}`,
+      );
+    return { executor: a, reviewer: b };
+  }
+
+  private async questionDecision(
+    reviewer: ReviewerHarness,
+    payload: any,
+    cache: Map<string, any>,
+    stageName: string,
+    state: RunState,
+  ) {
+    const key = sha256Text(
+      JSON.stringify({ title: payload.title || '', questions: payload.questions || [] }),
+    );
+    let v: QuestionVerdict = cache.get(key);
+    if (!v) {
+      v = await reviewer.answerQuestions({ title: payload.title, questions: payload.questions });
+      if (v.verdict === 'ANSWER') cache.set(key, v);
+    }
+    const answers: any[] = [];
+    for (const q of payload.questions || []) {
+      const a = (v.answers || []).find((x) => x.question_id === q.id);
+      let ids = (a?.selected_option_ids || []).filter((id: string) =>
+        (q.options || []).some((o: any) => o.id === id),
+      );
+      if (!ids.length && q.options?.length) ids = [q.options[0].id];
+      answers.push({ questionId: q.id, selectedOptionIds: ids });
+    }
+    this.store.appendHuman(
+      state.run_id,
+      stageName,
+      'DECISIONS.md',
+      'Executor question answered',
+      `**Question:** ${(payload.questions || []).map((q: any) => q.prompt).join(' | ')}\n\n**Reviewer verdict:** ${v.verdict}\n\n**Rationale:** ${v.rationale || 'Autonomous fallback selected the first available option.'}`,
+    );
+    return { answers, rationale: v.rationale || 'Autonomous fallback used.' };
+  }
+
+  private async permissionDecision(
+    engine: PermissionEngine,
+    reviewer: ReviewerHarness,
+    req: PermissionRequest,
+    stageName: string,
+    state: RunState,
+  ) {
+    const cached = engine.cached(req);
+    let d = cached || engine.deterministic(req);
+    if (!d) {
+      const v = await reviewer.decidePermission({
+        request: req.raw,
+        signature: engine.signature(req),
+        permission_mode: CONFIG.PERMISSION_MODE,
+        command: req.command || '',
+        note: 'No permission-call quota exists. Deny only this exact operation if unsafe; the executor must continue with another approach.',
+      });
+      d = engine.fromReviewer(req, v);
+    }
+    engine.remember(req, d);
+    this.store.appendHuman(
+      state.run_id,
+      stageName,
+      'DECISIONS.md',
+      'Permission decision',
+      `- **Decision:** ${d.allow ? 'ALLOW' : 'DENY'}\n- **Source:** ${d.source}\n- **Signature:** \`${d.signature}\`\n- **Reason:** ${d.reason}`,
+    );
+    return { allow: d.allow, reason: d.reason || d.source };
+  }
+
+  async executeStage(state: RunState, index: number) {
+    const stage = state.stages[index];
+    this.branch.ensureCreated(state);
+    this.branch.assertActive(state);
+    this.prepareFrozenInputs(state);
+    state.status = 'running';
+    state.current_stage_index = index;
+    state.current_phase = 'plan';
+    stage.status = 'running';
+    this.store.save(state);
+    this.events.emit('stage.started', {
+      stage: stage.name,
+      index: index + 1,
+      total: state.stages.length,
+    });
+    this.store.appendHuman(
+      state.run_id,
+      stage.name,
+      'STAGE.md',
+      'Stage started',
+      `- **Started:** ${iso()}\n- **Branch:** \`${state.branch}\`\n- **Base commit:** \`${this.git.head()}\``,
+    );
+    const stageRunDir = this.store.stageDir(state.run_id, stage.name);
+    ensureDir(stageRunDir);
+    for (const [file, title] of [
+      ['PLAN_REVIEW_HISTORY.md', 'Plan Review History'],
+      ['DECISIONS.md', 'Decisions'],
+      ['EXECUTION.md', 'Execution'],
+      ['FINAL_REVIEW.md', 'Final Review'],
+    ] as any) {
+      const p = path.join(stageRunDir, file);
+      if (!fs.existsSync(p)) writeText(p, `# ${title}\n\n`);
+    }
+    const runLog = path.join(this.store.runDir(state.run_id), 'run.log');
+    const frozenDir = path.join(STAGE_INPUT_ROOT, stage.name);
+    const stageContext = frozenStageContext(frozenDir);
+    const skillsText = relevantSkills(skillIndex(ROOT), stageContext);
+    const reviewer = this.registry.reviewer(state.reviewer_harness, {
+      events: this.events,
+      runDir: this.store.runDir(state.run_id),
+      stageName: stage.name,
+      stageContext,
+      skillsText,
+      runLog,
+    });
+    const permission = new PermissionEngine(ROOT, CONFIG.PERMISSION_MODE, CONFIG.permissionsFile);
+    const planCoord = new PlanCoordinator({
+      runId: state.run_id,
+      stage,
+      stageContext,
+      reviewer,
+      store: this.store,
+    });
+    const runtime0 = this.store.loadStage(state.run_id, stage.name);
+    const reused = planCoord.reusable();
+    if (reused) {
+      this.events.emit('reviewer.plan', {
+        verdict: 'APPROVE',
+        summary: 'Reusing validated approved plan.',
+      });
+      this.store.appendHuman(
+        state.run_id,
+        stage.name,
+        'STAGE.md',
+        'Approved plan reused',
+        'Plan/spec hashes matched; planning and plan review were skipped.',
+      );
+    }
+    const qcache = new Map<string, any>();
+    const executorHarness = this.registry.executor(state.executor_harness, { events: this.events });
+    const session = await executorHarness.createSession({
+      workspace: ROOT,
+      runLog,
+      eventsFile: path.join(stageRunDir, 'executor-acp.jsonl'),
+      focusFile: path.join(stageRunDir, 'executor-focus.log'),
+      resumeSessionId: runtime0.executor_session_id || runtime0.cursor_session_id,
+      callbacks: {
+        onPlan: (plan, _meta) => planCoord.submit(plan),
+        onQuestion: (p) => this.questionDecision(reviewer, p, qcache, stage.name, state),
+        onPermission: (req, _p) =>
+          this.permissionDecision(permission, reviewer, req, stage.name, state),
+        onSessionId: (id) =>
+          this.store.saveStage(state.run_id, stage.name, { executor_session_id: id }),
+      },
+    });
+    this.activeExecutor = session;
+    try {
+      let approved = reused?.plan || '';
+      if (!approved) {
+        await session.setMode('plan');
+        let turns = 0;
+        while (!approved && turns < CONFIG.MAX_PLAN_REVIEWS + 4) {
+          turns++;
+          const r = await session.prompt(this.planPrompt(stage.name));
+          approved = planCoord.plan;
+          if (!approved && r.text.trim()) {
+            const d = await planCoord.submit(r.text.trim());
+            if (d.accepted) approved = planCoord.plan;
+          }
+        }
+        if (!approved)
+          approved = planCoord.forceAccept(
+            `1. Read all frozen stage specifications and applicable skills.\n2. Implement every functional and technical requirement for ${stage.name}.\n3. Add/update all required tests and documentation.\n4. Run focused tests, ${state.quality_cmd}, and git diff --check; fix failures.`,
+            `Executor did not submit a plan through ACP after the bounded planning interaction. Autonomous fallback accepted a complete requirements-driven plan.`,
+          );
+      }
+      const carry = planCoord.reviewerCarryover;
+      await session.setMode('agent');
+      state.current_phase = 'implementation';
+      this.store.save(state);
+      let feedback = '';
+      let approvedFinal: FinalVerdict | null = null;
+      let _finalEvidence: any = null;
+      let pendingResumedEvidence: any = null;
+      if (
+        (runtime0.phase === 'quality' || runtime0.phase === 'review') &&
+        runtime0.evidence_file &&
+        runtime0.patch_fingerprint === this.patchFingerprint() &&
+        fs.existsSync(runtime0.evidence_file)
+      ) {
+        try {
+          pendingResumedEvidence = {
+            ok: true,
+            e: JSON.parse(fs.readFileSync(runtime0.evidence_file, 'utf8')),
+            resumed: true,
+          };
+          this.events.emit('log', {
+            level: 'info',
+            message: 'Reusing previously corroborated quality evidence for unchanged patch.',
+          });
+        } catch {}
+      }
+      for (let attempt = 1; attempt <= CONFIG.MAX_EXECUTION_ATTEMPTS; attempt++) {
+        this.branch.assertActive(state);
+        this.events.emit('stage.attempt', { stage: stage.name, attempt });
+        let ev: any = null;
+        if (attempt === 1 && pendingResumedEvidence) {
+          ev = pendingResumedEvidence;
+          pendingResumedEvidence = null;
+        }
+        let epochId = '';
+        if (!ev) {
+          const runtimeEvidence = path.join(STAGE_RUNTIME_ROOT, stage.name, 'evidence.json');
+          ensureDir(path.dirname(runtimeEvidence));
+          try {
+            fs.unlinkSync(runtimeEvidence);
+          } catch {}
+          epochId = `${state.run_id}-${stage.name}-${attempt}-${Date.now()}`;
+          session.setQualityEpoch?.(epochId);
+          await session.prompt(
+            this.executionPrompt(stage.name, approved, carry, feedback, attempt, state.quality_cmd),
+          );
+          ev = validateEvidence(runtimeEvidence, stage.name, attempt);
+        }
+        if (!ev?.ok) {
+          feedback = `Execution evidence invalid: ${ev?.reason || 'missing'}. Re-run required checks and regenerate evidence.json.`;
+          this.events.emit('quality.result', { status: 'FAIL', summary: feedback });
+          this.store.appendHuman(
+            state.run_id,
+            stage.name,
+            'EXECUTION.md',
+            `Attempt ${attempt} — invalid evidence`,
+            feedback,
+          );
+          this.store.saveStage(state.run_id, stage.name, {
+            phase: 'implementation',
+            attempt,
+            reviewer_feedback: feedback,
+            evidence_file: undefined,
+            patch_fingerprint: undefined,
+            executor_session_id: session.id,
+          });
+          state.current_phase = 'implementation';
+          this.store.save(state);
+          continue;
+        }
+        const diffCheck = this.git.diffCheck();
+        const observed = verifyEvidenceAgainstObserved(ev.e, session.observedCommands(), {
+          stage: stage.name,
+          attempt,
+          quality_epoch_id: epochId || undefined,
+          expected_patch_fingerprint: this.patchFingerprint(),
+          last_mutation_sequence: session.lastMutationSeq?.(),
+          orchestrator_diff_check_ok: diffCheck.ok,
+        });
+        if (!ev.resumed && !observed.ok) {
+          feedback = `Execution evidence could not be corroborated against executor ACP results:\n${observed.issues.map((x: string) => `- ${x}`).join('\n')}\nRerun the exact quality commands and regenerate evidence.json.`;
+          this.events.emit('quality.result', { status: 'FAIL', summary: feedback });
+          this.store.appendHuman(
+            state.run_id,
+            stage.name,
+            'EXECUTION.md',
+            `Attempt ${attempt} — evidence mismatch`,
+            feedback,
+          );
+          this.store.saveStage(state.run_id, stage.name, {
+            phase: 'implementation',
+            attempt,
+            reviewer_feedback: feedback,
+            evidence_file: undefined,
+            patch_fingerprint: undefined,
+            executor_session_id: session.id,
+          });
+          state.current_phase = 'implementation';
+          this.store.save(state);
+          continue;
+        }
+        ev.e.observed_quality = observed;
+        ev.e.patch_fingerprint = this.patchFingerprint();
+        const saved = path.join(stageRunDir, `evidence-attempt-${attempt}.json`);
+        writeJson(saved, ev.e);
+        writeText(
+          path.join(stageRunDir, `evidence-attempt-${attempt}.md`),
+          `# Execution evidence — attempt ${attempt}\n\n\`\`\`json\n${JSON.stringify(ev.e, null, 2)}\n\`\`\`\n`,
+        );
+        this.events.emit('quality.result', { ...ev.e, summary: ev.e.quality_summary });
+        this.store.appendHuman(
+          state.run_id,
+          stage.name,
+          'EXECUTION.md',
+          `Attempt ${attempt} — corroborated evidence`,
+          `- **Status:** ${ev.e.status}\n- **Quality:** ${ev.e.quality_command} → ${ev.e.quality_exit_code}\n- **git diff --check:** ${ev.e.git_diff_check_exit_code}\n- **Summary:** ${ev.e.quality_summary || ''}`,
+        );
+        if (
+          ev.e.status !== 'PASS' ||
+          Number(ev.e.quality_exit_code) !== 0 ||
+          Number(ev.e.git_diff_check_exit_code) !== 0 ||
+          (ev.e.unresolved || []).length
+        ) {
+          feedback = `Deterministic quality evidence is not green. Resolve without reviewer execution.\n${JSON.stringify(ev.e, null, 2).slice(0, 30000)}`;
+          this.store.saveStage(state.run_id, stage.name, {
+            phase: 'implementation',
+            attempt,
+            reviewer_feedback: feedback,
+            evidence_file: undefined,
+            patch_fingerprint: undefined,
+            executor_session_id: session.id,
+          });
+          state.current_phase = 'implementation';
+          this.store.save(state);
+          continue;
+        }
+        this.store.saveStage(state.run_id, stage.name, {
+          phase: 'quality',
+          attempt,
+          evidence_file: saved,
+          patch_fingerprint: this.patchFingerprint(),
+          reviewer_feedback: feedback,
+          executor_session_id: session.id,
+        });
+        state.current_phase = 'review';
+        this.store.save(state);
+        this.events.emit('review.started', { stage: stage.name, attempt });
+        const payload = {
+          approved_plan: approved,
+          plan_reviewer_carryover: carry,
+          evidence: ev.e,
+          git_status: this.git.statusShort(),
+          diff_stat: this.git.diffStat(),
+          changed_files: this.git.changedFiles(),
+          diff: this.boundedDiff(),
+        };
+        let verdict = await reviewer.reviewImplementation(payload);
+        if (verdict.verdict === 'NEEDS_CONTEXT' && verdict.requested_paths?.length) {
+          verdict = await reviewer.reviewImplementation({
+            ...payload,
+            requested_context_diff: this.boundedDiff(verdict.requested_paths),
+          });
+        }
+        this.events.emit('review.result', { verdict: verdict.verdict, summary: verdict.summary });
+        writeJson(path.join(stageRunDir, `review-attempt-${attempt}.json`), verdict);
+        writeText(
+          path.join(stageRunDir, `review-attempt-${attempt}.md`),
+          `# Final review — attempt ${attempt}\n\n- **Verdict:** ${verdict.verdict}\n- **Summary:** ${verdict.summary}\n\n${(verdict.findings || []).map((x: any) => `- **${x.severity || 'n/a'} / ${x.area || ''}:** ${x.finding || x}\n  - Required fix: ${x.required_fix || ''}`).join('\n')}\n`,
+        );
+        if (verdict.verdict === 'APPROVE') {
+          approvedFinal = verdict;
+          _finalEvidence = ev.e;
+          break;
+        }
+        feedback =
+          verdict.rework_instructions || verdict.summary || 'Address all reviewer findings.';
+        this.store.appendHuman(
+          state.run_id,
+          stage.name,
+          'EXECUTION.md',
+          `Attempt ${attempt} — reviewer rework`,
+          feedback,
+        );
+        this.store.saveStage(state.run_id, stage.name, {
+          phase: 'implementation',
+          attempt,
+          reviewer_feedback: feedback,
+          evidence_file: undefined,
+          patch_fingerprint: undefined,
+          executor_session_id: session.id,
+        });
+        state.current_phase = 'implementation';
+        this.store.save(state);
+      }
+      if (!approvedFinal)
+        throw new Error(
+          `Stage failed to reach approved green implementation after ${CONFIG.MAX_EXECUTION_ATTEMPTS} execution attempts.`,
+        );
+      this.branch.assertActive(state);
+      state.current_phase = 'commit';
+      this.store.save(state);
+      this.events.emit('commit.started', { stage: stage.name });
+      const sha = this.git.commit(stage.name, [
+        `AI-Orchestrator-Run: ${state.run_id}`,
+        `Stage-Spec-SHA256: ${this.specDigest(stage)}`,
+        `Reviewer: ${approvedFinal.summary || 'APPROVE'}`,
+      ]);
+      this.store.appendHuman(
+        state.run_id,
+        stage.name,
+        'FINAL_REVIEW.md',
+        'Approved',
+        `**Summary:** ${approvedFinal.summary}\n\n**Commit:** \`${sha}\``,
+      );
+      this.store.saveStage(state.run_id, stage.name, { phase: 'completed', commit_sha: sha });
+      stage.status = 'completed';
+      state.current_phase = 'completed';
+      this.store.save(state);
+      this.events.emit('stage.committed', { stage: stage.name, sha });
+      this.events.emit('stage.completed', { stage: stage.name });
+    } finally {
+      await session.stop();
+      this.activeExecutor = null;
+    }
+  }
+
+  async run(state: RunState, startIndex = 0) {
+    await this.registry.loadConfigured();
+    state.status = 'running';
+    this.store.save(state);
+    this.events.emit('run.started', {
+      run_id: state.run_id,
+      branch: state.branch,
+      workspace: state.workspace,
+      stageTotal: state.stages.length,
+    });
+    for (let i = startIndex; i < state.stages.length; i++) {
+      if (state.stages[i].status === 'completed') continue;
+      try {
+        await this.executeStage(state, i);
+      } catch (e: any) {
+        state = this.store.load(state.run_id);
+        state.status = this.classifyError(e);
+        state.blocked_stage = state.stages[i].name;
+        state.error = e.message;
+        this.store.save(state);
+        this.events.emit('stage.blocked', {
+          stage: state.stages[i].name,
+          status: state.status,
+          reason: e.message,
+        });
+        this.events.emit('run.blocked', {
+          status: state.status,
+          reason: e.message,
+          branch: state.branch,
+        });
+        throw e;
+      }
+    }
+    state = this.store.load(state.run_id);
+    state.status = 'completed';
+    state.completed_at = iso();
+    this.store.save(state);
+    this.events.emit('run.completed', { branch: state.branch, workspace: state.workspace });
+    return state;
+  }
+  private classifyError(e: any) {
+    const m = String(e?.message || e);
+    if (/timeout|temporar|exited|connection|unavailable/i.test(m)) return 'retryable_error';
+    if (/credential|authentication|network|external dependency/i.test(m))
+      return 'external_dependency';
+    if (/contradict|specification/i.test(m)) return 'specification_blocked';
+    return 'failed';
+  }
+  async cancel() {
+    try {
+      await this.activeExecutor?.cancel?.();
+    } catch {}
+  }
 }

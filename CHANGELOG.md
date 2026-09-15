@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+### Added
+
+- Added Oxfmt (v0.68.0) for fast, deterministic code formatting across TypeScript, TSX, JSON, JSONC, and Markdown.
+- Added Oxlint (v1.83.0) for modern TypeScript-aware linting with active AST-based Promise, Node correctness, and React rules.
+- Added `.nvmrc` specifying Node `24.18.0`.
+- Added executable TSX smoke fixture (`src/ui/tsx-smoke.test.tsx`) asserting React 19 JSX compilation and `node:test` execution.
+- Added test suite for package invariants (`src/tooling/package-invariants.test.ts`).
+- Added native test coverage reporting via `npm run test:coverage`.
+- Added authoritative local lockfile validation and TS7 consumer declaration fixture verification in `scripts/package-check.mjs`.
+
+### Changed
+
+- Modernized `tsconfig.json` for Node 24 with `target: "ES2024"`, `module: "NodeNext"`, `verbatimModuleSyntax: true`, `types: ["node"]`, and `jsx: "react-jsx"`.
+- Consolidated build ownership into `npm run build` with clean pre-compilation step (`npm run clean`).
+- Implemented nested `dist/.npmignore` postbuild generator ensuring zero test files and zero development artifacts are packaged into the npm tarball.
+- Expanded CI platform matrix across Ubuntu, Windows, and macOS on Node 24.18.0 with strict non-repairing `npm ci`.
+
 ## [1.0.3] - 2026-09-15
 
 ## [1.0.2] - 2026-09-15

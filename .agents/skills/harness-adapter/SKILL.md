@@ -2,6 +2,7 @@
 name: harness-adapter
 description: Use when adding or modifying executor/reviewer harness adapters, model settings, ACP/CLI protocol handling, working-directory behavior, or harness registration.
 ---
+
 # Harness Adapter Development
 
 - Implement the interfaces in `src/harness/types.ts`.

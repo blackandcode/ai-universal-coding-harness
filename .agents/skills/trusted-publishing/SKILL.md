@@ -2,6 +2,7 @@
 name: trusted-publishing
 description: Use when changing npm/GitHub release automation. Enforces npm Trusted Publishing with GitHub OIDC, provenance-friendly public releases, and no long-lived publish token.
 ---
+
 # npm Trusted Publishing
 
 - Publish from `.github/workflows/publish-npm.yml` on GitHub-hosted runners.

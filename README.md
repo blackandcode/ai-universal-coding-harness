@@ -12,8 +12,6 @@ AI Universal Coding Harness connects an **executor** that plans/codes/tests with
 Stage specs → plan → implement → quality gate → review → one Git commit per stage
 ```
 
-
-
 ## Install
 
 ```bash
@@ -63,8 +61,6 @@ Clear local run history while keeping project configuration:
 ai-harness runs reset --force
 ```
 
-
-
 ## Stage contract
 
 ```text
@@ -91,6 +87,21 @@ The CLI validates the selected stages **before** creating the AI branch or start
 
 Global defaults, tracked project overrides, and local overrides are supported.
 
+## Development and Quality
+
+The repository requires Node.js 24.18+ (specified in `.nvmrc`) and TypeScript 7. Formatting is managed by Oxfmt, and linting is managed by Oxlint.
+
+```bash
+npm run format:check   # Oxfmt formatting check
+npm run lint           # Oxlint code analysis
+npm run typecheck      # TypeScript compilation check
+npm test               # Run all unit tests
+npm run test:coverage  # Run tests with experimental coverage
+npm run test:cli       # CLI smoke verification
+npm run verify         # Comprehensive verification gate
+npm run check          # Alias for verify
+```
+
 ## Why
 
 - Harness-neutral TypeScript architecture.
@@ -101,8 +112,6 @@ Global defaults, tracked project overrides, and local overrides are supported.
 - One stage-named Git commit per approved stage.
 - No automatic push or merge.
 - Cross-platform: Linux, macOS, Windows, and WSL.
-
-
 
 ## Documentation
 
@@ -118,8 +127,6 @@ Start with [docs/README.md](docs/README.md).
 - [Permissions](docs/permissions.md)
 - [State and resume](docs/state-and-resume.md)
 - [Publishing to npm with OIDC](docs/publishing.md)
-
-
 
 ## Release
 

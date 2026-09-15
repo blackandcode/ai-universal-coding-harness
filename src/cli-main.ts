@@ -1,59 +1,409 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {CONFIG,PROJECT_ROOT,configSummary,globalConfigPath,projectLocalConfigPath,projectTrackedConfigPath,writeConfig} from './core/config.js';
-import {ROOT,STATE_ROOT} from './core/paths.js';
-import {StageSource} from './stages/StageSource.js';
-import {Orchestrator} from './orchestrator/Orchestrator.js';
-import {RunStateStore} from './state/RunStateStore.js';
-import {RunLock} from './state/RunLock.js';
-import {EventBus} from './ui/EventBus.js';
-import {ProjectWorkspace} from './project/ProjectWorkspace.js';
-import {VERSION,PRODUCT_NAME} from './version.js';
+import {
+  CONFIG,
+  PROJECT_ROOT,
+  configSummary,
+  globalConfigPath,
+  projectLocalConfigPath,
+  projectTrackedConfigPath,
+  writeConfig,
+} from './core/config.js';
+import { ROOT, STATE_ROOT } from './core/paths.js';
+import { StageSource } from './stages/StageSource.js';
+import { Orchestrator } from './orchestrator/Orchestrator.js';
+import { RunStateStore } from './state/RunStateStore.js';
+import { RunLock } from './state/RunLock.js';
+import { EventBus } from './ui/EventBus.js';
+import { ProjectWorkspace } from './project/ProjectWorkspace.js';
+import { VERSION, PRODUCT_NAME } from './version.js';
 
-interface Args{cmd:string;sub?:string;stageSource?:string;stages:string[];feature?:string;branch?:string;base?:string;runId?:string;qualityCmd?:string;ui?:string;executorHarness?:string;reviewerHarness?:string;project?:string;global?:boolean;local?:boolean;force?:boolean;apply?:boolean;dryRun?:boolean;}
-function args(argv:string[]):Args{const first=argv[0]||'help';const initial=first==='--help'||first==='-h'?'help':first==='--version'||first==='-v'?'version':first;const o:Args={cmd:initial,sub:argv[1]&&!argv[1].startsWith('-')?argv[1]:undefined,stages:[]};let start=o.sub?2:1;for(let i=start;i<argv.length;i++){const a=argv[i];const next=()=>{if(i+1>=argv.length)throw new Error(`Missing value for ${a}`);return argv[++i]};if(a==='--stage-source')o.stageSource=next();else if(a==='--stage')o.stages.push(next());else if(a==='--feature')o.feature=next();else if(a==='--branch')o.branch=next();else if(a==='--base')o.base=next();else if(a==='--run')o.runId=next();else if(a==='--quality-cmd')o.qualityCmd=next();else if(a==='--ui')o.ui=next();else if(a==='--executor-harness')o.executorHarness=next();else if(a==='--reviewer-harness')o.reviewerHarness=next();else if(a==='--project'||a==='--cwd')o.project=next();else if(a==='--global')o.global=true;else if(a==='--local')o.local=true;else if(a==='--force')o.force=true;else if(a==='--apply')o.apply=true;else if(a==='--dry-run')o.dryRun=true;else if(a==='--help'||a==='-h')o.cmd='help';else if(a==='--version'||a==='-v')o.cmd='version';else throw new Error(`Unknown argument: ${a}`);}return o;}
-function help(){console.log(`${PRODUCT_NAME} v${VERSION}\n\nUsage:\n  ai-harness <command> [options]\n\nStart a project:\n  ai-harness init\n  ai-harness validate --stage-source <dir|zip> --stage 06\n  ai-harness preflight --stage-source <dir|zip> --stage 06\n  ai-harness run --stage-source <dir|zip> --stage 06 [--stage 07 ...]\n\nRun lifecycle:\n  ai-harness resume [--run <run-id>]\n  ai-harness recover [--run <run-id>] [--stage <stage>] [--dry-run] [--apply]\n  ai-harness status [--run <run-id>]\n  ai-harness tail [--run <run-id>]\n  ai-harness runs list\n  ai-harness runs delete --run <run-id> --force\n  ai-harness runs reset --force\n\nStage discovery:\n  ai-harness list-stages --stage-source <dir|zip> [--feature token]\n  ai-harness inspect --stage-source <dir|zip> --stage 06\n  ai-harness validate --stage-source <dir|zip> [--stage 06 ...]\n\nConfiguration:\n  ai-harness config paths\n  ai-harness config show\n  ai-harness config init --global\n  ai-harness config init --project\n  ai-harness config init --local\n\nProject targeting:\n  --project <path>   Target another Git repository.\n\nStage contract:\n  stage-NN-kebab-name/{functional-spec.md,technical-spec.md,prompt.md}\n\nOne run = one dedicated AI branch. One approved stage = one commit. No push or merge.`)}
-function handleConfig(a:Args){const sub=a.sub||'show';if(sub==='paths'){console.log(JSON.stringify({global:globalConfigPath(),project:projectTrackedConfigPath(),projectLocal:projectLocalConfigPath(),projectRoot:PROJECT_ROOT},null,2));return true;}if(sub==='show'){console.log(JSON.stringify(configSummary(),null,2));return true;}if(sub==='init'){const target=a.global?globalConfigPath():a.local?projectLocalConfigPath():projectTrackedConfigPath();console.log(writeConfig(target,Boolean(a.force)));return true;}throw new Error(`Unknown config command '${sub}'. Use paths, show, or init.`);}
-async function makeUi(runId:string,state:any,mode:string){const file=path.join(STATE_ROOT,'runs',runId,'ui-events.jsonl');const effective=mode||(!process.stdout.isTTY?'line':'compact');const events=new EventBus(file,effective==='line',CONFIG.RUN_LOG_MAX_BYTES,CONFIG.UI_EVENT_COALESCE_MS);if(effective==='raw')events.emitter.on('event',(e:any)=>console.log(JSON.stringify(e)));let ink:any=null;if(process.stdout.isTTY&&!['line','raw'].includes(effective)){const {startInkUi}=await import('./ui/InkUi.js');ink=await startInkUi({emitter:events.emitter,eventFile:file,meta:{runId,branch:state.branch,stageTotal:state.stages?.length||0,status:state.status,dashboardMaxRows:CONFIG.UI_DASHBOARD_MAX_ROWS,executorLabel:state.executor_label||state.executor_harness,reviewerLabel:state.reviewer_label||state.reviewer_harness}});}return{events,close:()=>{events.close();ink?.close?.();}};}
-function printValidation(src:StageSource,dirs:string[]){let ok=true;for(const dir of dirs){const r=src.validateDir(dir);console.log(`${r.valid?'✓':'✗'} ${r.stage}`);for(const i of r.issues)console.log(`  ${i.level==='error'?'ERROR':'WARN'}${i.file?` ${i.file}`:''}: ${i.message}`);if(!r.valid)ok=false;}if(!dirs.length){console.log('No stage folders found.');ok=false;}return ok;}
-
-async function main(){const a=args(process.argv.slice(2));const workspace=new ProjectWorkspace();if(a.cmd==='help'){help();return;}if(a.cmd==='version'){console.log(VERSION);return;}if(a.cmd==='init'){const result=workspace.init(Boolean(a.force));console.log(`${PRODUCT_NAME} initialized in ${ROOT}`);console.log(JSON.stringify(result,null,2));return;}if(a.cmd==='config'){handleConfig(a);return;}
-  if(a.cmd==='runs'||a.cmd==='reset'){workspace.requireInitialized();const sub=a.cmd==='reset'?'reset':a.sub||'list';if(sub==='list'){const runs=workspace.listRuns();if(!runs.length){console.log('No runs found.');return;}for(const r of runs)console.log(`${r.id}\t${r.status||'unknown'}\t${r.branch||''}\t${r.updated_at||''}`);return;}if(sub==='reset'){console.log(JSON.stringify(workspace.resetRuns(Boolean(a.force)),null,2));return;}if(sub==='delete'){console.log(`Deleted run ${workspace.deleteRun(a.runId||'',Boolean(a.force))}`);return;}throw new Error(`Unknown runs command '${sub}'. Use list, delete, or reset.`);}
-
-  if(['list-stages','inspect','validate','preflight','doctor'].includes(a.cmd)){
-    if((!['preflight','doctor'].includes(a.cmd))&&!a.stageSource)throw new Error('--stage-source is required.');
-    if(['preflight','doctor'].includes(a.cmd))workspace.requireInitialized();
-    let src:StageSource|null=null;try{if(a.stageSource)src=new StageSource(a.stageSource);
-      if(a.cmd==='list-stages'){for(const d of src!.list(a.feature||''))console.log(path.relative(src!.root,d));return;}
-      if(a.cmd==='validate'){const dirs=a.stages.length?a.stages.map(s=>src!.find(s,a.feature||'')):src!.list(a.feature||'');if(!printValidation(src!,dirs))process.exitCode=2;return;}
-      if(a.cmd==='inspect'){if(!a.stages.length)throw new Error('At least one --stage is required.');for(const selector of a.stages){const d=src!.resolve(selector,a.feature||'');const m=src!.manifest(d,selector);console.log(`Selected: ${m.name}`);console.log(`Source:   ${d}`);for(const[k,v]of Object.entries(m.sha256))console.log(`  ${k}: ${v}`);}return;}
-      if(a.stageSource&&a.stages.length)for(const selector of a.stages)src!.resolve(selector,a.feature||'');
-      const dummyEvents=new EventBus(path.join(STATE_ROOT,'preflight-events.jsonl'),true);const orch=new Orchestrator(dummyEvents);const result=await orch.preflight({executor_harness:a.executorHarness||CONFIG.EXECUTOR_HARNESS,reviewer_harness:a.reviewerHarness||CONFIG.REVIEWER_HARNESS});console.log('Preflight OK');console.log(`Project:  ${ROOT}`);console.log(`Executor: ${result.executor.details.join(' | ')}`);console.log(`Reviewer: ${result.reviewer.details.join(' | ')}`);dummyEvents.close();return;
-    }finally{src?.close();}}
-
-  workspace.requireInitialized();const store=new RunStateStore();
-  if(a.cmd==='status'){const st=a.runId?store.load(a.runId):store.loadLatest();console.log(JSON.stringify(st,null,2));return;}
-  if(a.cmd==='tail'){const st=a.runId?store.load(a.runId):store.loadLatest();const file=path.join(store.runDir(st.run_id),'ui-events.jsonl');if(process.stdout.isTTY){const {followInkUi}=await import('./ui/InkUi.js');await followInkUi({eventFile:file,meta:{runId:st.run_id,branch:st.branch,stageTotal:st.stages.length,status:st.status,dashboardMaxRows:CONFIG.UI_DASHBOARD_MAX_ROWS,executorLabel:st.executor_label||st.executor_harness,reviewerLabel:st.reviewer_label||st.reviewer_harness}});}else if(fs.existsSync(file))process.stdout.write(fs.readFileSync(file,'utf8'));return;}
-  if(a.cmd==='recover'){
-    const {RecoveryManager}=await import('./orchestrator/RecoveryManager.js');
-    const {GitRepository}=await import('./git/GitRepository.js');
-    const rm=new RecoveryManager(ROOT,store,new GitRepository(ROOT));
-    const result=await rm.recover({
-      runId:a.runId,
-      stageName:a.stages[0],
-      apply:Boolean(a.apply),
-      force:Boolean(a.force)
+interface Args {
+  cmd: string;
+  sub?: string;
+  stageSource?: string;
+  stages: string[];
+  feature?: string;
+  branch?: string;
+  base?: string;
+  runId?: string;
+  qualityCmd?: string;
+  ui?: string;
+  executorHarness?: string;
+  reviewerHarness?: string;
+  project?: string;
+  global?: boolean;
+  local?: boolean;
+  force?: boolean;
+  apply?: boolean;
+  dryRun?: boolean;
+}
+function args(argv: string[]): Args {
+  const first = argv[0] || 'help';
+  const initial =
+    first === '--help' || first === '-h'
+      ? 'help'
+      : first === '--version' || first === '-v'
+        ? 'version'
+        : first;
+  const o: Args = {
+    cmd: initial,
+    sub: argv[1] && !argv[1].startsWith('-') ? argv[1] : undefined,
+    stages: [],
+  };
+  let start = o.sub ? 2 : 1;
+  for (let i = start; i < argv.length; i++) {
+    const a = argv[i];
+    const next = () => {
+      if (i + 1 >= argv.length) throw new Error(`Missing value for ${a}`);
+      return argv[++i];
+    };
+    if (a === '--stage-source') o.stageSource = next();
+    else if (a === '--stage') o.stages.push(next());
+    else if (a === '--feature') o.feature = next();
+    else if (a === '--branch') o.branch = next();
+    else if (a === '--base') o.base = next();
+    else if (a === '--run') o.runId = next();
+    else if (a === '--quality-cmd') o.qualityCmd = next();
+    else if (a === '--ui') o.ui = next();
+    else if (a === '--executor-harness') o.executorHarness = next();
+    else if (a === '--reviewer-harness') o.reviewerHarness = next();
+    else if (a === '--project' || a === '--cwd') o.project = next();
+    else if (a === '--global') o.global = true;
+    else if (a === '--local') o.local = true;
+    else if (a === '--force') o.force = true;
+    else if (a === '--apply') o.apply = true;
+    else if (a === '--dry-run') o.dryRun = true;
+    else if (a === '--help' || a === '-h') o.cmd = 'help';
+    else if (a === '--version' || a === '-v') o.cmd = 'version';
+    else throw new Error(`Unknown argument: ${a}`);
+  }
+  return o;
+}
+function help() {
+  console.log(
+    `${PRODUCT_NAME} v${VERSION}\n\nUsage:\n  ai-harness <command> [options]\n\nStart a project:\n  ai-harness init\n  ai-harness validate --stage-source <dir|zip> --stage 06\n  ai-harness preflight --stage-source <dir|zip> --stage 06\n  ai-harness run --stage-source <dir|zip> --stage 06 [--stage 07 ...]\n\nRun lifecycle:\n  ai-harness resume [--run <run-id>]\n  ai-harness recover [--run <run-id>] [--stage <stage>] [--dry-run] [--apply]\n  ai-harness status [--run <run-id>]\n  ai-harness tail [--run <run-id>]\n  ai-harness runs list\n  ai-harness runs delete --run <run-id> --force\n  ai-harness runs reset --force\n\nStage discovery:\n  ai-harness list-stages --stage-source <dir|zip> [--feature token]\n  ai-harness inspect --stage-source <dir|zip> --stage 06\n  ai-harness validate --stage-source <dir|zip> [--stage 06 ...]\n\nConfiguration:\n  ai-harness config paths\n  ai-harness config show\n  ai-harness config init --global\n  ai-harness config init --project\n  ai-harness config init --local\n\nProject targeting:\n  --project <path>   Target another Git repository.\n\nStage contract:\n  stage-NN-kebab-name/{functional-spec.md,technical-spec.md,prompt.md}\n\nOne run = one dedicated AI branch. One approved stage = one commit. No push or merge.`,
+  );
+}
+function handleConfig(a: Args) {
+  const sub = a.sub || 'show';
+  if (sub === 'paths') {
+    console.log(
+      JSON.stringify(
+        {
+          global: globalConfigPath(),
+          project: projectTrackedConfigPath(),
+          projectLocal: projectLocalConfigPath(),
+          projectRoot: PROJECT_ROOT,
+        },
+        null,
+        2,
+      ),
+    );
+    return true;
+  }
+  if (sub === 'show') {
+    console.log(JSON.stringify(configSummary(), null, 2));
+    return true;
+  }
+  if (sub === 'init') {
+    const target = a.global
+      ? globalConfigPath()
+      : a.local
+        ? projectLocalConfigPath()
+        : projectTrackedConfigPath();
+    console.log(writeConfig(target, Boolean(a.force)));
+    return true;
+  }
+  throw new Error(`Unknown config command '${sub}'. Use paths, show, or init.`);
+}
+async function makeUi(runId: string, state: any, mode: string) {
+  const file = path.join(STATE_ROOT, 'runs', runId, 'ui-events.jsonl');
+  const effective = mode || (!process.stdout.isTTY ? 'line' : 'compact');
+  const events = new EventBus(
+    file,
+    effective === 'line',
+    CONFIG.RUN_LOG_MAX_BYTES,
+    CONFIG.UI_EVENT_COALESCE_MS,
+  );
+  if (effective === 'raw') events.emitter.on('event', (e: any) => console.log(JSON.stringify(e)));
+  let ink: any = null;
+  if (process.stdout.isTTY && !['line', 'raw'].includes(effective)) {
+    const { startInkUi } = await import('./ui/InkUi.js');
+    ink = await startInkUi({
+      emitter: events.emitter,
+      eventFile: file,
+      meta: {
+        runId,
+        branch: state.branch,
+        stageTotal: state.stages?.length || 0,
+        status: state.status,
+        dashboardMaxRows: CONFIG.UI_DASHBOARD_MAX_ROWS,
+        executorLabel: state.executor_label || state.executor_harness,
+        reviewerLabel: state.reviewer_label || state.reviewer_harness,
+      },
     });
-    for(const line of result.details) console.log(line);
-    if(!result.ok){
-      if(result.error) console.error(`ERROR: ${result.error}`);
-      process.exitCode=1;
+  }
+  return {
+    events,
+    close: () => {
+      events.close();
+      ink?.close?.();
+    },
+  };
+}
+function printValidation(src: StageSource, dirs: string[]) {
+  let ok = true;
+  for (const dir of dirs) {
+    const r = src.validateDir(dir);
+    console.log(`${r.valid ? '✓' : '✗'} ${r.stage}`);
+    for (const i of r.issues)
+      console.log(
+        `  ${i.level === 'error' ? 'ERROR' : 'WARN'}${i.file ? ` ${i.file}` : ''}: ${i.message}`,
+      );
+    if (!r.valid) ok = false;
+  }
+  if (!dirs.length) {
+    console.log('No stage folders found.');
+    ok = false;
+  }
+  return ok;
+}
+
+async function main() {
+  const a = args(process.argv.slice(2));
+  const workspace = new ProjectWorkspace();
+  if (a.cmd === 'help') {
+    help();
+    return;
+  }
+  if (a.cmd === 'version') {
+    console.log(VERSION);
+    return;
+  }
+  if (a.cmd === 'init') {
+    const result = workspace.init(Boolean(a.force));
+    console.log(`${PRODUCT_NAME} initialized in ${ROOT}`);
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  if (a.cmd === 'config') {
+    handleConfig(a);
+    return;
+  }
+  if (a.cmd === 'runs' || a.cmd === 'reset') {
+    workspace.requireInitialized();
+    const sub = a.cmd === 'reset' ? 'reset' : a.sub || 'list';
+    if (sub === 'list') {
+      const runs = workspace.listRuns();
+      if (!runs.length) {
+        console.log('No runs found.');
+        return;
+      }
+      for (const r of runs)
+        console.log(`${r.id}\t${r.status || 'unknown'}\t${r.branch || ''}\t${r.updated_at || ''}`);
+      return;
+    }
+    if (sub === 'reset') {
+      console.log(JSON.stringify(workspace.resetRuns(Boolean(a.force)), null, 2));
+      return;
+    }
+    if (sub === 'delete') {
+      console.log(`Deleted run ${workspace.deleteRun(a.runId || '', Boolean(a.force))}`);
+      return;
+    }
+    throw new Error(`Unknown runs command '${sub}'. Use list, delete, or reset.`);
+  }
+
+  if (['list-stages', 'inspect', 'validate', 'preflight', 'doctor'].includes(a.cmd)) {
+    if (!['preflight', 'doctor'].includes(a.cmd) && !a.stageSource)
+      throw new Error('--stage-source is required.');
+    if (['preflight', 'doctor'].includes(a.cmd)) workspace.requireInitialized();
+    let src: StageSource | null = null;
+    try {
+      if (a.stageSource) src = new StageSource(a.stageSource);
+      if (a.cmd === 'list-stages') {
+        for (const d of src!.list(a.feature || '')) console.log(path.relative(src!.root, d));
+        return;
+      }
+      if (a.cmd === 'validate') {
+        const dirs = a.stages.length
+          ? a.stages.map((s) => src!.find(s, a.feature || ''))
+          : src!.list(a.feature || '');
+        if (!printValidation(src!, dirs)) process.exitCode = 2;
+        return;
+      }
+      if (a.cmd === 'inspect') {
+        if (!a.stages.length) throw new Error('At least one --stage is required.');
+        for (const selector of a.stages) {
+          const d = src!.resolve(selector, a.feature || '');
+          const m = src!.manifest(d, selector);
+          console.log(`Selected: ${m.name}`);
+          console.log(`Source:   ${d}`);
+          for (const [k, v] of Object.entries(m.sha256)) console.log(`  ${k}: ${v}`);
+        }
+        return;
+      }
+      if (a.stageSource && a.stages.length)
+        for (const selector of a.stages) src!.resolve(selector, a.feature || '');
+      const dummyEvents = new EventBus(path.join(STATE_ROOT, 'preflight-events.jsonl'), true);
+      const orch = new Orchestrator(dummyEvents);
+      const result = await orch.preflight({
+        executor_harness: a.executorHarness || CONFIG.EXECUTOR_HARNESS,
+        reviewer_harness: a.reviewerHarness || CONFIG.REVIEWER_HARNESS,
+      });
+      console.log('Preflight OK');
+      console.log(`Project:  ${ROOT}`);
+      console.log(`Executor: ${result.executor.details.join(' | ')}`);
+      console.log(`Reviewer: ${result.reviewer.details.join(' | ')}`);
+      dummyEvents.close();
+      return;
+    } finally {
+      src?.close();
+    }
+  }
+
+  workspace.requireInitialized();
+  const store = new RunStateStore();
+  if (a.cmd === 'status') {
+    const st = a.runId ? store.load(a.runId) : store.loadLatest();
+    console.log(JSON.stringify(st, null, 2));
+    return;
+  }
+  if (a.cmd === 'tail') {
+    const st = a.runId ? store.load(a.runId) : store.loadLatest();
+    const file = path.join(store.runDir(st.run_id), 'ui-events.jsonl');
+    if (process.stdout.isTTY) {
+      const { followInkUi } = await import('./ui/InkUi.js');
+      await followInkUi({
+        eventFile: file,
+        meta: {
+          runId: st.run_id,
+          branch: st.branch,
+          stageTotal: st.stages.length,
+          status: st.status,
+          dashboardMaxRows: CONFIG.UI_DASHBOARD_MAX_ROWS,
+          executorLabel: st.executor_label || st.executor_harness,
+          reviewerLabel: st.reviewer_label || st.reviewer_harness,
+        },
+      });
+    } else if (fs.existsSync(file)) process.stdout.write(fs.readFileSync(file, 'utf8'));
+    return;
+  }
+  if (a.cmd === 'recover') {
+    const { RecoveryManager } = await import('./orchestrator/RecoveryManager.js');
+    const { GitRepository } = await import('./git/GitRepository.js');
+    const rm = new RecoveryManager(ROOT, store, new GitRepository(ROOT));
+    const result = await rm.recover({
+      runId: a.runId,
+      stageName: a.stages[0],
+      apply: Boolean(a.apply),
+      force: Boolean(a.force),
+    });
+    for (const line of result.details) console.log(line);
+    if (!result.ok) {
+      if (result.error) console.error(`ERROR: ${result.error}`);
+      process.exitCode = 1;
     }
     return;
   }
-  if(!['run','resume'].includes(a.cmd))throw new Error(`Unknown command '${a.cmd}'.`);
-  const lock=new RunLock();let orch:Orchestrator|null=null;let ui:any=null;let state:any=null;let shutting=false;const shutdown=async(sig:string)=>{if(shutting)return;shutting=true;try{await orch?.cancel();if(state){const s=store.load(state.run_id);if(!['completed','failed','specification_blocked'].includes(s.status)){s.status='interrupted';s.interrupted_at=new Date().toISOString();s.error=`Interrupted by ${sig}`;store.save(s);}}}finally{ui?.close?.();lock.release();}process.exit(sig==='SIGINT'?130:143);};process.on('SIGINT',()=>void shutdown('SIGINT'));process.on('SIGTERM',()=>void shutdown('SIGTERM'));
-  try{if(a.cmd==='run'){if(!a.stageSource||!a.stages.length)throw new Error('run requires --stage-source and at least one --stage.');const validationSource=new StageSource(a.stageSource);try{for(const selector of a.stages)validationSource.resolve(selector,a.feature||'');}finally{validationSource.close();}lock.acquire('creating',a.branch||'');const bootEvents=new EventBus(path.join(STATE_ROOT,'creating-events.jsonl'),true);orch=new Orchestrator(bootEvents);await orch.preflight({executor_harness:a.executorHarness||CONFIG.EXECUTOR_HARNESS,reviewer_harness:a.reviewerHarness||CONFIG.REVIEWER_HARNESS});state=orch.createRun({stageSource:a.stageSource,selectors:a.stages,feature:a.feature,branch:a.branch,base:a.base,qualityCmd:a.qualityCmd,executorHarness:a.executorHarness,reviewerHarness:a.reviewerHarness});bootEvents.close();lock.update(state.run_id,state.branch);}else{state=a.runId?store.load(a.runId):store.loadLatest();lock.acquire(state.run_id,state.branch);}
-    ui=await makeUi(state.run_id,state,a.ui||'compact');orch=new Orchestrator(ui.events);await orch.preflight(state);await orch.run(store.load(state.run_id),state.current_stage_index||0);const end=store.load(state.run_id);ui.close();lock.release();if(process.stdout.isTTY)console.log(`\n✓ AI run ${end.status}. Branch: ${end.branch}\nWorkspace: ${end.workspace}\nNo push or merge performed.`);
-  }catch(e:any){let finalStatus='failed';if(state){try{const s=store.load(state.run_id);if(s.status==='running'||s.status==='created'){s.status='failed';s.error=e.message;store.save(s);}finalStatus=s.status||'failed';}catch{}}ui?.events?.emit('run.blocked',{status:finalStatus,reason:e.message,branch:state?.branch});ui?.close?.();lock.release();console.error(`ERROR: ${e.message}`);process.exitCode=3;}}
-main().catch((e:any)=>{console.error(`ERROR: ${e.message}`);process.exit(2);});
+  if (!['run', 'resume'].includes(a.cmd)) throw new Error(`Unknown command '${a.cmd}'.`);
+  const lock = new RunLock();
+  let orch: Orchestrator | null = null;
+  let ui: any = null;
+  let state: any = null;
+  let shutting = false;
+  const shutdown = async (sig: string) => {
+    if (shutting) return;
+    shutting = true;
+    try {
+      await orch?.cancel();
+      if (state) {
+        const s = store.load(state.run_id);
+        if (!['completed', 'failed', 'specification_blocked'].includes(s.status)) {
+          s.status = 'interrupted';
+          s.interrupted_at = new Date().toISOString();
+          s.error = `Interrupted by ${sig}`;
+          store.save(s);
+        }
+      }
+    } finally {
+      ui?.close?.();
+      lock.release();
+    }
+    process.exit(sig === 'SIGINT' ? 130 : 143);
+  };
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  try {
+    if (a.cmd === 'run') {
+      if (!a.stageSource || !a.stages.length)
+        throw new Error('run requires --stage-source and at least one --stage.');
+      const validationSource = new StageSource(a.stageSource);
+      try {
+        for (const selector of a.stages) validationSource.resolve(selector, a.feature || '');
+      } finally {
+        validationSource.close();
+      }
+      lock.acquire('creating', a.branch || '');
+      const bootEvents = new EventBus(path.join(STATE_ROOT, 'creating-events.jsonl'), true);
+      orch = new Orchestrator(bootEvents);
+      await orch.preflight({
+        executor_harness: a.executorHarness || CONFIG.EXECUTOR_HARNESS,
+        reviewer_harness: a.reviewerHarness || CONFIG.REVIEWER_HARNESS,
+      });
+      state = orch.createRun({
+        stageSource: a.stageSource,
+        selectors: a.stages,
+        feature: a.feature,
+        branch: a.branch,
+        base: a.base,
+        qualityCmd: a.qualityCmd,
+        executorHarness: a.executorHarness,
+        reviewerHarness: a.reviewerHarness,
+      });
+      bootEvents.close();
+      lock.update(state.run_id, state.branch);
+    } else {
+      state = a.runId ? store.load(a.runId) : store.loadLatest();
+      lock.acquire(state.run_id, state.branch);
+    }
+    ui = await makeUi(state.run_id, state, a.ui || 'compact');
+    orch = new Orchestrator(ui.events);
+    await orch.preflight(state);
+    await orch.run(store.load(state.run_id), state.current_stage_index || 0);
+    const end = store.load(state.run_id);
+    ui.close();
+    lock.release();
+    if (process.stdout.isTTY)
+      console.log(
+        `\n✓ AI run ${end.status}. Branch: ${end.branch}\nWorkspace: ${end.workspace}\nNo push or merge performed.`,
+      );
+  } catch (e: any) {
+    let finalStatus = 'failed';
+    if (state) {
+      try {
+        const s = store.load(state.run_id);
+        if (s.status === 'running' || s.status === 'created') {
+          s.status = 'failed';
+          s.error = e.message;
+          store.save(s);
+        }
+        finalStatus = s.status || 'failed';
+      } catch {}
+    }
+    ui?.events?.emit('run.blocked', {
+      status: finalStatus,
+      reason: e.message,
+      branch: state?.branch,
+    });
+    ui?.close?.();
+    lock.release();
+    console.error(`ERROR: ${e.message}`);
+    process.exitCode = 3;
+  }
+}
+main().catch((e: any) => {
+  console.error(`ERROR: ${e.message}`);
+  process.exit(2);
+});
