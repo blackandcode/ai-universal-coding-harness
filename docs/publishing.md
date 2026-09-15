@@ -141,7 +141,7 @@ For a public package published from this public GitHub repository using npm trus
 
 Trusted publishing currently requires:
 
-- Node.js 22.14 or newer;
+- Node.js 24.18 or newer;
 - npm 11.5.1 or newer;
 - GitHub-hosted Actions runners for the GitHub provider;
 - `id-token: write` in the publish job/workflow;

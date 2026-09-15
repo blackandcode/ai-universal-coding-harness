@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js 22.14+
+- Node.js 24.18+
 - Git
 
 Harness integration development additionally requires the corresponding CLIs.

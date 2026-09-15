@@ -1,11 +1,11 @@
 {
   "name": "ai-universal-coding-harness",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A cross-platform CLI that orchestrates autonomous coding harnesses through structured stages, review, quality gates, and clean Git history.",
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=22.14.0"
+    "node": ">=24.18.0"
   },
   "bin": {
     "ai-harness": "./dist/bin.js",
@@ -54,15 +54,15 @@
   },
   "dependencies": {
     "adm-zip": "0.6.1",
-    "ink": "5.2.1",
+    "ink": "7.1.1",
     "jsonc-parser": "3.3.1",
-    "react": "18.3.1"
+    "react": "19.2.8"
   },
   "devDependencies": {
-    "@types/node": "22.13.14",
-    "@types/react": "18.3.18",
+    "@types/node": "24.13.4",
+    "@types/react": "19.2.18",
     "ink-testing-library": "4.0.0",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   },
   "keywords": [
     "ai",

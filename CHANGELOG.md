@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-15
+
+### Changed
+
+- Upgraded minimum Node.js engine requirement to `>=24.18.0`.
+- Upgraded TypeScript compiler to `7.0.2`.
+- Upgraded React to `19.2.8` and `@types/react` to `19.2.18`.
+- Upgraded Ink to `7.1.1` for native React 19 compatibility.
+- Upgraded `@types/node` to `24.13.4`.
+- Updated CI matrix to test on Node 24.
+
 ## [1.0.1] - 2026-09-15
 
 ### Added

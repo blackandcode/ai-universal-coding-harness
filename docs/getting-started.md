@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node.js 22.14 or newer
+- Node.js 24.18 or newer
 - Git
 - the executor/reviewer CLIs selected in configuration
 - a Git repository as the target project

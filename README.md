@@ -26,7 +26,7 @@ Or directly from GitHub:
 npm install --global git+https://github.com/blackandcode/ai-universal-coding-harness.git
 ```
 
-Requires **Node.js 22.14+**, Git, and the configured harness CLIs.
+Requires **Node.js 24.18+**, Git, and the configured harness CLIs.
 
 ## Quick start
 
@@ -123,7 +123,7 @@ Start with [docs/README.md](docs/README.md).
 
 ## Release
 
-Current version: **1.0.1**. See [CHANGELOG.md](CHANGELOG.md).
+Current version: **1.0.2**. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
