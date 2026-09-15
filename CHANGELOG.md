@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-09-15
+
 ## [1.0.2] - 2026-09-15
 
 ### Fixed

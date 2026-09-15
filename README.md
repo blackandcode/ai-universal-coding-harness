@@ -123,7 +123,7 @@ Start with [docs/README.md](docs/README.md).
 
 ## Release
 
-Current version: **1.0.2**. See [CHANGELOG.md](CHANGELOG.md).
+Current version: **1.0.3**. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
