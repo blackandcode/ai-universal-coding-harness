@@ -60,3 +60,52 @@ test('GitRepository.patchFingerprint is deterministic and untracked-aware', () =
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('GitRepository.reviewDiff handles untracked directories with -uall and non-binary diff', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-repo-diff-'));
+  try {
+    execSync('git init -b main', { cwd: tmpDir });
+    execSync('git config user.name "Test"', { cwd: tmpDir });
+    execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, 'tracked.txt'), 'line 1\n');
+    execSync('git add tracked.txt && git commit -m "initial"', { cwd: tmpDir });
+
+    // Tracked modification
+    fs.appendFileSync(path.join(tmpDir, 'tracked.txt'), 'line 2\n');
+
+    // Untracked directory with nested files
+    const nestedDir = path.join(tmpDir, 'nested', 'sub');
+    fs.mkdirSync(nestedDir, { recursive: true });
+    fs.writeFileSync(path.join(nestedDir, 'untracked.txt'), 'nested content\n');
+
+    // Untracked binary file
+    const binaryFile = path.join(nestedDir, 'image.png');
+    fs.writeFileSync(binaryFile, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00]));
+
+    const git = new GitRepository(tmpDir);
+    const diff = git.reviewDiff();
+
+    // Verify diff includes tracked file
+    assert.match(diff, /diff --git a\/tracked\.txt b\/tracked\.txt/);
+    assert.match(diff, /\+line 2/);
+
+    // Verify diff includes untracked nested text file
+    assert.match(diff, /nested\/sub\/untracked\.txt/);
+    assert.match(diff, /\+nested content/);
+
+    // Verify binary file is summarized cleanly without base85 blob
+    assert.match(diff, /Binary files .* differ/);
+    assert.doesNotMatch(diff, /literal \d+/); // Git binary diff format uses "literal <size>"
+
+    // Verify changedFiles lists both files
+    const changed = git.changedFiles();
+    assert.ok(changed.includes('tracked.txt'));
+    assert.ok(changed.includes('nested/sub/untracked.txt'));
+    assert.ok(changed.includes('nested/sub/image.png'));
+    // Ensure directory itself is not in changed files
+    assert.ok(!changed.includes('nested/'));
+    assert.ok(!changed.includes('nested/sub/'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

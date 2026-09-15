@@ -170,7 +170,9 @@ export class RecoveryManager {
 
     // 7. Execute recovery or report dry-run
     const observationsFile = path.join(stageDir, 'executor-observations.jsonl');
-    const savedEvidencePath = path.join(stageDir, `evidence-attempt-${evidence.attempt || 1}.json`);
+    const recoveryAttempt = 1;
+    evidence.attempt = recoveryAttempt;
+    const savedEvidencePath = path.join(stageDir, `evidence-attempt-${recoveryAttempt}.json`);
 
     if (!isApply) {
       details.push('Mode: DRY-RUN (no files modified).');
@@ -208,7 +210,7 @@ export class RecoveryManager {
     // Update stage state
     this.store.saveStage(runId, stageName, {
       phase: 'quality',
-      attempt: evidence.attempt || 1,
+      attempt: recoveryAttempt,
       evidence_file: savedEvidencePath,
       patch_fingerprint: currentPatchFingerprint
     });

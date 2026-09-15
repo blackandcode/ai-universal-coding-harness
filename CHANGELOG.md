@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [1.0.2] - 2026-09-15
 
+### Fixed
+
+- Fixed Orchestrator execution loop to consume resumed evidence only once on attempt 1 and transition to `phase: 'implementation'` upon reviewer rework, preventing instant repeated review calls without executor participation.
+- Fixed GitRepository `reviewDiff()` and `changedFiles()` to use `status --porcelain -uall` and non-binary diff output, ensuring untracked directories are completely enumerated without `/dev/null` errors and binary files do not bloat diff output.
+- Increased default `maxDiffChars` from 140,000 to 500,000 in configuration to avoid premature diff truncation on large stages.
+- Added informative truncation diagnostics in `boundedDiff()` indicating diff length and instructing reviewers to request specific paths via `NEEDS_CONTEXT`.
+- Updated `RecoveryManager` to reset recovered stages cleanly to attempt 1 with full attempt budget available.
+
 ### Changed
 
 - Upgraded minimum Node.js engine requirement to `>=24.18.0`.

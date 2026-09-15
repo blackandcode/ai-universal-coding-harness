@@ -36,7 +36,7 @@ export const DEFAULT_CONFIG:OrchestratorConfig={
   executorHarness:'cursor', reviewerHarness:'codex', maxPlanReviews:3, finalPlanReview:true,
   maxExecutionAttempts:3, maxUniqueQuestionsPerStage:25, permissionMode:'auto_safe',
   permissionsFile:'', qualityCommand:'npm run check', branchPrefix:'ai-harness',
-  maxDiffChars:140000, maxContextFileChars:40000, uiEventCoalesceMs:80,
+  maxDiffChars:500000, maxContextFileChars:40000, uiEventCoalesceMs:80,
   uiDashboardMaxRows:26, runLogMaxBytes:20*1024*1024, focusLogMaxBytes:10*1024*1024,
   harnesses:{
     cursor:{binary:'agent',model:'gemini-3.8-flash',thinking:'high',turnTimeoutMinutes:45},
