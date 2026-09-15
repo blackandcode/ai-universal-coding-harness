@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The project follows Sem
 
 ### Added
 
+- Modularized React 19 / Ink 7 UI architecture: typed presentation model in `src/ui/types.ts`, pure state machine reducer in `src/ui/reducer.ts`, pure selectors in `src/ui/selectors.ts`, text formatting and status glyph helpers in `src/ui/text.ts`, JSONL stream reading and tailing with partial line buffering in `src/ui/eventFile.ts`, and typed TSX presentation components in `src/ui/components/`.
+- Interactive keyboard navigation and modal panels for full focus stream (`f`), task todos (`t`), changed files (`d`), recent logs (`l`), quiet mode (`q`), escape return (`Esc`), and focus stream scrolling (`↑`/`↓`/`PgUp`/`PgDn`/`Home`/`End`).
+- Comprehensive UI test suites: pure reducer transitions (`src/ui/reducer.test.ts`), pure selectors (`src/ui/selectors.test.ts`), event-file streaming and corruption handling (`src/ui/eventFile.test.ts`), and `ink-testing-library` render and interaction tests (`src/ui/components.test.tsx`).
 - Modularized Cursor ACP protocol handling into `AcpToolAccumulator`, `AcpEventNormalizer`, and `ObservationJournal`.
 - Implemented `EvidenceService` for cohesive evidence validation, corroboration, and disk persistence.
 - Modularized Codex reviewer harness into `CodexPromptBuilder`, `CodexProcessRunner`, `CodexEventParser`, and `CodexResultParser`.
@@ -21,6 +24,7 @@ All notable changes to this project are documented here. The project follows Sem
 
 ### Changed
 
+- Replaced monolithic `src/ui/InkUi.ts` (untyped `React.createElement`) with modern, typed React 19 / Ink 7 TSX architecture (`src/ui/App.tsx` and `src/ui/InkUi.tsx`).
 - Modernized `tsconfig.json` for Node 24 with `target: "ES2024"`, `module: "NodeNext"`, `verbatimModuleSyntax: true`, `types: ["node"]`, and `jsx: "react-jsx"`.
 - Consolidated build ownership into `npm run build` with clean pre-compilation step (`npm run clean`).
 - Implemented nested `dist/.npmignore` postbuild generator ensuring zero test files and zero development artifacts are packaged into the npm tarball.

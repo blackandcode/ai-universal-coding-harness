@@ -48,6 +48,15 @@ test('public API exports core classes and utilities', () => {
   assert.ok(PublicApi.CodexResultParser);
 });
 
+test('public API exports UI classes and utilities', () => {
+  assert.ok(PublicApi.EventBus);
+  assert.equal(typeof PublicApi.dashboardLayout, 'function');
+  assert.equal(typeof PublicApi.createInitialUiState, 'function');
+  assert.equal(typeof PublicApi.uiReducer, 'function');
+  assert.equal(typeof PublicApi.readRecentEvents, 'function');
+  assert.equal(typeof PublicApi.followEventFile, 'function');
+});
+
 test('public API exports process and CLI helpers', () => {
   assert.equal(typeof PublicApi.runProcess, 'function');
   assert.equal(typeof PublicApi.runShellCommand, 'function');

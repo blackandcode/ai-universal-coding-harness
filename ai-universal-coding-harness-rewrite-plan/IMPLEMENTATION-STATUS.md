@@ -149,7 +149,34 @@ Status: Specified (pending implementation after Stage 03)
 
 ## Stage 04 — React 19 / Ink 7 UI and CLI Modernization
 
-Status: Not started
+Status: Completed (Ready for review / stage gate)
+
+- **Quality Commands (Measured Results)**:
+  - `npm run format:check` — Oxfmt formatting verification passed (0 violations across 209 files).
+  - `npm run lint` — Oxlint static analysis and automated rule fixture check (`scripts/verify-oxlint-rules.mjs`) passed (0 errors, all 8 rule categories verified).
+  - `npm run typecheck` — TypeScript 7 compiler verification under strict compilation (`tsc -p tsconfig.json --noEmit`) passed (0 errors).
+  - `npm test` — Fresh build compilation and unit test suite execution: 142 tests passing across all test suites (0 failures; 109 baseline tests + 33 new comprehensive UI tests).
+  - `npm run test:cli` — CLI smoke execution passing across all verification scenarios.
+  - `npm run verify` — Comprehensive quality gate passing (clean build, format check, lint, typecheck, unit tests, CLI smoke, bidirectional lockfile verification, and packaging consumer check).
+  - `npm run check` — Standalone alias for `npm run verify` passed cleanly.
+  - `npm pack --dry-run` — Packaging inventory verified; 0 test files and 0 internal development artifacts.
+- **Modularity & TSX Migration**:
+  - Removed legacy monolithic `src/ui/InkUi.ts` and its loosely typed `React.createElement` calls.
+  - Added strictly typed `src/ui/types.ts` defining `UiState`, `UiMessage`, `UiTool`, `UiTodo`, `UiQualityDisplay`, `UiTokens`, `UiLogEntry`, `UiPanel`, `UiPhaseMap`, `StartInkUiOptions`, `FollowInkUiOptions`, and `InkUiInstance`.
+  - Added pure text and glyph helpers in `src/ui/text.ts` (`normalizeOneLine`, `truncateText`, `wrapText`, `getPhaseIcon`, `getPhaseColor`, `getToolStatusIcon`, `getToolStatusColor`, `formatProgressBar`).
+  - Added pure state machine reducer in `src/ui/reducer.ts` (`uiReducer`, `createInitialUiState`) with zero I/O and strict bounding (40 messages, 60 tools, 100 logs, 200,000 focus chars).
+  - Added pure selectors in `src/ui/selectors.ts` (`selectActiveTask`, `selectTodoProgress`, `selectPhaseProgress`, `selectActiveAndRecentTools`, `selectRecentMessages`, `selectFocusContent`, `selectVisibleFocusLines`, `selectFormattedTodos`, `selectFormattedLogs`).
+  - Added stream reading and tailing in `src/ui/eventFile.ts` (`readRecentEvents`, `followEventFile`) handling multi-chunk partial lines across polling intervals and skipping malformed JSON lines.
+  - Created typed TSX components in `src/ui/components/`: `Header.tsx`, `FocusPreview.tsx`, `ToolActivity.tsx`, `Footer.tsx`, `ListPanel.tsx`, `FocusPanel.tsx`, `TodoPanel.tsx`, `ChangesPanel.tsx`, `LogsPanel.tsx`.
+  - Created root React 19 / Ink 7 application in `src/ui/App.tsx` and runtime lifecycle runner in `src/ui/InkUi.tsx`.
+- **Comprehensive Testing**:
+  - Added reducer unit test suite in `src/ui/reducer.test.ts`.
+  - Added selector unit test suite in `src/ui/selectors.test.ts`.
+  - Added event file unit test suite in `src/ui/eventFile.test.ts`.
+  - Added Ink render and keyboard interaction test suite in `src/ui/components.test.tsx` using `ink-testing-library` covering normal/compact/minimal layouts, modal panels (`f`, `t`, `d`, `l`, `q`, `Esc`), focus stream scrolling, and live event subscription.
+- **Documentation**:
+  - Added comprehensive top-of-file docblocks and TSDoc across all UI components, modules, functions, classes, interfaces, and types.
+  - Updated existing `src/ui/layout.ts` and `src/ui/EventBus.ts` with complete top-of-file docblocks and explicit types.
 
 ## Stage 05 — Documentation, Test Completion and v2 Release
 

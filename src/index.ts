@@ -187,8 +187,29 @@ export { CodexPromptBuilder } from './harness/codex/CodexPromptBuilder.js';
 export { CodexProcessRunner } from './harness/codex/CodexProcessRunner.js';
 export { CodexResultParser } from './harness/codex/CodexResultParser.js';
 
-// UI
+// UI Presentation & Events
 export { EventBus } from './ui/EventBus.js';
+export { dashboardLayout, type DashboardLayout, type DashboardMode } from './ui/layout.js';
+export { createInitialUiState, uiReducer } from './ui/reducer.js';
+export { readRecentEvents, followEventFile } from './ui/eventFile.js';
+export type {
+  UiState,
+  UiMessage,
+  UiTool,
+  UiTodo,
+  UiQualityDisplay,
+  UiTokens,
+  UiLogEntry,
+  UiPanel,
+  UiMeta,
+  PhaseName,
+  PhaseStatus,
+  UiPhaseMap,
+  RunUiStatus,
+  StartInkUiOptions,
+  FollowInkUiOptions,
+  InkUiInstance,
+} from './ui/types.js';
 
 // CLI Parser & Dispatch
 export { parseCliArgs, type CliCommand } from './cli/parser.js';
