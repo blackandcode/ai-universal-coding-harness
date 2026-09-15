@@ -1,7 +1,12 @@
+/**
+ * @fileoverview Plan review coordinator for stage execution.
+ * Orchestrates plan review iterations with reviewer harnesses, deduplicates plan hashes, enforces budgets, and manages carryover findings.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG } from '../core/config.js';
-import { ensureDir, sha256Text, writeJson, writeText, appendText } from '../core/fs.js';
+import { ensureDir, sha256Text, writeJson, writeText } from '../core/fs.js';
 import type { ReviewerHarness, PlanDecision } from '../harness/types.js';
 import { RunStateStore } from '../state/RunStateStore.js';
 import type { PlanReviewVerdict, SelectedStage } from '../types.js';
@@ -15,6 +20,7 @@ export class PlanCoordinator {
   private lastFeedback = '';
   private acceptedPlan = '';
   private carryover = '';
+
   constructor(
     private opts: {
       runId: string;
@@ -26,19 +32,24 @@ export class PlanCoordinator {
   ) {
     ensureDir(this.plansDir());
   }
-  private stageDir() {
+
+  private stageDir(): string {
     return this.opts.store.stageDir(this.opts.runId, this.opts.stage.name);
   }
-  private plansDir() {
+
+  private plansDir(): string {
     return path.join(this.stageDir(), 'plans');
   }
-  get plan() {
+
+  get plan(): string {
     return this.acceptedPlan;
   }
-  get reviewerCarryover() {
+
+  get reviewerCarryover(): string {
     return this.carryover;
   }
-  private feedback(v: PlanReviewVerdict) {
+
+  private feedback(v: PlanReviewVerdict): string {
     return [
       v.feedback_for_cursor || v.summary || '',
       ...(v.missing_items || []).map((x) => `- ${x}`),
@@ -46,10 +57,12 @@ export class PlanCoordinator {
       .filter(Boolean)
       .join('\n');
   }
-  private saveCandidate(plan: string, round: number) {
+
+  private saveCandidate(plan: string, round: number): void {
     writeText(path.join(this.plansDir(), `plan-${String(round).padStart(2, '0')}.md`), plan + '\n');
   }
-  private saveReview(v: PlanReviewVerdict, round: number, final = false) {
+
+  private saveReview(v: PlanReviewVerdict, round: number, final = false): void {
     writeJson(
       path.join(
         this.plansDir(),
@@ -65,7 +78,8 @@ export class PlanCoordinator {
       `# ${final ? 'Final consolidation' : 'Plan review'} ${round}\n\n- **Verdict:** ${v.verdict}\n- **Summary:** ${v.summary || ''}\n\n## Missing / improvement items\n\n${(v.missing_items || []).map((x) => `- ${x}`).join('\n') || '_None._'}\n\n## Feedback for executor\n\n${v.feedback_for_cursor || '_None._'}\n`,
     );
   }
-  private accept(plan: string, status: string, reason: string, review?: PlanReviewVerdict) {
+
+  private accept(plan: string, status: string, reason: string, review?: PlanReviewVerdict): void {
     this.acceptedPlan = plan;
     this.carryover = review ? this.feedback(review) : this.lastFeedback;
     const hash = sha256Text(plan);
@@ -89,10 +103,12 @@ export class PlanCoordinator {
       `**Status:** ${status}\n\n**Reason:** ${reason}\n\n${this.carryover ? `**Carry-over:**\n\n${this.carryover}` : ''}`,
     );
   }
-  private specDigest() {
+
+  private specDigest(): string {
     return sha256Text(JSON.stringify(this.opts.stage.manifest.sha256 || {}));
   }
-  reusable() {
+
+  reusable(): { plan: string; carryover: string; status: string } | null {
     const p = path.join(this.stageDir(), 'approved-plan.md');
     const s = this.opts.store.loadStage(this.opts.runId, this.opts.stage.name);
     if (!fs.existsSync(p) || !s.plan_sha256 || s.spec_sha256 !== this.specDigest()) return null;
@@ -102,7 +118,8 @@ export class PlanCoordinator {
     this.carryover = s.reviewer_carryover || '';
     return { plan, carryover: this.carryover, status: s.plan_status || 'REUSED' };
   }
-  forceAccept(plan: string, reason = 'Autonomous fallback plan accepted.') {
+
+  forceAccept(plan: string, reason = 'Autonomous fallback plan accepted.'): string {
     const clean =
       plan.trim() ||
       'Implement every requirement in functional-spec.md, technical-spec.md, and prompt.md; run all required tests and quality gates.';
@@ -114,9 +131,12 @@ export class PlanCoordinator {
     });
     return clean;
   }
+
   async submit(plan: string): Promise<PlanDecision> {
     const clean = plan.trim();
-    if (!clean) return { accepted: false, feedback: 'Plan is empty.' };
+    if (!clean) {
+      return { outcome: 'needs_revision', accepted: false, feedback: 'Plan is empty.' };
+    }
     const hash = sha256Text(clean);
     const round = this.regularReviews + 1;
     this.saveCandidate(clean, round);
@@ -125,13 +145,19 @@ export class PlanCoordinator {
       const f = this.feedback(cached);
       if (cached.verdict === 'APPROVE') {
         this.accept(clean, 'APPROVED', 'Identical plan already approved.', cached);
-        return { accepted: true, status: 'APPROVE', carryover: '', verdict: cached };
+        return {
+          outcome: 'accepted',
+          accepted: true,
+          status: 'APPROVE',
+          carryover: '',
+          verdict: cached,
+        };
       }
       const duplicates = (this.duplicateCounts.get(hash) || 0) + 1;
       this.duplicateCounts.set(hash, duplicates);
       if (duplicates >= 2) {
         let finalV: PlanReviewVerdict = cached;
-        if (CONFIG.FINAL_PLAN_REVIEW && !this.finalReviewDone) {
+        if (CONFIG.finalPlanReview && !this.finalReviewDone) {
           this.finalReviewDone = true;
           try {
             finalV = await this.opts.reviewer.reviewPlan(
@@ -155,21 +181,27 @@ export class PlanCoordinator {
           { ...finalV, verdict: 'APPROVE', feedback_for_cursor: carry },
         );
         return {
+          outcome: 'accepted_with_notes',
           accepted: true,
           status: 'APPROVE_WITH_NOTES',
           carryover: carry,
           verdict: { ...finalV, verdict: 'APPROVE' },
         };
       }
-      return { accepted: false, feedback: f, verdict: cached };
+      return {
+        outcome: 'needs_revision',
+        accepted: false,
+        feedback: f,
+        verdict: cached,
+      };
     }
-    if (this.regularReviews < CONFIG.MAX_PLAN_REVIEWS) {
+    if (this.regularReviews < CONFIG.maxPlanReviews) {
       this.regularReviews++;
       const v = await this.opts.reviewer.reviewPlan({
         current_plan: clean,
         original_stage_inputs: this.opts.stageContext,
         review_round: this.regularReviews,
-        max_regular_reviews: CONFIG.MAX_PLAN_REVIEWS,
+        max_regular_reviews: CONFIG.maxPlanReviews,
       });
       this.byHash.set(hash, v);
       this.saveReview(v, this.regularReviews, false);
@@ -184,15 +216,16 @@ export class PlanCoordinator {
       );
       if (v.verdict === 'APPROVE') {
         this.accept(clean, 'APPROVED', v.summary || 'Reviewer approved full plan.', v);
-        return { accepted: true, status: 'APPROVE', verdict: v };
+        return { outcome: 'accepted', accepted: true, status: 'APPROVE', verdict: v };
       }
       return {
+        outcome: 'needs_revision',
         accepted: false,
         feedback: f || 'Revise the complete plan using all reviewer findings.',
         verdict: v,
       };
     }
-    if (CONFIG.FINAL_PLAN_REVIEW && !this.finalReviewDone) {
+    if (CONFIG.finalPlanReview && !this.finalReviewDone) {
       this.finalReviewDone = true;
       let v: PlanReviewVerdict;
       try {
@@ -205,10 +238,11 @@ export class PlanCoordinator {
           },
           { finalConsolidation: true },
         );
-      } catch (e: any) {
+      } catch (e: unknown) {
+        const errMessage = e instanceof Error ? e.message : String(e);
         v = {
           verdict: 'APPROVE',
-          summary: `Final consolidation reviewer unavailable: ${e.message}. Proceeding autonomously.`,
+          summary: `Final consolidation reviewer unavailable: ${errMessage}. Proceeding autonomously.`,
           missing_items: [],
           feedback_for_cursor: this.lastFeedback,
         };
@@ -223,6 +257,7 @@ export class PlanCoordinator {
         { ...v, verdict: 'APPROVE', feedback_for_cursor: f },
       );
       return {
+        outcome: 'accepted_with_notes',
         accepted: true,
         status: 'APPROVE_WITH_NOTES',
         carryover: f,
@@ -240,6 +275,11 @@ export class PlanCoordinator {
         feedback_for_cursor: this.lastFeedback,
       },
     );
-    return { accepted: true, status: 'APPROVE_WITH_NOTES', carryover: this.lastFeedback };
+    return {
+      outcome: 'accepted_with_notes',
+      accepted: true,
+      status: 'APPROVE_WITH_NOTES',
+      carryover: this.lastFeedback,
+    };
   }
 }

@@ -92,13 +92,15 @@ Update:
 
 Mermaid diagrams must reflect actual v2 module boundaries.
 
-### Code comments
+### Code documentation and docblock standards
 
-Final documentation pass:
+Final comprehensive documentation pass:
 
-- JSDoc for exported/public contracts;
-- comments for non-obvious invariants;
-- remove stale/redundant comments.
+- **Top-of-file descriptions**: Verify that every source, test, script, and utility file across the entire repository has a clear top-of-file docblock description explaining what the file is about, its architectural scope, and key responsibilities.
+- **Cross-stage header maintenance**: For any file edited or extended during Stage 05 (or prior stages), update the top-of-file description to reflect the changes, new capabilities, and evolved responsibilities.
+- **Docblock coverage for all code**: Comprehensive, high-quality JSDoc/TSDoc docblocks for all functions, methods, classes, interfaces, and types (covering internal modules as well as exported public contracts).
+- **Internal logic documentation**: Clear docblocks and explanatory comments for internal logic, algorithms, recovery flows, state transitions, and edge-case handling across the entire codebase.
+- **Hygiene**: Remove stale/redundant comments, commented-out code, and temporary migration notes.
 
 ### Skills/rules
 
@@ -130,3 +132,9 @@ No long-lived npm token.
 
 The repository is release-ready from a clean clone with documented commands and
 green cross-platform CI.
+
+Additionally:
+
+- every file in the codebase has a clear top-of-file docblock description, accurately updated to reflect any functionality added across stages;
+- all functions, classes, interfaces, types, and complex internal logic have thorough docblock and explanatory documentation;
+- all unit, integration, CLI smoke, and package-consumer tests pass with required coverage gates.

@@ -1,20 +1,30 @@
+/**
+ * @fileoverview Stage source locator, unpacker, and validator.
+ * Validates stage directories and zip archives, extracts manifests, and verifies required stage specification files.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import AdmZip from 'adm-zip';
 import { sha256File, removeTree } from '../core/fs.js';
 import type { StageManifest } from '../types.js';
+import { StageSourceError } from '../errors.js';
 
 export const REQUIRED_STAGE_FILES = [
   'functional-spec.md',
   'technical-spec.md',
   'prompt.md',
 ] as const;
+
+export type RequiredStageFile = (typeof REQUIRED_STAGE_FILES)[number];
+
 export interface StageValidationIssue {
   level: 'error' | 'warning';
   file?: string;
   message: string;
 }
+
 export interface StageValidationReport {
   stage: string;
   dir: string;
@@ -22,14 +32,18 @@ export interface StageValidationReport {
   issues: StageValidationIssue[];
 }
 
-export const stageNameOk = (s: string) => /^stage-[0-9]{2}-[a-z0-9][a-z0-9-]*$/.test(s);
-export function selectorNum(sel: string) {
+export const stageNameOk = (s: string): boolean => /^stage-[0-9]{2}-[a-z0-9][a-z0-9-]*$/.test(s);
+
+export function selectorNum(sel: string): string {
   if (/^[0-9]{1,2}$/.test(sel)) return String(Number(sel)).padStart(2, '0');
   const m = sel.match(/^stage-([0-9]{2})-[a-z0-9][a-z0-9-]*$/);
-  if (m) return m[1];
-  throw new Error(`Invalid stage selector '${sel}'. Use 6, 06, or exact stage-NN-kebab-name.`);
+  if (m && m[1]) return m[1];
+  throw new StageSourceError(
+    `Invalid stage selector '${sel}'. Use 6, 06, or exact stage-NN-kebab-name.`,
+  );
 }
-function walk(root: string, out: string[] = []) {
+
+function walk(root: string, out: string[] = []): string[] {
   const b = path.basename(root);
   if (stageNameOk(b)) {
     out.push(root);
@@ -39,44 +53,58 @@ function walk(root: string, out: string[] = []) {
     if (
       !ent.isDirectory() ||
       ['.git', 'node_modules', 'vendor', '.ai-orchestrator'].includes(ent.name)
-    )
+    ) {
       continue;
+    }
     const p = path.join(root, ent.name);
     if (stageNameOk(ent.name)) out.push(p);
     else walk(p, out);
   }
   return out;
 }
-function validateEntries(zip: any) {
+
+function validateEntries(zip: AdmZip): void {
   for (const entry of zip.getEntries()) {
     const name = entry.entryName.replace(/\\/g, '/');
-    if (name.startsWith('/') || /(^|\/)\.\.(\/|$)/.test(name) || /^[A-Za-z]:/.test(name))
-      throw new Error(`Unsafe ZIP entry rejected: ${entry.entryName}`);
+    if (name.startsWith('/') || /(^|\/)\.\.(\/|$)/.test(name) || /^[A-Za-z]:/.test(name)) {
+      throw new StageSourceError(`Unsafe ZIP entry rejected: ${entry.entryName}`);
+    }
     const mode = (Number(entry.attr || 0) >>> 16) & 0o170000;
-    if (mode === 0o120000)
-      throw new Error(`ZIP symbolic links are not allowed in stage sources: ${entry.entryName}`);
+    if (mode === 0o120000) {
+      throw new StageSourceError(
+        `ZIP symbolic links are not allowed in stage sources: ${entry.entryName}`,
+      );
+    }
   }
 }
-function hasMarkdownHeading(text: string) {
+
+function hasMarkdownHeading(text: string): boolean {
   return /^#{1,6}\s+\S+/m.test(text);
 }
 
 export class StageSource {
   private tempDir: string | null = null;
   readonly root: string;
+
   constructor(public source: string) {
     const abs = path.resolve(source);
-    if (!fs.existsSync(abs)) throw new Error(`Stage source not found: ${abs}`);
-    if (fs.statSync(abs).isDirectory()) this.root = abs;
-    else if (abs.toLowerCase().endsWith('.zip')) {
+    if (!fs.existsSync(abs)) {
+      throw new StageSourceError(`Stage source not found: ${abs}`);
+    }
+    if (fs.statSync(abs).isDirectory()) {
+      this.root = abs;
+    } else if (abs.toLowerCase().endsWith('.zip')) {
       const zip = new AdmZip(abs);
       validateEntries(zip);
       this.tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-harness-stage-source-'));
       zip.extractAllTo(this.tempDir, true);
       this.root = this.tempDir;
-    } else throw new Error('Stage source must be a directory or .zip file.');
+    } else {
+      throw new StageSourceError('Stage source must be a directory or .zip file.');
+    }
   }
-  list(feature = '') {
+
+  list(feature = ''): string[] {
     return walk(this.root)
       .filter(
         (p) =>
@@ -86,10 +114,11 @@ export class StageSource {
       )
       .sort();
   }
+
   validateDir(dir: string): StageValidationReport {
     const issues: StageValidationIssue[] = [];
     const stage = path.basename(dir);
-    let stat: any;
+    let stat: fs.Stats | null = null;
     try {
       stat = fs.lstatSync(dir);
     } catch {
@@ -100,15 +129,18 @@ export class StageSource {
         issues: [{ level: 'error', message: 'Stage directory does not exist.' }],
       };
     }
-    if (stat.isSymbolicLink())
+    if (stat.isSymbolicLink()) {
       issues.push({ level: 'error', message: 'Stage directory must not be a symbolic link.' });
-    if (!stat.isDirectory())
+    }
+    if (!stat.isDirectory()) {
       issues.push({ level: 'error', message: 'Stage path must be a directory.' });
-    if (!stageNameOk(stage))
+    }
+    if (!stageNameOk(stage)) {
       issues.push({
         level: 'error',
         message: 'Stage directory must match stage-NN-kebab-case-name.',
       });
+    }
     for (const file of REQUIRED_STAGE_FILES) {
       const p = path.join(dir, file);
       if (!fs.existsSync(p)) {
@@ -133,59 +165,71 @@ export class StageSource {
         continue;
       }
       const text = fs.readFileSync(p, 'utf8');
-      if (!text.trim())
+      if (!text.trim()) {
         issues.push({ level: 'error', file, message: `${file} contains no meaningful content.` });
-      else if (!hasMarkdownHeading(text))
+      } else if (!hasMarkdownHeading(text)) {
         issues.push({
           level: 'error',
           file,
           message: `${file} must contain at least one Markdown heading.`,
         });
-      if (text.includes('\u0000'))
+      }
+      if (text.includes('\u0000')) {
         issues.push({
           level: 'error',
           file,
           message: `${file} contains binary/NUL data instead of Markdown text.`,
         });
+      }
     }
     return { stage, dir, valid: !issues.some((i) => i.level === 'error'), issues };
   }
-  assertValid(dir: string) {
+
+  assertValid(dir: string): StageValidationReport {
     const report = this.validateDir(dir);
-    if (!report.valid)
-      throw new Error(
+    if (!report.valid) {
+      throw new StageSourceError(
         `Invalid stage package '${report.stage}':\n${report.issues.map((i) => `  - ${i.file ? `${i.file}: ` : ''}${i.message}`).join('\n')}`,
       );
+    }
     return report;
   }
-  validateAll(feature = '') {
+
+  validateAll(feature = ''): StageValidationReport[] {
     return this.list(feature).map((dir) => this.validateDir(dir));
   }
-  find(selector: string, feature = '') {
+
+  find(selector: string, feature = ''): string {
     const num = selectorNum(selector);
     const found = this.list(feature).filter((p) => {
       const b = path.basename(p);
       return selector.startsWith('stage-') ? b === selector : b.startsWith(`stage-${num}-`);
     });
-    if (!found.length)
-      throw new Error(
+    if (!found.length || !found[0]) {
+      throw new StageSourceError(
         `No stage matched '${selector}' under ${this.source}${feature ? ` (feature=${feature})` : ''}.`,
       );
-    if (found.length > 1)
-      throw new Error(
+    }
+    if (found.length > 1) {
+      throw new StageSourceError(
         `Stage '${selector}' is ambiguous:\n${found.map((x) => `  ${x}`).join('\n')}\nUse --feature or the exact stage folder name.`,
       );
+    }
     return found[0];
   }
-  resolve(selector: string, feature = '') {
+
+  resolve(selector: string, feature = ''): string {
     const dir = this.find(selector, feature);
     this.assertValid(dir);
     return dir;
   }
+
   manifest(dir: string, selector: string): StageManifest {
     this.assertValid(dir);
-    const sha: any = {};
-    for (const f of REQUIRED_STAGE_FILES) sha[f] = sha256File(path.join(dir, f));
+    const sha: Record<string, string> = {};
+    for (const f of REQUIRED_STAGE_FILES) {
+      sha[f] = sha256File(path.join(dir, f));
+    }
     return {
       name: path.basename(dir),
       selector,
@@ -194,7 +238,8 @@ export class StageSource {
       sha256: sha,
     };
   }
-  close() {
+
+  close(): void {
     if (this.tempDir) removeTree(this.tempDir);
     this.tempDir = null;
   }

@@ -1,40 +1,56 @@
+/**
+ * @fileoverview Git repository wrapper for AI Universal Coding Harness.
+ * Encapsulates low-level git operations, command execution, dirty state detection, diff inspection, and patch hashing.
+ */
+
 import crypto from 'node:crypto';
-import { execSyncText } from '../core/process.js';
+import { execSyncText, type ProcessResult } from '../core/process.js';
 import type { GitDiffCheckResult } from '../types.js';
+import { GitLifecycleError } from '../errors.js';
 
 export class GitRepository {
   constructor(public root: string) {}
-  run(args: string[], allowFail = false) {
+
+  run(args: string[], allowFail = false): ProcessResult {
     const r = execSyncText('git', args, { cwd: this.root });
-    if (!allowFail && r.code !== 0)
-      throw new Error(`git ${args.join(' ')} failed:\n${r.stderr || r.stdout}`);
+    if (!allowFail && r.code !== 0) {
+      throw new GitLifecycleError(`git ${args.join(' ')} failed:\n${r.stderr || r.stdout}`);
+    }
     return r;
   }
-  currentBranch() {
+
+  currentBranch(): string {
     return this.run(['branch', '--show-current'], true).stdout.trim();
   }
-  head() {
+
+  head(): string {
     return this.run(['rev-parse', 'HEAD']).stdout.trim();
   }
-  isDirty() {
+
+  isDirty(): boolean {
     return Boolean(this.run(['status', '--porcelain'], true).stdout.trim());
   }
-  branchExists(name: string) {
+
+  branchExists(name: string): boolean {
     return this.run(['show-ref', '--verify', '--quiet', `refs/heads/${name}`], true).code === 0;
   }
-  switch(name: string) {
+
+  switch(name: string): void {
     this.run(['switch', name]);
   }
-  createBranch(name: string, base: string) {
+
+  createBranch(name: string, base: string): void {
     this.run(['switch', '-c', name, base]);
   }
-  stash(label: string) {
+
+  stash(label: string): string {
     const before = this.run(['rev-parse', 'refs/stash'], true).stdout.trim();
     this.run(['stash', 'push', '-u', '-m', label]);
     const after = this.run(['rev-parse', 'refs/stash'], true).stdout.trim();
     return after && after !== before ? after : '';
   }
-  findStash(label: string) {
+
+  findStash(label: string): string {
     const out = this.run(['stash', 'list', '--format=%H%x09%gs'], true).stdout;
     for (const line of out.split(/\r?\n/)) {
       if (!line.includes(label)) continue;
@@ -42,18 +58,22 @@ export class GitRepository {
     }
     return '';
   }
-  diffStat() {
+
+  diffStat(): string {
     return this.run(['diff', '--stat', 'HEAD'], true).stdout;
   }
-  statusShort() {
+
+  statusShort(): string {
     return this.run(['status', '--short', '-uall'], true).stdout;
   }
-  diff(paths?: string[]) {
+
+  diff(paths?: string[]): string {
     const args = ['diff', 'HEAD'];
     if (paths?.length) args.push('--', ...paths);
     return this.run(args, true).stdout;
   }
-  reviewDiff(paths?: string[]) {
+
+  reviewDiff(paths?: string[]): string {
     let out = this.diff(paths);
     const selected = paths ? new Set(paths) : null;
     for (const line of this.run(['status', '--porcelain', '-uall'], true).stdout.split(/\r?\n/)) {
@@ -62,14 +82,16 @@ export class GitRepository {
       if (
         selected &&
         ![...selected].some((p) => file === p || file.startsWith(p.replace(/\/$/, '') + '/'))
-      )
+      ) {
         continue;
+      }
       const r = this.run(['diff', '--no-index', '--', '/dev/null', file], true);
       out += `\n${r.stdout || ''}`;
     }
     return out;
   }
-  changedFiles() {
+
+  changedFiles(): string[] {
     const names = new Set<string>();
     for (const line of this.run(['status', '--porcelain', '-uall'], true).stdout.split(/\r?\n/)) {
       if (!line) continue;
@@ -78,7 +100,8 @@ export class GitRepository {
     }
     return [...names];
   }
-  commit(subject: string, bodyLines: string[] = []) {
+
+  commit(subject: string, bodyLines: string[] = []): string {
     this.run(['add', '-A']);
     const args = ['commit', '--allow-empty', '-m', subject];
     for (const line of bodyLines) {

@@ -18,13 +18,33 @@ export interface HarnessPreflightResult {
   details: string[];
 }
 
-export interface PlanDecision {
-  accepted: boolean;
-  feedback?: string;
-  status?: string;
-  carryover?: string;
-  verdict?: PlanReviewVerdict;
-}
+export type PlanDecisionOutcome = 'needs_revision' | 'accepted' | 'accepted_with_notes';
+
+export type PlanDecision =
+  | {
+      outcome: 'needs_revision';
+      accepted: false;
+      feedback: string;
+      verdict?: PlanReviewVerdict;
+      status?: string;
+      carryover?: string;
+    }
+  | {
+      outcome: 'accepted';
+      accepted: true;
+      status: 'APPROVE';
+      carryover?: string;
+      verdict?: PlanReviewVerdict;
+      feedback?: string;
+    }
+  | {
+      outcome: 'accepted_with_notes';
+      accepted: true;
+      status: 'APPROVE_WITH_NOTES';
+      carryover: string;
+      verdict?: PlanReviewVerdict;
+      feedback?: string;
+    };
 
 export interface ExecutorSessionCallbacks {
   onPlan: (plan: string, metadata: any) => Promise<PlanDecision>;

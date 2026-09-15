@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG } from '../core/config.js';
 
-export function frozenStageContext(stageDir: string, maxEach = CONFIG.MAX_CONTEXT_FILE_CHARS) {
+export function frozenStageContext(stageDir: string, maxEach = CONFIG.maxContextFileChars) {
   return ['functional-spec.md', 'technical-spec.md', 'prompt.md']
     .map((f) => {
       const p = path.join(stageDir, f);

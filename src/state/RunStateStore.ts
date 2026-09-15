@@ -1,71 +1,166 @@
+/**
+ * @fileoverview Persistent state store and validator for runs and stages.
+ * Serializes, validates, and deserializes RunState and StageRuntimeState records, managing run directories and run logs.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { LATEST_FILE, RUNS_ROOT } from '../core/paths.js';
-import { ensureDir, readJson, writeJson, writeText, appendText } from '../core/fs.js';
+import { ensureDir, writeJson, writeText, appendText } from '../core/fs.js';
 import { iso } from '../core/time.js';
 import type { RunState, StageRuntimeState } from '../types.js';
+import { RunStateError } from '../errors.js';
 
-function safeRunId(id: string) {
-  if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) throw new Error(`Invalid run id: ${id}`);
+function safeRunId(id: string): string {
+  if (!id || !/^[A-Za-z0-9._-]+$/.test(id)) {
+    throw new RunStateError(`Invalid run id: ${id}`);
+  }
   return id;
+}
+
+const VALID_RUN_STATUSES = new Set<string>([
+  'created',
+  'running',
+  'interrupted',
+  'retryable_error',
+  'external_dependency',
+  'specification_blocked',
+  'autonomous_limit_reached',
+  'failed',
+  'completed',
+]);
+
+const VALID_STAGE_PHASES = new Set<string>([
+  'pending',
+  'plan',
+  'implementation',
+  'quality',
+  'review',
+  'commit',
+  'completed',
+]);
+
+export function validateRunState(data: unknown): RunState {
+  if (typeof data !== 'object' || data === null) {
+    throw new RunStateError('Run state must be a non-null object');
+  }
+  const s = data as Record<string, unknown>;
+  if (typeof s.run_id !== 'string' || !s.run_id) {
+    throw new RunStateError('Run state missing valid run_id');
+  }
+  if (typeof s.status !== 'string' || !VALID_RUN_STATUSES.has(s.status)) {
+    throw new RunStateError(`Run state has invalid status: ${String(s.status)}`);
+  }
+  if (typeof s.branch !== 'string' || !s.branch) {
+    throw new RunStateError('Run state missing valid branch');
+  }
+  if (typeof s.workspace !== 'string' || !s.workspace) {
+    throw new RunStateError('Run state missing valid workspace');
+  }
+  if (!Array.isArray(s.stages)) {
+    throw new RunStateError('Run state stages must be an array');
+  }
+  return s as unknown as RunState;
+}
+
+export function validateStageRuntimeState(data: unknown): StageRuntimeState {
+  if (typeof data !== 'object' || data === null) {
+    throw new RunStateError('Stage runtime state must be a non-null object');
+  }
+  const s = data as Record<string, unknown>;
+  if (typeof s.phase !== 'string' || !VALID_STAGE_PHASES.has(s.phase)) {
+    throw new RunStateError(`Stage runtime state has invalid phase: ${String(s.phase)}`);
+  }
+  return s as unknown as StageRuntimeState;
 }
 
 export class RunStateStore {
   constructor() {
     ensureDir(RUNS_ROOT);
   }
-  runDir(id: string) {
+
+  runDir(id: string): string {
     return path.join(RUNS_ROOT, safeRunId(id));
   }
-  runStatePath(id: string) {
+
+  runStatePath(id: string): string {
     return path.join(this.runDir(id), 'run.json');
   }
-  stageDir(id: string, stage: string) {
-    if (!/^[A-Za-z0-9._-]+$/.test(stage)) throw new Error(`Invalid stage name: ${stage}`);
+
+  stageDir(id: string, stage: string): string {
+    if (!/^[A-Za-z0-9._-]+$/.test(stage)) {
+      throw new RunStateError(`Invalid stage name: ${stage}`);
+    }
     return path.join(this.runDir(id), 'stages', stage);
   }
-  stageStatePath(id: string, stage: string) {
+
+  stageStatePath(id: string, stage: string): string {
     return path.join(this.stageDir(id, stage), 'stage-state.json');
   }
-  latestId() {
+
+  latestId(): string {
     return fs.existsSync(LATEST_FILE) ? fs.readFileSync(LATEST_FILE, 'utf8').trim() : '';
   }
-  save(state: RunState) {
+
+  save(state: RunState): void {
     state.updated_at = iso();
     writeJson(this.runStatePath(state.run_id), state);
     writeText(LATEST_FILE, state.run_id + '\n');
     this.writeRunMarkdown(state);
   }
-  load(id: string) {
-    return readJson<RunState>(this.runStatePath(id));
+
+  load(id: string): RunState {
+    const p = this.runStatePath(id);
+    if (!fs.existsSync(p)) {
+      throw new RunStateError(`Run state file not found: ${p}`);
+    }
+    let raw: unknown;
+    try {
+      raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+    } catch (e: unknown) {
+      throw new RunStateError(`Corrupted JSON in run state file: ${p}`, { cause: e });
+    }
+    return validateRunState(raw);
   }
-  loadLatest() {
+
+  loadLatest(): RunState {
     const id = this.latestId();
-    if (!id) throw new Error('No previous run found.');
+    if (!id) throw new RunStateError('No previous run found.');
     return this.load(id);
   }
+
   loadStage(id: string, stage: string): StageRuntimeState {
     const p = this.stageStatePath(id, stage);
     if (!fs.existsSync(p)) return { version: 1, phase: 'pending' };
     try {
-      return readJson<StageRuntimeState>(p);
+      const raw: unknown = JSON.parse(fs.readFileSync(p, 'utf8'));
+      return validateStageRuntimeState(raw);
     } catch {
       return { version: 1, phase: 'pending' };
     }
   }
-  saveStage(id: string, stage: string, patch: Partial<StageRuntimeState>) {
-    const next = { ...this.loadStage(id, stage), ...patch, updated_at: iso() } as StageRuntimeState;
+
+  saveStage(id: string, stage: string, patch: Partial<StageRuntimeState>): StageRuntimeState {
+    const next: StageRuntimeState = {
+      ...this.loadStage(id, stage),
+      ...patch,
+      updated_at: iso(),
+    };
     writeJson(this.stageStatePath(id, stage), next);
     return next;
   }
-  appendHuman(runId: string, stage: string, file: string, heading: string, body = '') {
-    if (!/^[A-Za-z0-9._-]+$/.test(file)) throw new Error(`Invalid run artifact name: ${file}`);
+
+  appendHuman(runId: string, stage: string, file: string, heading: string, body = ''): void {
+    if (!/^[A-Za-z0-9._-]+$/.test(file)) {
+      throw new RunStateError(`Invalid run artifact name: ${file}`);
+    }
     const p = path.join(this.stageDir(runId, stage), file);
     ensureDir(path.dirname(p));
     if (!fs.existsSync(p)) writeText(p, `# ${file.replace(/\.md$/, '').replace(/_/g, ' ')}\n\n`);
     appendText(p, `## ${heading}\n\n${body}\n\n`);
   }
-  private writeRunMarkdown(state: RunState) {
+
+  private writeRunMarkdown(state: RunState): void {
     const lines = [
       `# AI Universal Coding Harness Run ${state.run_id}`,
       '',

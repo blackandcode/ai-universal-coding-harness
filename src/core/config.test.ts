@@ -8,15 +8,15 @@ import {
   projectTrackedConfigPath,
 } from './config.js';
 
-test('configuration defaults are harness-neutral and safe', () => {
+test('configuration defaults are accessible via core/config.js re-export', () => {
   assert.equal(DEFAULT_CONFIG.executorHarness, 'cursor');
   assert.equal(DEFAULT_CONFIG.reviewerHarness, 'codex');
   assert.equal(DEFAULT_CONFIG.permissionMode, 'auto_safe');
-  assert.equal(DEFAULT_CONFIG.harnesses.cursor.model, 'gemini-3.8-flash');
-  assert.equal(DEFAULT_CONFIG.harnesses.codex.model, 'gpt-6-astra');
+  assert.equal(DEFAULT_CONFIG.harnesses.cursor?.model, 'gemini-3.8-flash');
+  assert.equal(DEFAULT_CONFIG.harnesses.codex?.model, 'gpt-6-astra');
 });
 
-test('config paths include global and project layers', () => {
+test('config paths are accessible via core/config.js re-export', () => {
   assert.ok(path.isAbsolute(globalConfigPath()));
   assert.ok(projectTrackedConfigPath().endsWith('.ai-universal-coding-harness.jsonc'));
   assert.equal(CONFIG_SOURCES.project, projectTrackedConfigPath());

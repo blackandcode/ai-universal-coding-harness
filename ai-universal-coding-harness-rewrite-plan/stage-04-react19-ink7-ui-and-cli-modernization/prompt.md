@@ -30,7 +30,10 @@ Rules:
 - avoid broad `any`;
 - no unnecessary React optimization hooks;
 - do not introduce state-management libraries;
-- comments explain layout invariants and tricky terminal behavior only.
+- avoid line-by-line trivial JSX comments, but provide thorough docblocks for all components, hooks, functions, classes, interfaces, and types;
+- every file added or edited must have a top-of-file docblock describing what the file is about, its UI/CLI role, and rendering responsibilities;
+- if editing an existing file across stages, update the top-of-file docblock so it reflects the changes and added functionality;
+- document internal logic (such as reducer transitions, terminal layout calculations, viewport slicing, ANSI/stream parsing, and keyboard focus routing) with clear docblocks and inline comments where possible.
 
 Finish with:
 

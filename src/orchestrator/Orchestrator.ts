@@ -75,9 +75,9 @@ export class Orchestrator {
         stages.length === 1
           ? stages[0].name.replace(/^stage-/, 's')
           : `${stages[0].name.match(/^stage-(\d+)/)?.[1] || 'xx'}-to-${stages.at(-1)?.name.match(/^stage-(\d+)/)?.[1] || 'xx'}`;
-      const branch = input.branch || `${CONFIG.BRANCH_PREFIX}/${runId}-${suffix}`;
-      const executorId = input.executorHarness || CONFIG.EXECUTOR_HARNESS,
-        reviewerId = input.reviewerHarness || CONFIG.REVIEWER_HARNESS;
+      const branch = input.branch || `${CONFIG.branchPrefix}/${runId}-${suffix}`;
+      const executorId = input.executorHarness || CONFIG.executorHarness,
+        reviewerId = input.reviewerHarness || CONFIG.reviewerHarness;
       const executorInfo = this.registry.executor(executorId, { events: this.events }).info,
         reviewerInfo = this.registry.reviewer(reviewerId, {
           events: this.events,
@@ -106,7 +106,7 @@ export class Orchestrator {
         reviewer_harness: reviewerId,
         executor_label: executorInfo.label,
         reviewer_label: reviewerInfo.label,
-        quality_cmd: input.qualityCmd || CONFIG.QUALITY_CMD,
+        quality_cmd: input.qualityCmd || CONFIG.qualityCommand,
       };
       this.store.save(state);
       return state;
@@ -137,9 +137,9 @@ export class Orchestrator {
   }
   private boundedDiff(paths?: string[]) {
     const d = this.git.reviewDiff(paths);
-    return d.length > CONFIG.MAX_DIFF_CHARS
-      ? d.slice(0, CONFIG.MAX_DIFF_CHARS) +
-          `\n...[diff truncated: total ${d.length} chars exceeds limit ${CONFIG.MAX_DIFF_CHARS}. If you need context on specific truncated files, return verdict NEEDS_CONTEXT with requested_paths]`
+    return d.length > CONFIG.maxDiffChars
+      ? d.slice(0, CONFIG.maxDiffChars) +
+          `\n...[diff truncated: total ${d.length} chars exceeds limit ${CONFIG.maxDiffChars}. If you need context on specific truncated files, return verdict NEEDS_CONTEXT with requested_paths]`
       : d;
   }
 
@@ -159,10 +159,10 @@ export class Orchestrator {
 
   async preflight(stateOrInput: { executor_harness?: string; reviewer_harness?: string }) {
     await this.registry.loadConfigured();
-    const exec = this.registry.executor(stateOrInput.executor_harness || CONFIG.EXECUTOR_HARNESS, {
+    const exec = this.registry.executor(stateOrInput.executor_harness || CONFIG.executorHarness, {
       events: this.events,
     });
-    const rev = this.registry.reviewer(stateOrInput.reviewer_harness || CONFIG.REVIEWER_HARNESS, {
+    const rev = this.registry.reviewer(stateOrInput.reviewer_harness || CONFIG.reviewerHarness, {
       events: this.events,
       runDir: ROOT,
       stageName: '_preflight',
@@ -225,7 +225,7 @@ export class Orchestrator {
       const v = await reviewer.decidePermission({
         request: req.raw,
         signature: engine.signature(req),
-        permission_mode: CONFIG.PERMISSION_MODE,
+        permission_mode: CONFIG.permissionMode,
         command: req.command || '',
         note: 'No permission-call quota exists. Deny only this exact operation if unsafe; the executor must continue with another approach.',
       });
@@ -287,7 +287,7 @@ export class Orchestrator {
       skillsText,
       runLog,
     });
-    const permission = new PermissionEngine(ROOT, CONFIG.PERMISSION_MODE, CONFIG.permissionsFile);
+    const permission = new PermissionEngine(ROOT, CONFIG.permissionMode, CONFIG.permissionsFile);
     const planCoord = new PlanCoordinator({
       runId: state.run_id,
       stage,
@@ -333,7 +333,7 @@ export class Orchestrator {
       if (!approved) {
         await session.setMode('plan');
         let turns = 0;
-        while (!approved && turns < CONFIG.MAX_PLAN_REVIEWS + 4) {
+        while (!approved && turns < CONFIG.maxPlanReviews + 4) {
           turns++;
           const r = await session.prompt(this.planPrompt(stage.name));
           approved = planCoord.plan;
@@ -374,7 +374,7 @@ export class Orchestrator {
           });
         } catch {}
       }
-      for (let attempt = 1; attempt <= CONFIG.MAX_EXECUTION_ATTEMPTS; attempt++) {
+      for (let attempt = 1; attempt <= CONFIG.maxExecutionAttempts; attempt++) {
         this.branch.assertActive(state);
         this.events.emit('stage.attempt', { stage: stage.name, attempt });
         let ev: any = null;
@@ -544,7 +544,7 @@ export class Orchestrator {
       }
       if (!approvedFinal)
         throw new Error(
-          `Stage failed to reach approved green implementation after ${CONFIG.MAX_EXECUTION_ATTEMPTS} execution attempts.`,
+          `Stage failed to reach approved green implementation after ${CONFIG.maxExecutionAttempts} execution attempts.`,
         );
       this.branch.assertActive(state);
       state.current_phase = 'commit';

@@ -106,3 +106,33 @@ Review non-Ink CLI output for:
 - machine-safe `--json` option only if already justified or added with tests.
 
 Do not turn this stage into a CLI redesign.
+
+## Documentation and docblock standards
+
+### File-level header documentation
+
+Every newly created UI component, hook, reducer, selector, or utility file—and any existing file edited during this stage—must include a top-of-file JSDoc/TSDoc header:
+
+```tsx
+/**
+ * @fileoverview <Description of UI component/module purpose, rendering bounds, and role in the presentation layer>
+ */
+```
+
+When an existing file is edited to add or change capabilities, the top-of-file docblock must be updated to reflect the new functionality.
+
+### Docblock requirements for UI constructs
+
+- **Components**: Document component purpose, layout role, expected behavior under different terminal widths/heights, and prop contracts.
+- **Props Interfaces**: Document each prop, whether it is required or optional, and semantic meaning.
+- **Reducers & Actions**: Document state transition semantics, invariant preservation, and action payload shapes.
+- **Selectors & Utilities**: Document calculation logic, parameter expectations, and return values.
+
+### Internal logic documentation
+
+Document non-obvious internal logic with docblocks and explanatory comments:
+
+- terminal height containment and overflow clamping;
+- JSONL stream tailing, buffering, and reconnection;
+- keyboard navigation and focus cycle logic;
+- viewport calculation for logs and focus preview panels.

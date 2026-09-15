@@ -100,11 +100,12 @@ Unit/integration test:
 - `Esc`
 - focus scrolling keys
 
-### Comments
+### Documentation and docblock standards
 
-Document terminal-layout invariants and event/reducer design.
-
-Do not comment normal JSX line by line.
+- **Top-of-file descriptions**: Every file added or modified (TSX components, reducer, selectors, event tailing, CLI presentation) must begin with a descriptive top-level docblock explaining the file's purpose, role in the UI architecture, and rendering responsibilities.
+- **Cross-stage header maintenance**: When editing an existing file to add or modify functionality, update the top-level docblock description to reflect the additions and current module scope.
+- **Docblock coverage for code constructs**: All React components, custom hooks, helper functions, classes, interfaces (especially component prop interfaces and action/state types), and type definitions must have comprehensive JSDoc/TSDoc docblocks.
+- **Internal logic documentation**: Provide docblocks and explanatory comments for internal logic where possible (reducer transitions, event-stream tailing and partial line handling, viewport slicing, focus tracking, terminal dimension bounds, and keyboard shortcuts). Avoid trivial line-by-line JSX narration.
 
 ## Acceptance criteria
 
@@ -113,4 +114,6 @@ Do not comment normal JSX line by line.
 - `ink-testing-library` verifies real render output;
 - reducers/selectors are independently unit-tested;
 - dashboard remains within terminal height contract;
-- no orchestration decisions occur in UI modules.
+- no orchestration decisions occur in UI modules;
+- all added or edited files contain descriptive top-of-file docblocks, with existing file headers updated to reflect new functionality;
+- all components, functions, classes, interfaces, types, and complex internal logic have thorough docblock and explanatory documentation.

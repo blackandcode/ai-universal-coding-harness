@@ -1,3 +1,19 @@
+/**
+ * Core domain types and contracts for AI Universal Coding Harness.
+ */
+
+// Semantic branded identifier types
+declare const RunIdBrand: unique symbol;
+export type RunId = string & { readonly [RunIdBrand]?: typeof RunIdBrand };
+
+declare const StageNameBrand: unique symbol;
+export type StageName = string & { readonly [StageNameBrand]?: typeof StageNameBrand };
+
+export const asRunId = (id: string): RunId => id as RunId;
+export const asStageName = (name: string): StageName => name as StageName;
+
+export type HarnessId = 'cursor' | 'codex' | (string & {});
+
 export type RunStatus =
   | 'created'
   | 'running'
@@ -10,6 +26,7 @@ export type RunStatus =
   | 'completed';
 
 export type StageStatus = 'pending' | 'running' | 'completed' | 'failed';
+
 export type StagePhase =
   | 'pending'
   | 'plan'
@@ -18,7 +35,10 @@ export type StagePhase =
   | 'review'
   | 'commit'
   | 'completed';
+
 export type PermissionMode = 'auto_safe' | 'allow_all' | 'allowlist' | 'ask_reviewer';
+
+export type QualityEvidenceStatus = 'PASS' | 'FAIL';
 
 export interface StageManifest {
   name: string;
@@ -84,10 +104,19 @@ export interface StageRuntimeState {
   updated_at?: string;
 }
 
-export interface UiEvent {
-  ts: string;
-  type: string;
-  payload: Record<string, any>;
+export interface FocusedTestResult {
+  command: string;
+  exit_code: number;
+  summary?: string;
+}
+
+export interface ObservedQuality {
+  command?: string;
+  exit_code?: number | null;
+  timestamp?: string;
+  duration_ms?: number;
+  output?: string;
+  [key: string]: unknown;
 }
 
 export interface CommandObservation {
@@ -119,15 +148,15 @@ export interface GitDiffCheckResult {
 export interface ExecutionEvidence {
   stage: string;
   attempt: number;
-  status: 'PASS' | 'FAIL';
+  status: QualityEvidenceStatus;
   quality_command: string;
   quality_exit_code: number;
   git_diff_check_exit_code: number;
-  focused_tests: Array<{ command: string; exit_code: number; summary?: string }>;
+  focused_tests: FocusedTestResult[];
   quality_summary: string;
   changed_files: string[];
   unresolved: string[];
-  observed_quality?: any;
+  observed_quality?: ObservedQuality | null;
   patch_fingerprint?: string;
   quality_epoch_id?: string;
 }
@@ -151,10 +180,17 @@ export interface QuestionVerdict {
   rationale?: string;
 }
 
+export interface FinalVerdictFinding {
+  severity?: string;
+  area?: string;
+  finding?: string;
+  required_fix?: string;
+}
+
 export interface FinalVerdict {
   verdict: 'APPROVE' | 'REWORK' | 'NEEDS_CONTEXT' | 'BLOCKED';
   summary: string;
-  findings?: string[];
+  findings?: Array<FinalVerdictFinding | string>;
   rework_instructions?: string;
   requested_paths?: string[];
   required_follow_up_tests?: string[];
@@ -168,4 +204,59 @@ export interface HarnessContext {
   stageDir: string;
   frozenStageDir: string;
   qualityCommand: string;
+}
+
+// UI Event Definitions
+export interface UiEventPayloadMap {
+  'run.started': { run_id: string; branch: string; workspace?: string };
+  'run.completed': { branch: string; workspace: string };
+  'run.blocked': { status: string; reason: string; branch?: string };
+  'stage.started': { stage: string; run_id?: string; selector?: string };
+  'stage.attempt': { stage: string; attempt: number };
+  'stage.committed': { stage: string; sha: string };
+  'stage.completed': { stage: string };
+  'stage.blocked': { stage: string; reason: string };
+  'commit.started': { stage: string };
+  'executor.mode': { mode: string };
+  'executor.todos': { todos: unknown[] };
+  'executor.task': { task: unknown };
+  'executor.tool': { id?: string; toolCallId?: string; [key: string]: unknown };
+  'executor.focus.delta': { text: string; focus_file?: string };
+  'executor.message': { text: string; stream?: boolean };
+  'executor.plan.request': { name?: string; overview?: string };
+  'executor.question': { prompt?: string; [key: string]: unknown };
+  'executor.permission': { command?: string; [key: string]: unknown };
+  'reviewer.plan': { verdict?: string; summary?: string; [key: string]: unknown };
+  'reviewer.question': { answer?: string; [key: string]: unknown };
+  'reviewer.permission': { verdict?: string; summary?: string; [key: string]: unknown };
+  'reviewer.tokens': { [key: string]: unknown };
+  'quality.result': {
+    status?: string;
+    summary?: string;
+    quality_summary?: string;
+    [key: string]: unknown;
+  };
+  'review.started': { stage: string; attempt: number };
+  'review.result': { verdict?: string; summary?: string; [key: string]: unknown };
+  log: { level?: 'info' | 'warn' | 'error' | string; message?: string; [key: string]: unknown };
+}
+
+export type KnownUiEventType = keyof UiEventPayloadMap;
+
+export interface TypedUiEvent<K extends KnownUiEventType = KnownUiEventType> {
+  ts: string;
+  type: K;
+  payload: UiEventPayloadMap[K];
+}
+
+export interface GenericUiEvent {
+  ts: string;
+  type: string;
+  payload: Record<string, any>;
+}
+
+export interface UiEvent<TPayload = Record<string, any>> {
+  ts: string;
+  type: string;
+  payload: TPayload;
 }

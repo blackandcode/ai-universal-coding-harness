@@ -2,6 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import type { ReviewerHarness, HarnessInfo, HarnessPreflightResult } from '../types.js';
+import type {
+  PlanReviewVerdict,
+  QuestionVerdict,
+  PermissionVerdict,
+  FinalVerdict,
+} from '../../types.js';
 import { CONFIG, harnessNumber, harnessString, PROJECT_ROOT } from '../../core/config.js';
 import { SCHEMA_DIR } from '../../core/paths.js';
 import { runProcess, execSyncText, commandExists } from '../../core/process.js';
@@ -52,7 +58,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
       if (!h.stdout.includes(f)) return { ok: false, details: [...details, `missing ${f}`] };
     return { ok: true, details };
   }
-  private async decide(kind: string, payload: any, schemaFile: string, extra = '') {
+  private async decide<T>(kind: string, payload: any, schemaFile: string, extra = ''): Promise<T> {
     this.seq++;
     const decisionDir = path.join(
       this.ctx.runDir,
@@ -104,7 +110,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
       stdinText: prompt,
       timeoutMs: this.timeoutMinutes * 60_000,
       onStdoutLine: (line: string) => {
-        appendBounded(eventsFile, line, CONFIG.RUN_LOG_MAX_BYTES);
+        appendBounded(eventsFile, line, CONFIG.runLogMaxBytes);
         try {
           const e = JSON.parse(line);
           const typ = e?.item?.type || e?.item_type;
@@ -122,40 +128,40 @@ export class CodexReviewerHarness implements ReviewerHarness {
         } catch {}
       },
       onStderrLine: (line: string) =>
-        appendBounded(this.ctx.runLog, `[reviewer-stderr] ${line}`, CONFIG.RUN_LOG_MAX_BYTES),
+        appendBounded(this.ctx.runLog, `[reviewer-stderr] ${line}`, CONFIG.runLogMaxBytes),
     });
     if (r.code !== 0) throw new Error(`Reviewer ${kind} failed (exit ${r.code}).`);
     if (violation) throw new Error(`Reviewer ${kind} violated reviewer-only role boundary.`);
     if (!fs.existsSync(resultFile))
       throw new Error(`Reviewer ${kind} produced no structured result.`);
-    const out = readJson(resultFile);
+    const out = readJson<T>(resultFile);
     writeJson(path.join(decisionDir, 'result.json'), out);
     return out;
   }
-  reviewPlan(input: any, opts: any = {}) {
+  reviewPlan(input: any, opts: any = {}): Promise<PlanReviewVerdict> {
     const extra = opts.finalConsolidation
       ? `\nFINAL CONSOLIDATION REVIEW:\nThis is the final plan-review pass. Do not block or request another review cycle. Return APPROVE and put every remaining concern into feedback_for_cursor/missing_items so execution can carry it forward. Even if you would normally request REPLAN, the orchestrator will proceed after this response.`
       : `\nReview the ENTIRE current plan against ALL original frozen inputs. Return every material missing item together in this single response; do not drip-feed findings one at a time.`;
-    return this.decide('plan-review', input, 'plan-verdict.schema.json', extra);
+    return this.decide<PlanReviewVerdict>('plan-review', input, 'plan-verdict.schema.json', extra);
   }
-  answerQuestions(input: any) {
-    return this.decide(
+  answerQuestions(input: any): Promise<QuestionVerdict> {
+    return this.decide<QuestionVerdict>(
       'question',
       input,
       'question-verdict.schema.json',
       'Answer the blocking Cursor question using only frozen requirements and supplied evidence.',
     );
   }
-  decidePermission(input: any) {
-    return this.decide(
+  decidePermission(input: any): Promise<PermissionVerdict> {
+    return this.decide<PermissionVerdict>(
       'permission',
       input,
       'permission-verdict.schema.json',
       'Decide only whether this exact operation should be allowed. Denial applies to this operation only and must not imply stage failure.',
     );
   }
-  reviewImplementation(input: any) {
-    return this.decide(
+  reviewImplementation(input: any): Promise<FinalVerdict> {
+    return this.decide<FinalVerdict>(
       'final-review',
       input,
       'final-verdict.schema.json',

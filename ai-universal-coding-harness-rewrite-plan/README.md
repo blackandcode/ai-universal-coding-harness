@@ -105,17 +105,16 @@ Every stage must:
 8. record material architecture choices in `DECISIONS.md`;
 9. avoid mixing unrelated changes from later stages.
 
-## Commenting policy
+## Commenting and documentation policy
 
 "Fully commented" means **fully understandable**, not one comment per line.
 
-Required:
+Required across all stages:
 
-- JSDoc for exported/public classes, interfaces, functions, extension points,
-  and non-obvious configuration contracts.
-- Inline comments for security boundaries, recovery rules, state transitions,
-  protocol quirks, and algorithms whose intent is not clear from the code.
-- Comments explaining **why**, not restating **what** obvious syntax does.
+- **Top-of-file descriptions**: Every file added or modified must include a descriptive top-level docblock explaining what the file is about and its architectural purpose. When editing an existing file and adding or modifying functionality, update the top-of-file docblock so it reflects the changes and new capabilities.
+- **Docblocks for all code constructs**: Comprehensive docblocks (JSDoc/TSDoc) for all functions, methods, classes, interfaces, and types (both internal and exported).
+- **Internal logic documentation**: Clear docblocks and explanatory comments for internal logic, state machines, protocol accumulation, and complex algorithms where possible.
+- Inline comments explaining **why**, not restating **what** obvious syntax does.
 - No stale comments, commented-out code, or decorative prose.
 
 ## Testing strategy

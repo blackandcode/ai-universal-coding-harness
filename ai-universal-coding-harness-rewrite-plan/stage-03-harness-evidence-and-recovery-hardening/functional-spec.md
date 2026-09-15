@@ -116,6 +116,13 @@ resume at QUALITY
 
 based on provable evidence.
 
+### Documentation and docblock standards
+
+- **Top-of-file descriptions**: Every file added or modified in this stage must start with a descriptive top-level docblock explaining what the file is about, its architectural role, and core responsibilities.
+- **Cross-stage header maintenance**: When editing an existing file (from earlier stages or the existing codebase) to add functionality or modify behavior, update the top-level file description docblock so it accurately reflects the additions and current module scope.
+- **Thorough docblock coverage**: All functions, methods, classes, interfaces, and types must have clear, high-quality JSDoc/TSDoc docblocks detailing their intent, parameters, return values, errors thrown, and contract invariants.
+- **Internal logic documentation**: Provide docblocks and explanatory comments for non-trivial internal logic where possible, including ACP payload accumulation, exit code extraction, quality epoch invalidation, permission evaluation, and recovery resume-point selection.
+
 ## Acceptance criteria
 
 - ACP parsing is independently unit-testable without spawning Cursor.
@@ -124,3 +131,5 @@ based on provable evidence.
 - missing telemetry returns to executor quality instead of silently passing.
 - recovery has dry-run tests.
 - no paid harness calls in normal test suite.
+- all added or edited files contain descriptive top-of-file docblocks, with existing file headers updated to reflect new functionality.
+- all functions, classes, interfaces, types, and internal logic have thorough docblock and explanatory documentation.

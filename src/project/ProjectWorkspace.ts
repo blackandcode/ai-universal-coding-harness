@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Workspace manager for target project directories.
+ * Manages the local .ai-orchestrator runtime directory, configuration templates, run locks, run cleanups, and git status.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -14,48 +19,74 @@ import {
 } from '../core/paths.js';
 import { removeTree } from '../core/fs.js';
 import { projectPlaceholderConfigTemplate, projectPermissionsTemplate } from '../core/config.js';
+import { LockConflictError } from '../errors.js';
 
-function ensureDir(p: string) {
+function ensureDir(p: string): void {
   fs.mkdirSync(p, { recursive: true });
 }
+
 function git(args: string[]) {
   return spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
+export interface WorkspaceInitResult {
+  root: string;
+  config: string;
+  permissions: string;
+  runs: string;
+  stageInput: string;
+  stageRuntime: string;
+}
+
+export interface RunSummary {
+  id: string;
+  status?: string;
+  updated_at?: string;
+  branch?: string;
+}
+
 export class ProjectWorkspace {
   readonly root = ROOT;
-  isGitRepository() {
+
+  isGitRepository(): boolean {
     return git(['rev-parse', '--is-inside-work-tree']).status === 0;
   }
-  isInitialized() {
+
+  isInitialized(): boolean {
     return fs.existsSync(LOCAL_CONFIG_FILE) && fs.existsSync(STATE_ROOT);
   }
-  requireInitialized() {
-    if (!this.isInitialized())
+
+  requireInitialized(): void {
+    if (!this.isInitialized()) {
       throw new Error(
         `Project is not initialized for AI Universal Coding Harness. Run: ai-harness init`,
       );
+    }
   }
 
-  init(force = false) {
-    if (!this.isGitRepository())
+  init(force = false): WorkspaceInitResult {
+    if (!this.isGitRepository()) {
       throw new Error(
         `AI Universal Coding Harness requires a Git repository. Initialize Git first, then run ai-harness init.`,
       );
+    }
     ensureDir(STATE_ROOT);
     ensureDir(RUNS_ROOT);
     ensureDir(STAGE_INPUT_ROOT);
     ensureDir(STAGE_RUNTIME_ROOT);
-    if (force || !fs.existsSync(LOCAL_CONFIG_FILE))
+    if (force || !fs.existsSync(LOCAL_CONFIG_FILE)) {
       fs.writeFileSync(LOCAL_CONFIG_FILE, projectPlaceholderConfigTemplate());
-    if (force || !fs.existsSync(LOCAL_PERMISSIONS_FILE))
+    }
+    if (force || !fs.existsSync(LOCAL_PERMISSIONS_FILE)) {
       fs.writeFileSync(LOCAL_PERMISSIONS_FILE, projectPermissionsTemplate());
+    }
     const readme = path.join(STATE_ROOT, 'README.md');
-    if (force || !fs.existsSync(readme))
+    if (force || !fs.existsSync(readme)) {
       fs.writeFileSync(
         readme,
         `# .ai-orchestrator\n\nLocal runtime workspace for AI Universal Coding Harness.\n\n- \`config.jsonc\` — local project overrides\n- \`permissions.jsonc\` — local permission overrides\n- \`runs/\` — machine + human run history\n- \`stage-input/\` — frozen selected stage specifications for the active run\n- \`stage-runtime/\` — executor evidence/runtime files\n\nThis directory is excluded locally through \`.git/info/exclude\` and should not be committed.\n`,
       );
+    }
     this.ensureGitExclude();
     return {
       root: STATE_ROOT,
@@ -67,7 +98,7 @@ export class ProjectWorkspace {
     };
   }
 
-  ensureGitExclude() {
+  ensureGitExclude(): void {
     const gitDirRes = git(['rev-parse', '--git-dir']);
     if (gitDirRes.status !== 0) return;
     const raw = String(gitDirRes.stdout).trim();
@@ -84,17 +115,21 @@ export class ProjectWorkspace {
     }
   }
 
-  listRuns() {
-    if (!fs.existsSync(RUNS_ROOT))
-      return [] as Array<{ id: string; status?: string; updated_at?: string; branch?: string }>;
+  listRuns(): RunSummary[] {
+    if (!fs.existsSync(RUNS_ROOT)) return [];
     return fs
       .readdirSync(RUNS_ROOT, { withFileTypes: true })
       .filter((x) => x.isDirectory())
       .map((x) => {
         const file = path.join(RUNS_ROOT, x.name, 'run.json');
         try {
-          const j = JSON.parse(fs.readFileSync(file, 'utf8'));
-          return { id: x.name, status: j.status, updated_at: j.updated_at, branch: j.branch };
+          const j = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+          return {
+            id: x.name,
+            status: typeof j.status === 'string' ? j.status : undefined,
+            updated_at: typeof j.updated_at === 'string' ? j.updated_at : undefined,
+            branch: typeof j.branch === 'string' ? j.branch : undefined,
+          };
         } catch {
           return { id: x.name };
         }
@@ -102,27 +137,36 @@ export class ProjectWorkspace {
       .sort((a, b) => b.id.localeCompare(a.id));
   }
 
-  assertNoActiveRun() {
+  assertNoActiveRun(): void {
     if (!fs.existsSync(LOCK_FILE)) return;
     try {
-      const lock = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
+      const lock = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8')) as Record<string, unknown>;
       const pid = Number(lock.pid);
       if (pid > 0) {
         try {
           process.kill(pid, 0);
-          throw new Error(
-            `Another orchestrator process is active (PID ${pid}, run ${lock.run_id || 'unknown'}).`,
+          throw new LockConflictError(
+            `Another orchestrator process is active (PID ${pid}, run ${String(lock.run_id || 'unknown')}).`,
           );
-        } catch (e: any) {
-          if (e?.code !== 'ESRCH') throw e;
+        } catch (e: unknown) {
+          if (e instanceof LockConflictError) throw e;
+          if (
+            typeof e === 'object' &&
+            e !== null &&
+            'code' in e &&
+            (e as { code: string }).code !== 'ESRCH'
+          ) {
+            throw e;
+          }
         }
       }
-    } catch (e: any) {
-      if (/Another orchestrator/.test(String(e?.message))) throw e;
+    } catch (e: unknown) {
+      if (e instanceof LockConflictError) throw e;
+      if (e instanceof Error && /Another orchestrator/.test(e.message)) throw e;
     }
   }
 
-  resetRuns(force = false) {
+  resetRuns(force = false): { deleted: string; preserved: string[] } {
     this.requireInitialized();
     if (!force) throw new Error('Refusing to delete run history without --force.');
     this.assertNoActiveRun();
@@ -146,7 +190,7 @@ export class ProjectWorkspace {
     return { deleted: 'all run history', preserved: [LOCAL_CONFIG_FILE, LOCAL_PERMISSIONS_FILE] };
   }
 
-  deleteRun(id: string, force = false) {
+  deleteRun(id: string, force = false): string {
     this.requireInitialized();
     if (!id) throw new Error('--run <run-id> is required.');
     if (!force) throw new Error('Refusing to delete a run without --force.');
@@ -157,8 +201,11 @@ export class ProjectWorkspace {
     removeTree(dir);
     if (fs.existsSync(LATEST_FILE) && fs.readFileSync(LATEST_FILE, 'utf8').trim() === id) {
       const remaining = this.listRuns();
-      if (remaining.length) fs.writeFileSync(LATEST_FILE, remaining[0].id + '\n');
-      else fs.rmSync(LATEST_FILE, { force: true });
+      if (remaining.length > 0 && remaining[0]) {
+        fs.writeFileSync(LATEST_FILE, remaining[0].id + '\n');
+      } else {
+        fs.rmSync(LATEST_FILE, { force: true });
+      }
     }
     return id;
   }

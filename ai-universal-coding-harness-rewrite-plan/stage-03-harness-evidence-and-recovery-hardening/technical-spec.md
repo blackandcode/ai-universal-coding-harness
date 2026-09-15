@@ -147,3 +147,35 @@ The orchestrator coordinates; it should not parse ACP or reviewer wire data.
 - dangerous Git command;
 - reviewer denial does not end stage;
 - many permission requests do not trigger a stage quota.
+
+## Documentation and docblock standards
+
+### File-level header documentation
+
+Every file created or modified in this stage must feature a top-of-file JSDoc/TSDoc header:
+
+```ts
+/**
+ * @fileoverview <Description of module purpose, responsibilities, and architectural boundaries>
+ */
+```
+
+When modifying an existing file (such as `Orchestrator.ts`, `RecoveryManager.ts`, or harness registry files) to add or alter functionality, the top-of-file docblock must be updated to reflect the new capabilities, exported interfaces, and architectural shifts.
+
+### Docblock requirements for code constructs
+
+All code constructs introduced or modified must have comprehensive docblocks:
+
+- **Functions & Methods**: Document purpose, all arguments (`@param`), return types (`@returns`), potential errors (`@throws`), and preconditions/side effects.
+- **Classes**: Document class responsibility, lifecycle, statefulness, and relationship to the orchestration engine.
+- **Interfaces & Types**: Document semantic meaning of every field, discriminated union tags, and boundary validation guarantees.
+
+### Internal logic documentation
+
+Provide docblocks and clarifying comments for internal logic wherever complexity exists:
+
+- ACP state accumulation and multi-chunk streaming state transitions;
+- exit code resolution rules across disparate telemetry variants;
+- quality epoch invalidation and patch fingerprint corroboration logic;
+- recovery path resolution (review vs quality resume decisions);
+- permission classifier heuristics and deny overrides.

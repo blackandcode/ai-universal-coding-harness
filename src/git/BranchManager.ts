@@ -1,13 +1,20 @@
+/**
+ * @fileoverview Branch lifecycle manager for AI Universal Coding Harness runs.
+ * Coordinates AI branch creation, pre-run stash preservation, active branch assertions, and state synchronization.
+ */
+
 import { GitRepository } from './GitRepository.js';
 import type { RunState } from '../types.js';
 import { iso } from '../core/time.js';
+import { GitLifecycleError } from '../errors.js';
 
 export class BranchManager {
   constructor(
     private git: GitRepository,
     private save: (state: RunState) => void,
   ) {}
-  reconcile(state: RunState) {
+
+  reconcile(state: RunState): void {
     const exists = this.git.branchExists(state.branch);
     const current = this.git.currentBranch();
     if (exists && !state.branch_created) {
@@ -16,8 +23,9 @@ export class BranchManager {
     }
     if (!state.pre_run_stash) {
       const found = this.git.findStash(`ai-orchestrator-pre-run-${state.run_id}`);
-      if (found)
+      if (found) {
         state.pre_run_stash = { label: `ai-orchestrator-pre-run-${state.run_id}`, commit: found };
+      }
     }
     if (state.branch_created && current !== state.branch) {
       if (this.git.isDirty()) {
@@ -29,7 +37,8 @@ export class BranchManager {
     }
     this.save(state);
   }
-  ensureCreated(state: RunState) {
+
+  ensureCreated(state: RunState): void {
     this.reconcile(state);
     if (state.branch_created) return;
     if (this.git.isDirty()) {
@@ -43,13 +52,15 @@ export class BranchManager {
     state.branch_created_at = iso();
     this.save(state);
   }
-  assertActive(state: RunState) {
+
+  assertActive(state: RunState): void {
     const current = this.git.currentBranch();
     if (current === state.branch) return;
-    if (this.git.isDirty())
-      throw new Error(
+    if (this.git.isDirty()) {
+      throw new GitLifecycleError(
         `Repository left AI branch ${state.branch} while working tree is dirty (currently ${current || 'detached'}).`,
       );
+    }
     this.git.switch(state.branch);
   }
 }

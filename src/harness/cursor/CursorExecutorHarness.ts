@@ -168,11 +168,7 @@ export class CursorAcpSession implements ExecutorSession {
         });
       }
     } catch (e: any) {
-      appendBounded(
-        this.o.runLog,
-        `[executor replay failed] ${e.message}`,
-        CONFIG.RUN_LOG_MAX_BYTES,
-      );
+      appendBounded(this.o.runLog, `[executor replay failed] ${e.message}`, CONFIG.runLogMaxBytes);
     }
   }
 
@@ -214,7 +210,7 @@ export class CursorAcpSession implements ExecutorSession {
     this.rl.on('line', (l: string) => this.handleLine(l));
     this.er = readline.createInterface({ input: this.child.stderr });
     this.er.on('line', (l: string) => {
-      appendBounded(this.o.runLog, `[executor-stderr] ${l}`, CONFIG.RUN_LOG_MAX_BYTES);
+      appendBounded(this.o.runLog, `[executor-stderr] ${l}`, CONFIG.runLogMaxBytes);
       this.o.events.emit('log', { level: 'warn', message: `Executor: ${l}` });
     });
     this.child.on('exit', (code: number) => {
@@ -257,7 +253,7 @@ export class CursorAcpSession implements ExecutorSession {
         appendBounded(
           this.o.runLog,
           `[executor session/load failed] ${e.message}`,
-          CONFIG.RUN_LOG_MAX_BYTES,
+          CONFIG.runLogMaxBytes,
         );
       }
     }
@@ -401,7 +397,7 @@ export class CursorAcpSession implements ExecutorSession {
   }
   private appendFocus(text: string) {
     if (!text) return;
-    rotateFile(this.o.focusFile, CONFIG.FOCUS_LOG_MAX_BYTES);
+    rotateFile(this.o.focusFile, CONFIG.focusLogMaxBytes);
     fs.appendFileSync(this.o.focusFile, text);
     this.o.events.emit('executor.focus.delta', { text, focus_file: this.o.focusFile });
   }

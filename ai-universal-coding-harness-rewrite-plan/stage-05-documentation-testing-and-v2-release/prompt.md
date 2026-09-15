@@ -22,16 +22,23 @@ Tasks:
 3. add package-consumer tests;
 4. establish native Node coverage gates;
 5. update all docs and Mermaid diagrams;
-6. review all exported code for JSDoc;
-7. review non-obvious code for useful inline comments;
-8. remove stale comments and migration artifacts;
-9. update agent rules/skills;
-10. set version `2.0.0`;
-11. update changelog;
-12. validate CI and Trusted Publishing workflows;
-13. run full release verification.
+6. verify and enforce top-of-file docblock descriptions on every file in the codebase;
+7. update top-level docblocks for any files edited or expanded across stages to reflect added functionality;
+8. review all functions, classes, interfaces, and types for comprehensive JSDoc/TSDoc docblocks;
+9. document complex internal logic, algorithms, and non-obvious invariants across all modules with clear docblocks and inline comments;
+10. remove stale comments and migration artifacts;
+11. update agent rules/skills;
+12. set version `2.0.0`;
+13. update changelog;
+14. validate CI and Trusted Publishing workflows;
+15. run full release verification.
 
-Do not change architecture merely to satisfy coverage.
+Rules:
+
+- every file added or edited must have a top-of-file docblock describing its purpose, scope, and architectural responsibility;
+- if editing an existing file and adding functionality, update the top-level docblock so it reflects the new functionality;
+- all functions, classes, interfaces, and internal logic must have thorough docblock documentation;
+- do not change architecture merely to satisfy coverage.
 
 Final required checks:
 

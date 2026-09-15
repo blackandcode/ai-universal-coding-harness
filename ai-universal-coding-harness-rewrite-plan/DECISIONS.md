@@ -185,3 +185,147 @@ Add `Stage 06: Reviewer Routing, Fallback and Orchestrator Resilience` to the v2
 ### Consequences
 
 Orchestrator runs are resilient to external reviewer API outages and token limitations. Large refactors can be fully reviewed without diff truncation, and routine permission approvals incur minimal cost and delay.
+
+---
+
+## 2026-09-15 — Discriminated Plan Coordination and Advisory Budget Semantics
+
+### Context
+
+In earlier iterations, plan coordination decisions and reviewer verdicts lacked precise discrimination between acceptable states, revisions, and budget exhaustion. Furthermore, reviewer feedback could stall execution if budgets were treated as blockers rather than cost controls, violating the harness core principle: _Plan-review limits are cost controls, not blockers; final consolidation proceeds with carry-over findings._
+
+### Decision
+
+1. Modeled plan decisions as an explicit discriminated union in `src/harness/types.ts`:
+   - `accepted`: Clean approval (`status: 'APPROVE'`).
+   - `accepted_with_notes`: Approval with actionable carryover notes (`status: 'APPROVE_WITH_NOTES'`).
+   - `needs_revision`: Rejection with required adjustments (`accepted: false`, `feedback: string`).
+2. Implemented duplicate hash tracking and convergence caching in `PlanCoordinator`. If the executor resubmits an identical plan without addressing feedback, the coordinator converges gracefully.
+3. Enforced advisory review budget semantics: when review limits (`maxPlanReviews`) are exhausted, `PlanCoordinator` performs final consolidation with `finalPlanReview` and accepts the plan with carryover notes (`accepted_with_notes`), ensuring the run moves to execution without deadlock.
+
+### Alternatives considered
+
+- Rejecting runs upon budget exhaustion: Rejected because AI coding models can get trapped in review nit loops; the autonomous harness must make forward progress while preserving evidence of reviewer concerns.
+- Untyped string statuses: Rejected due to lack of compile-time exhaustiveness checking.
+
+### Consequences
+
+Plan reviews are deterministic, fully type-safe, and resilient against infinite review loops, while strictly adhering to non-blocking budget invariants.
+
+---
+
+## 2026-09-15 — Modular Configuration with Authoritative camelCase and Legacy Proxy Adapter
+
+### Context
+
+The previous configuration implementation was a monolithic file (`src/core/config.ts`) that coupled schema types, default values, filesystem paths, environment variable mapping, validation, JSONC loading, and string formatting. Configuration keys were inconsistently uppercase or camelCase, making type safety and autocomplete fragile.
+
+### Decision
+
+1. Decomposed configuration into `src/config/`:
+   - `types.ts`: Authoritative `OrchestratorConfig` with camelCase property names, `HarnessConfigMap`, and `ConfigSources`.
+   - `defaults.ts`: `DEFAULT_CONFIG` constant.
+   - `paths.ts`: Cross-platform global, project, and local configuration paths.
+   - `env.ts`: Mapping for `AI_HARNESS_*` and legacy `AI_STAGE_*` environment variables.
+   - `validation.ts`: Runtime validation of untrusted inputs and numeric clamping.
+   - `loader.ts`: JSONC parser, deep merge, and layered configuration loading.
+   - `templates.ts`: Default configuration and permissions JSONC templates.
+   - `compat.ts`: Backward-compatibility Proxy adapter mapping legacy uppercase properties (e.g., `MAX_DIFF_CHARS`) to camelCase properties.
+2. Maintained `src/core/config.ts` as a re-export facade to preserve all existing import paths without breaking consumers.
+
+### Alternatives considered
+
+- Breaking backward compatibility immediately by removing uppercase configuration properties: Rejected because external consumers or existing scripts may rely on uppercase properties.
+- Keeping configuration monolithic: Rejected because it impeded modular testing and strict typing.
+
+### Consequences
+
+Configuration is clean, modular, and strongly typed with camelCase as authoritative. Legacy uppercase access is fully supported via zero-overhead proxies.
+
+---
+
+## 2026-09-15 — Runtime State Validation and Domain-Specific Error Hierarchy
+
+### Context
+
+Unchecked JSON parsing at boundaries (`RunStateStore`, `RunLock`, `ProjectWorkspace`, `StageSource`) used loose `any` casts, making the system susceptible to runtime crashes on corrupted or partially written state files. Error handling also relied on generic `Error` instances, preventing callers from distinguishing between operational failures (e.g., lock conflicts) and programming bugs.
+
+### Decision
+
+1. Introduced domain error hierarchy in `src/errors.ts` subclassing `HarnessError`:
+   - `ConfigError`: Configuration file or environment variable errors.
+   - `StageSourceError`: Invalid stage archives, missing required markdown files, or bad selectors.
+   - `GitLifecycleError`: Branch creation, checkout, stash, or commit failures.
+   - `LockConflictError`: Active run lock collision or concurrent execution prevention.
+   - `RunStateError`: Corrupted JSON, missing required fields, or invalid status/phase transitions.
+   - `ProcessExecutionError`: Subprocess crashes, non-zero exits, signals, or timeouts.
+     All errors preserve the underlying cause via standard `{ cause }` options.
+2. Implemented strict runtime validation functions (`validateRunState`, `validateStageRuntimeState`) validating persisted JSON against schema invariants before domain objects are instantiated.
+3. Implemented safe lock file parsing (`parseLock`) in `RunLock` with PID liveness verification, throwing `LockConflictError` when an active run is detected.
+
+### Alternatives considered
+
+- Using a heavy runtime validation library (Zod, Valibot): Rejected to keep zero new external runtime dependencies in accordance with frozen dependency constraints.
+- Keeping unvalidated JSON parsing: Rejected due to silent state corruption risks across interrupted runs.
+
+### Consequences
+
+Any state or configuration corruption is detected immediately at boundary entry points with actionable, categorized domain errors.
+
+---
+
+## 2026-09-15 — Typed CLI Parsing and Dispatch Separation
+
+### Context
+
+`src/cli-main.ts` previously conflated argv string inspection with command execution, state loading, and process termination. This coupled CLI argument interpretation with runtime side effects, preventing isolated unit testing of CLI parsing.
+
+### Decision
+
+1. Created `src/cli/parser.ts`:
+   - Pure parser function `parseCliArgs(argv: string[]): CliCommand`.
+   - Returns a discriminated union `CliCommand` with explicit variants: `init`, `run`, `resume`, `recover`, `validate`, `list-stages`, `inspect`, `preflight`, `config`, `runs`, `status`, `tail`, `help`, `version`.
+   - Normalizes flags (including aliases `-h`, `-v`, `--stage`, `--feature`, etc.) without side effects.
+2. Created `src/cli/dispatch.ts`:
+   - Pure execution dispatcher `dispatchCliCommand(cmd: CliCommand): Promise<number>`.
+   - Routes typed commands to dedicated asynchronous handlers and returns process exit codes.
+3. Streamlined `src/cli-main.ts` into a concise bridge executing `parseCliArgs` and `dispatchCliCommand` with centralized top-level error formatting.
+
+### Alternatives considered
+
+- Third-party CLI frameworks (Commander, Yargs): Rejected to maintain zero new dependencies and complete control over cross-platform execution and error codes.
+- Keeping monolithic `cli-main.ts`: Rejected because testing required spawning subprocesses rather than pure unit tests.
+
+### Consequences
+
+CLI argument parsing is 100% unit-tested across all commands and edge cases without spawning processes or performing disk I/O.
+
+---
+
+## 2026-09-15 — Typed Process Execution, Cancellation, and Timeout Resilience
+
+### Context
+
+Subprocess execution via `child_process` in `src/core/process.ts` had loosely typed return values, lacked standard cancellation signals (`AbortSignal`), and did not reliably enforce execution timeouts with process tree cleanup.
+
+### Decision
+
+1. Defined `ProcessResult` with strict readonly fields:
+   - `exitCode: number | null`
+   - `signal: NodeJS.Signals | null`
+   - `stdout: string`
+   - `stderr: string`
+   - `timedOut: boolean`
+   - `readonly code: number` (backward compatibility getter for `exitCode ?? 1`).
+2. Implemented timeout enforcement in `runProcess` and `runShellCommand` using timer handles that send `SIGTERM` followed by `SIGKILL` on unresponsive child processes.
+3. Integrated `AbortSignal` support, allowing callers to cancel running child processes gracefully during shutdowns or stage aborts.
+4. Added comprehensive unit tests in `src/core/process.test.ts` covering success, non-zero exits, timeouts, and cancellation.
+
+### Alternatives considered
+
+- Relying on `execSync` with shell strings: Rejected due to shell escaping vulnerabilities and cross-platform inconsistencies between Unix and Windows.
+- Throwing on non-zero exit unconditionally: Rejected because many quality tools, Git commands, and harnesses use non-zero exit codes to signal diagnostic information that callers must inspect.
+
+### Consequences
+
+Subprocess execution across all harnesses, Git operations, and quality commands is type-safe, cancellable, and protected against indefinite hangs.

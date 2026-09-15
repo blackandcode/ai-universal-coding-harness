@@ -1,0 +1,119 @@
+/**
+ * @fileoverview Unit tests for modular configuration system.
+ * Validates default configuration, environment mapping, normalization, JSONC parsing, and backwards compatibility.
+ */
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import {
+  DEFAULT_CONFIG,
+  CONFIG,
+  CONFIG_SOURCES,
+  globalConfigPath,
+  projectTrackedConfigPath,
+  envLayer,
+  validateAndNormalizeConfig,
+  deepMerge,
+  readJsonc,
+  harnessString,
+  harnessNumber,
+} from './index.js';
+import { ConfigError } from '../errors.js';
+
+test('configuration defaults are harness-neutral and safe', () => {
+  assert.equal(DEFAULT_CONFIG.executorHarness, 'cursor');
+  assert.equal(DEFAULT_CONFIG.reviewerHarness, 'codex');
+  assert.equal(DEFAULT_CONFIG.permissionMode, 'auto_safe');
+  assert.equal(DEFAULT_CONFIG.harnesses.cursor?.model, 'gemini-3.8-flash');
+  assert.equal(DEFAULT_CONFIG.harnesses.codex?.model, 'gpt-6-astra');
+});
+
+test('config paths include global and project layers', () => {
+  assert.ok(path.isAbsolute(globalConfigPath()));
+  assert.ok(projectTrackedConfigPath().endsWith('.ai-universal-coding-harness.jsonc'));
+  assert.equal(CONFIG_SOURCES.project, projectTrackedConfigPath());
+});
+
+test('environment mapping layer maps AI_HARNESS_* and AI_STAGE_*', () => {
+  const env1 = envLayer({
+    AI_HARNESS_EXECUTOR_HARNESS: 'custom-exec',
+    AI_HARNESS_MAX_PLAN_REVIEWS: '5',
+    AI_HARNESS_PERMISSION_MODE: 'allowlist',
+  });
+  assert.equal(env1.executorHarness, 'custom-exec');
+  assert.equal(env1.maxPlanReviews, 5);
+  assert.equal(env1.permissionMode, 'allowlist');
+
+  // Legacy fallback
+  const env2 = envLayer({
+    AI_STAGE_EXECUTOR_HARNESS: 'legacy-exec',
+    AI_STAGE_MAX_EXECUTION_ATTEMPTS: '4',
+  });
+  assert.equal(env2.executorHarness, 'legacy-exec');
+  assert.equal(env2.maxExecutionAttempts, 4);
+});
+
+test('validateAndNormalizeConfig clamps bounds and validates permission modes', () => {
+  const normalized = validateAndNormalizeConfig(
+    {
+      maxPlanReviews: 99,
+      maxExecutionAttempts: -2,
+      permissionMode: 'invalid_mode',
+    },
+    DEFAULT_CONFIG,
+  );
+  assert.equal(normalized.maxPlanReviews, 10);
+  assert.equal(normalized.maxExecutionAttempts, 1);
+  assert.equal(normalized.permissionMode, 'auto_safe');
+
+  assert.throws(() => validateAndNormalizeConfig('not-an-object', DEFAULT_CONFIG), ConfigError);
+});
+
+test('deepMerge handles nested objects without mutating source', () => {
+  const base: Record<string, unknown> = { a: 1, b: { c: 2, d: 3 } };
+  const layer = { b: { c: 20 }, e: 5 };
+  const merged = deepMerge(base, layer) as { a: number; b: { c: number; d: number }; e: number };
+
+  assert.equal(merged.a, 1);
+  assert.equal(merged.b.c, 20);
+  assert.equal(merged.b.d, 3);
+  assert.equal(merged.e, 5);
+  assert.equal((base.b as { c: number }).c, 2);
+});
+
+test('readJsonc parses json with comments and throws ConfigError on invalid jsonc', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsonc-test-'));
+  try {
+    const validFile = path.join(tmpDir, 'valid.jsonc');
+    fs.writeFileSync(validFile, '// comment\n{\n  "key": "value", // inline\n}');
+    const val = readJsonc(validFile);
+    assert.equal(val.key, 'value');
+
+    const invalidFile = path.join(tmpDir, 'invalid.jsonc');
+    fs.writeFileSync(invalidFile, '{\n  "key": "value",,\n}');
+    assert.throws(() => readJsonc(invalidFile), ConfigError);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('compatible config provides uppercase legacy aliases delegating to camelCase', () => {
+  assert.equal(CONFIG.EXECUTOR_HARNESS, CONFIG.executorHarness);
+  assert.equal(CONFIG.REVIEWER_HARNESS, CONFIG.reviewerHarness);
+  assert.equal(CONFIG.MAX_PLAN_REVIEWS, CONFIG.maxPlanReviews);
+  assert.equal(CONFIG.FINAL_PLAN_REVIEW, CONFIG.finalPlanReview);
+  assert.equal(CONFIG.MAX_EXECUTION_ATTEMPTS, CONFIG.maxExecutionAttempts);
+  assert.equal(CONFIG.PERMISSION_MODE, CONFIG.permissionMode);
+  assert.equal(CONFIG.QUALITY_CMD, CONFIG.qualityCommand);
+  assert.equal(CONFIG.BRANCH_PREFIX, CONFIG.branchPrefix);
+});
+
+test('harness helper functions return typed fallbacks', () => {
+  assert.equal(harnessString('cursor', 'binary', 'default-bin'), 'agent');
+  assert.equal(harnessString('nonexistent', 'binary', 'default-bin'), 'default-bin');
+  assert.equal(harnessNumber('cursor', 'turnTimeoutMinutes', 10), 45);
+  assert.equal(harnessNumber('nonexistent', 'turnTimeoutMinutes', 10), 10);
+});

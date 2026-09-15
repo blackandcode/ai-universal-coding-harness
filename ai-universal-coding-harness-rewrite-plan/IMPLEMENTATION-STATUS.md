@@ -37,7 +37,58 @@ Status: In Progress (Gap closure ready for review / stage gate)
 
 ## Stage 02 — Strict TypeScript Core and Domain Refactor
 
-Status: Not started
+Status: Completed (Ready for review / stage gate)
+
+- **Quality Commands (Measured Results)**:
+  - `npm run format:check` — Oxfmt formatting verification passed (0 violations across 160 files).
+  - `npm run lint` — Oxlint static analysis and automated rule fixture check (`scripts/verify-oxlint-rules.mjs`) passed (0 errors, all rule categories verified).
+  - `npm run typecheck` — TypeScript 7 compiler verification under strict compilation (`"strict": true`, `"noImplicitAny": true`, `"noImplicitOverride": true` in `tsconfig.json`) passed (0 errors).
+  - `npm test` — Fresh build compilation and unit test suite execution: 61 tests passing across 10 test suites (0 failures; 41 baseline tests + 20 new comprehensive tests).
+  - `npm run test:cli` — CLI smoke execution passing across all verification scenarios.
+  - `npm run verify` — Comprehensive quality gate passing (clean build, format check, lint, typecheck, unit tests, CLI smoke, bidirectional lockfile verification, and packaging consumer check).
+  - `npm run check` — Standalone alias for `npm run verify` passed cleanly.
+  - `npm pack --dry-run` — 167 files in package tarball inventory; 0 test files and 0 internal development artifacts.
+- **Domain Types & Contracts**:
+  - Semantic branded identifier types (`RunId`, `StageName`).
+  - Strengthened `RunStatus`, `StageStatus`, `StagePhase` literal string unions.
+  - Discriminated union types for `UiEvent` variants with generic fallback for backwards compatibility.
+  - Structured evidence types replacing broad `any` across execution evidence.
+- **Domain Error Hierarchy**:
+  - Hierarchical domain errors subclassing `HarnessError`: `ConfigError`, `StageSourceError`, `GitLifecycleError`, `LockConflictError`, `RunStateError`, `ProcessExecutionError`.
+  - Preserved underlying causes via `{ cause }`.
+  - Rich metadata on `ProcessExecutionError` (`exitCode`, `signal`, `stdout`, `stderr`, `timedOut`).
+  - Unit tests in `src/errors.test.ts`.
+- **Modular Configuration**:
+  - Decomposed configuration into `src/config/`: `types.ts`, `defaults.ts`, `paths.ts`, `env.ts`, `validation.ts`, `loader.ts`, `templates.ts`, `compat.ts`.
+  - Authoritative camelCase `OrchestratorConfig` schema.
+  - Backward compatibility adapter exporting `CONFIG` with uppercase getter Proxy.
+  - `src/core/config.ts` maintained as re-export facade for backwards compatibility.
+  - Comprehensive unit tests in `src/config/config.test.ts`.
+- **Filesystem & Process Execution**:
+  - Eliminated `any` in `src/core/fs.ts` and introduced `readJsonValidated<T>()`.
+  - Strictly typed `ProcessResult` with `exitCode`, `signal`, `stdout`, `stderr`, `timedOut`, and backward-compatible `code` getter.
+  - Added `timeoutMs` and `AbortSignal` cancellation support with process tree cleanup.
+  - Comprehensive unit tests in `src/core/process.test.ts`.
+- **Git, Project & State Resilience**:
+  - Strictly typed `GitRepository` and `BranchManager` using `ProcessResult` and `GitLifecycleError`.
+  - Runtime validation functions (`validateRunState`, `validateStageRuntimeState`) protecting against corrupted state JSON.
+  - Strongly typed `RunLock` with PID liveness detection and `LockConflictError`.
+  - Unit tests in `src/git/BranchManager.test.ts`, `src/project/ProjectWorkspace.test.ts`, `src/state/RunLock.test.ts`, and `src/state/RunStateStore.test.ts`.
+- **Stages & Plan Coordinator**:
+  - Structured stage validation and `StageSourceError` in `src/stages/StageSource.ts`.
+  - Discriminated plan outcomes (`accepted`, `accepted_with_notes`, `needs_revision`) in `src/stages/PlanCoordinator.ts`.
+  - Deduplication hash tracking and non-blocking advisory review budget semantics.
+  - Unit tests in `src/stages/PlanCoordinator.test.ts`.
+- **CLI Parsing & Dispatch Separation**:
+  - Pure argument parser `parseCliArgs(argv: string[]): CliCommand` in `src/cli/parser.ts` returning discriminated union of commands.
+  - Dedicated asynchronous command dispatcher in `src/cli/dispatch.ts`.
+  - Streamlined `src/cli-main.ts` and `src/cli.ts` entry points.
+  - Unit tests in `src/cli/parser.test.ts`.
+- **Public API & Strict TS7 Configuration**:
+  - Exported domain errors, types, configuration modules, and CLI parser/dispatchers in `src/index.ts`.
+  - Unit tests in `src/index.test.ts` verifying all public exports.
+  - Enabled `"strict": true`, `"noImplicitAny": true`, and `"noImplicitOverride": true` in `tsconfig.json`.
+  - Updated `src/tooling/package-invariants.test.ts` to assert strict compiler flags.
 
 ## Stage 03 — Harness, Evidence and Recovery Hardening
 

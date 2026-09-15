@@ -26,7 +26,11 @@ Rules:
 - reviewer remains decision-only;
 - executor remains implementation/test owner;
 - keep Git lifecycle in Git modules;
-- recovery must not require manual JSON state edits.
+- recovery must not require manual JSON state edits;
+- every file added or edited must have a top-of-file docblock describing what the file is about, its purpose, and architectural role;
+- if editing an existing file and adding or modifying functionality, update the top-level file description docblock so it reflects the changes and additions;
+- all code written must have comprehensive, high-quality docblock documentation (JSDoc/TSDoc) for all functions, methods, classes, interfaces, and types;
+- document internal logic, state machines, protocol accumulation, and recovery decision branches with clear docblocks and inline comments where possible.
 
 Refactor in small commits/steps so failing behavior is easy to isolate.
 

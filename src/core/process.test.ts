@@ -1,0 +1,80 @@
+/**
+ * @fileoverview Unit tests for typed process execution and shell utilities.
+ * Validates synchronous execution, asynchronous streaming, timeouts, AbortSignal cancellation, and command resolution.
+ */
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execSyncText, runProcess, runShellCommand, commandExists } from './process.js';
+import { ProcessExecutionError } from '../errors.js';
+
+test('execSyncText executes command synchronously and returns typed result', () => {
+  const res = execSyncText(process.execPath, ['-e', 'console.log("hello"); console.error("err")']);
+  assert.equal(res.exitCode, 0);
+  assert.equal(res.code, 0);
+  assert.equal(res.stdout.trim(), 'hello');
+  assert.equal(res.stderr.trim(), 'err');
+  assert.equal(res.timedOut, false);
+});
+
+test('runProcess executes async command and captures output and lines', async () => {
+  const lines: string[] = [];
+  const res = await runProcess(
+    process.execPath,
+    ['-e', 'console.log("line 1"); console.log("line 2");'],
+    {
+      onStdoutLine: (l) => lines.push(l),
+    },
+  );
+  assert.equal(res.exitCode, 0);
+  assert.equal(res.code, 0);
+  assert.deepEqual(lines, ['line 1', 'line 2']);
+  assert.equal(res.timedOut, false);
+});
+
+test('runProcess terminates and rejects with ProcessExecutionError on timeout', async () => {
+  await assert.rejects(
+    async () => {
+      await runProcess(process.execPath, ['-e', 'setTimeout(() => {}, 5000);'], { timeoutMs: 100 });
+    },
+    (err: unknown) => {
+      assert.ok(err instanceof ProcessExecutionError);
+      assert.equal(err.timedOut, true);
+      assert.ok(err.message.includes('timed out after 100ms'));
+      return true;
+    },
+  );
+});
+
+test('runProcess rejects when AbortSignal triggers', async () => {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort('test-abort-reason'), 50);
+
+  await assert.rejects(
+    async () => {
+      await runProcess(process.execPath, ['-e', 'setTimeout(() => {}, 5000);'], {
+        signal: controller.signal,
+      });
+    },
+    (err: unknown) => {
+      assert.ok(err instanceof ProcessExecutionError);
+      assert.equal(err.signal, 'SIGTERM');
+      assert.ok(err.message.includes('Command aborted by signal'));
+      return true;
+    },
+  );
+});
+
+test('runShellCommand executes command in shell and returns result', async () => {
+  const res = await runShellCommand(`"${process.execPath}" -e "console.log('shell-ok')"`);
+  assert.equal(res.exitCode, 0);
+  assert.equal(res.code, 0);
+  assert.equal(res.stdout.trim(), 'shell-ok');
+});
+
+test('commandExists returns true for node and false for nonexistent binary', () => {
+  assert.equal(commandExists(process.execPath), true);
+  assert.equal(commandExists('node'), true);
+  assert.equal(commandExists('definitely-not-a-real-binary-name-xyz'), false);
+  assert.equal(commandExists(''), false);
+});

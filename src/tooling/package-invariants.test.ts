@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Unit tests for package and compiler invariants.
+ * Enforces Node engine requirements, exact dependency versions, tsconfig compiler options, and repository hygiene.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -53,8 +58,9 @@ test('tsconfig.json compiler options are correctly configured for ES2024 and Nod
   assert.equal(opts.noUncheckedSideEffectImports, true);
   assert.equal(opts.jsx, 'react-jsx');
   assert.equal(opts.resolveJsonModule, true);
-  assert.equal(opts.strict, false);
-  assert.equal(opts.noImplicitAny, false);
+  assert.equal(opts.strict, true);
+  assert.equal(opts.noImplicitAny, true);
+  assert.equal(opts.noImplicitOverride, true);
 });
 
 test('toolchain configuration files exist and parse as valid JSON', () => {

@@ -15,8 +15,9 @@
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
     "resolveJsonModule": true,
-    "strict": false,
-    "noImplicitAny": false
+    "strict": true,
+    "noImplicitAny": true,
+    "noImplicitOverride": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

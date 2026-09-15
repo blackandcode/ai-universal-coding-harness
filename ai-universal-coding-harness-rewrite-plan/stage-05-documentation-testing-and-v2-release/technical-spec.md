@@ -88,6 +88,29 @@ At minimum:
 6. state/resume/recovery;
 7. UI semantic event flow.
 
+## Code documentation and docblock audit
+
+Perform a repository-wide code documentation audit:
+
+### Top-of-file headers
+
+Verify and enforce that every source, test, script, and configuration/utility file has a descriptive header docblock:
+
+```ts
+/**
+ * @fileoverview <Module purpose, key responsibilities, and architectural boundaries>
+ */
+```
+
+Whenever any file is touched to add functionality, update tests, or adjust configuration, the top-of-file docblock must be updated to reflect the new functionality.
+
+### Comprehensive docblocks
+
+- All classes, constructors, methods, and getters/setters must have JSDoc detailing responsibilities, lifecycle, and parameters.
+- All standalone and exported functions must document `@param`, `@returns`, and `@throws`.
+- All interfaces, type aliases, and enums must document each property and type parameter.
+- Internal logic and non-obvious algorithms (e.g. coverage thresholds, package boundary checks, test runners, process spawning) must have docblocks or explanatory comments clarifying the implementation logic.
+
 ## Release checklist
 
 - package version `2.0.0`;
