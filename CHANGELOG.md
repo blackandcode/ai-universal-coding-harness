@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The project follows Sem
 
 ### Added
 
+- Modularized Cursor ACP protocol handling into `AcpToolAccumulator`, `AcpEventNormalizer`, and `ObservationJournal`.
+- Implemented `EvidenceService` for cohesive evidence validation, corroboration, and disk persistence.
+- Modularized Codex reviewer harness into `CodexPromptBuilder`, `CodexProcessRunner`, `CodexEventParser`, and `CodexResultParser`.
+- Hardened `RecoveryManager` with dual deterministic resume points (`REVIEW` vs `QUALITY`), dry-run mode, and timestamped backups.
+- Added comprehensive regression test suites for ACP multi-chunk streaming, evidence integrity, Codex reviewer role-boundary enforcement, recovery resilience, and permission hardening.
 - Added Oxfmt (v0.68.0) for fast, deterministic code formatting across TypeScript, TSX, JSON, JSONC, and Markdown.
 - Added Oxlint (v1.83.0) for modern TypeScript-aware linting with active AST-based Promise, Node correctness, and React rules.
 - Added `.nvmrc` specifying Node `24.18.0`.

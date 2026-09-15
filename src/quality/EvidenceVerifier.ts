@@ -1,6 +1,18 @@
+/**
+ * @fileoverview Evidence verification logic for AI Universal Coding Harness.
+ *
+ * Implements authoritative validation of executor-produced evidence.json files,
+ * corroborating claims against observed ACP command events, checking sequence ordering
+ * against repository mutations, asserting patch fingerprints, and validating git diff hygiene.
+ */
+
 import fs from 'node:fs';
 import type { ExecutionEvidence, CommandObservation } from '../types.js';
 
+/**
+ * Contextual metadata required to corroborate execution evidence against
+ * active stage, attempt, sequence ordering, and git state.
+ */
 export interface VerificationContext {
   stage?: string;
   attempt?: number;
@@ -8,9 +20,22 @@ export interface VerificationContext {
   expected_patch_fingerprint?: string;
   last_mutation_sequence?: number;
   orchestrator_diff_check_ok?: boolean;
+  workspace?: string;
 }
 
-export function validateEvidence(file: string, stage: string, attempt: number) {
+/**
+ * Validates the schema and syntactic structure of an evidence.json file.
+ *
+ * @param file - Path to evidence.json file
+ * @param stage - Expected stage name
+ * @param attempt - Expected attempt number
+ * @returns Result object containing ok flag, error reason, and parsed evidence
+ */
+export function validateEvidence(
+  file: string,
+  stage: string,
+  attempt: number,
+): { ok: boolean; reason: string; e?: ExecutionEvidence } {
   if (!fs.existsSync(file)) return { ok: false, reason: 'evidence.json missing' };
   let e: any;
   try {
@@ -33,6 +58,12 @@ export function validateEvidence(file: string, stage: string, attempt: number) {
   };
 }
 
+/**
+ * Normalizes command strings by stripping backticks, quotes, shell wrappers, and environment variables.
+ *
+ * @param s - Raw command string
+ * @returns Normalized command
+ */
 export function normalizeCommand(s: string): string {
   let str = String(s || '').trim();
   if (
@@ -43,7 +74,7 @@ export function normalizeCommand(s: string): string {
     str = str.slice(1, -1).trim();
   }
   const shellWrap = str.match(
-    /^(?:bash|sh|zsh|cmd\.exe|powershell)\s+(?:-c|-Command|\/c)\s+["']?([^"']+)["']?$/i,
+    /^(?:bash|sh|zsh|cmd\.exe|cmd|powershell|pwsh)\s+(?:-c|-Command|\/c|-lc)\s+["']?([^"']+)["']?$/i,
   );
   if (shellWrap && shellWrap[1]) {
     str = shellWrap[1].trim();
@@ -52,11 +83,20 @@ export function normalizeCommand(s: string): string {
   return str.trim().replace(/\s+/g, ' ');
 }
 
+/**
+ * Checks whether an observed command matches a target quality or verification command.
+ * Rejects substring occurrences in echo/cat commands to prevent false positives.
+ *
+ * @param observedCmd - Command recorded by observer
+ * @param targetCmd - Expected command to corroborate
+ * @returns True if commands match logically or as part of a compound chain
+ */
 export function commandMatches(observedCmd: string, targetCmd: string): boolean {
   const normObs = normalizeCommand(observedCmd);
   const normTarget = normalizeCommand(targetCmd);
   if (normObs === normTarget) return true;
 
+  // Split on chaining operators (&& or ;)
   const parts = normObs
     .split(/\s*(?:&&|;)\s*/)
     .map((p) => normalizeCommand(p))
@@ -67,6 +107,14 @@ export function commandMatches(observedCmd: string, targetCmd: string): boolean 
   return false;
 }
 
+/**
+ * Corroborates an evidence claim against observed command executions.
+ *
+ * @param e - Execution evidence from executor
+ * @param commands - Observed command events
+ * @param context - Optional verification context
+ * @returns Corroboration report with issue diagnostics
+ */
 export function verifyEvidenceAgainstObserved(
   e: ExecutionEvidence,
   commands: Array<
@@ -76,6 +124,7 @@ export function verifyEvidenceAgainstObserved(
         exit_code: number | null;
         status: string;
         tool_id: string;
+        source?: string;
         sequence?: number;
         stage?: string;
         attempt?: number;
@@ -86,17 +135,19 @@ export function verifyEvidenceAgainstObserved(
 ) {
   const issues: string[] = [];
 
-  // Filter commands by stage/attempt if scoped observations exist
-  let scopedCommands = [...commands];
+  // Filter commands by stage and attempt if scoped observations exist.
+  // Also enforce that autonomous permission broker executions ('broker') cannot prove quality checks.
+  let scopedCommands = commands.filter((c) => (c as any).source !== 'broker');
+
   if (context?.stage) {
-    const stageFiltered = scopedCommands.filter((c) => !c.stage || c.stage === context.stage);
-    if (stageFiltered.length > 0) scopedCommands = stageFiltered;
+    scopedCommands = scopedCommands.filter((c) => !c.stage || c.stage === context.stage);
   }
   if (context?.attempt != null) {
-    const attemptFiltered = scopedCommands.filter(
+    // A command is only eligible if it belongs to the current attempt or has no attempt recorded.
+    // If commands belong to another attempt, they cannot validate the current attempt.
+    scopedCommands = scopedCommands.filter(
       (c) => c.attempt == null || c.attempt === context.attempt,
     );
-    if (attemptFiltered.length > 0) scopedCommands = attemptFiltered;
   }
 
   const q = [...scopedCommands].reverse().find((x) => commandMatches(x.command, e.quality_command));

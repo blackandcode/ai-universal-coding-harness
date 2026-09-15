@@ -39,6 +39,13 @@ test('public API exports core classes and utilities', () => {
   assert.ok(PublicApi.RecoveryManager);
   assert.ok(PublicApi.PermissionEngine);
   assert.ok(PublicApi.EventBus);
+  assert.ok(PublicApi.EvidenceService);
+  assert.ok(PublicApi.AcpToolAccumulator);
+  assert.ok(PublicApi.AcpEventNormalizer);
+  assert.ok(PublicApi.ObservationJournal);
+  assert.ok(PublicApi.CodexPromptBuilder);
+  assert.ok(PublicApi.CodexProcessRunner);
+  assert.ok(PublicApi.CodexResultParser);
 });
 
 test('public API exports process and CLI helpers', () => {

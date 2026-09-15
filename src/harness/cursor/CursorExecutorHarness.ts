@@ -1,3 +1,11 @@
+/**
+ * @fileoverview Cursor ACP executor harness implementation and session management.
+ *
+ * Implements ExecutorHarness and ExecutorSession for Cursor CLI, orchestrating the ACP subprocess,
+ * managing session configuration and lifetime, streaming updates, and delegating protocol accumulation
+ * to AcpToolAccumulator and durable observation tracking to ObservationJournal.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -16,6 +24,9 @@ import { appendBounded, ensureDir, rotateFile } from '../../core/fs.js';
 import { iso } from '../../core/time.js';
 import type { PermissionRequest } from '../../permissions/PermissionEngine.js';
 import { VERSION } from '../../version.js';
+import { AcpToolAccumulator } from './AcpToolAccumulator.js';
+import { ObservationJournal } from './ObservationJournal.js';
+import { AcpEventNormalizer } from './AcpEventNormalizer.js';
 
 export class CursorExecutorHarness implements ExecutorHarness {
   static defaults = {
@@ -75,12 +86,10 @@ export class CursorAcpSession implements ExecutorSession {
   private agentText = '';
   private capabilities: any = {};
   private externalResults: any[] = [];
-  private tools = new Map<string, any>();
-  private observed: CommandObservation[] = [];
-  private sequence = 0;
-  private lastMutationSequence = 0;
   private qualityEpochId = '';
-  private journalFile = '';
+  private accumulator: AcpToolAccumulator;
+  private journal: ObservationJournal;
+  private normalizer: AcpEventNormalizer;
 
   constructor(
     private o: {
@@ -103,50 +112,60 @@ export class CursorAcpSession implements ExecutorSession {
   ) {
     ensureDir(path.dirname(o.eventsFile));
     ensureDir(path.dirname(o.focusFile));
-    this.journalFile =
+    const journalFile =
       o.observationsFile || path.join(path.dirname(o.eventsFile), 'executor-observations.jsonl');
-    ensureDir(path.dirname(this.journalFile));
+    this.accumulator = new AcpToolAccumulator();
+    this.journal = new ObservationJournal(journalFile);
+    this.normalizer = new AcpEventNormalizer({
+      events: o.events,
+      accumulator: this.accumulator,
+      journal: this.journal,
+      defaultSessionId: o.resumeSessionId || 'default',
+      runId: o.runId,
+      stageName: o.stageName,
+      attempt: o.attempt,
+      workspace: o.workspace,
+      qualityEpochId: this.qualityEpochId,
+      onFocusDelta: (text) => this.appendFocus(text),
+      onAgentText: (text) => {
+        this.agentText += text;
+      },
+      onPlanRequest: (m) => this.handlePlan(m),
+      onQuestionRequest: (m) => this.handleQuestion(m),
+      onPermissionRequest: (m) => this.handlePermission(m),
+    });
     if (!fs.existsSync(o.focusFile)) fs.writeFileSync(o.focusFile, '');
   }
 
   currentSequence(): number {
-    return this.sequence;
+    return this.accumulator.currentSequence();
   }
   lastMutationSeq(): number {
-    return this.lastMutationSequence;
+    return this.accumulator.lastMutationSeq();
   }
   setQualityEpoch(epochId: string): void {
     this.qualityEpochId = epochId;
+    this.normalizer = new AcpEventNormalizer({
+      events: this.o.events,
+      accumulator: this.accumulator,
+      journal: this.journal,
+      defaultSessionId: this.id || 'default',
+      runId: this.o.runId,
+      stageName: this.o.stageName,
+      attempt: this.o.attempt,
+      workspace: this.o.workspace,
+      qualityEpochId: this.qualityEpochId,
+      onFocusDelta: (text) => this.appendFocus(text),
+      onAgentText: (text) => {
+        this.agentText += text;
+      },
+      onPlanRequest: (m) => this.handlePlan(m),
+      onQuestionRequest: (m) => this.handleQuestion(m),
+      onPermissionRequest: (m) => this.handlePermission(m),
+    });
   }
   observedCommands(): CommandObservation[] {
-    return [...this.observed];
-  }
-
-  private appendObservationJournal(entry: CommandObservation) {
-    if (!this.journalFile) return;
-    try {
-      fs.appendFileSync(this.journalFile, JSON.stringify(entry) + '\n');
-    } catch {}
-  }
-
-  private recordObserved(entry: CommandObservation, isReplay = false) {
-    const idx = this.observed.findIndex(
-      (x) => x.tool_call_id === entry.tool_call_id && x.session_id === entry.session_id,
-    );
-    if (idx >= 0) {
-      this.observed[idx] = {
-        ...this.observed[idx],
-        ...entry,
-        exit_code: entry.exit_code ?? this.observed[idx].exit_code,
-        status: entry.status || this.observed[idx].status,
-        sequence: entry.sequence || this.observed[idx].sequence,
-      };
-    } else {
-      this.observed.push(entry);
-    }
-    if (!isReplay) {
-      this.appendObservationJournal(entry);
-    }
+    return this.journal.getObservations();
   }
 
   private replayHistoricalEvents() {
@@ -159,12 +178,13 @@ export class CursorAcpSession implements ExecutorSession {
         workspace: this.o.workspace,
       });
       for (const obs of replayed) {
-        this.recordObserved(obs, true);
+        this.journal.record(obs, true);
       }
-      if (this.observed.length > 0) {
+      const current = this.journal.getObservations();
+      if (current.length > 0) {
         this.o.events?.emit?.('log', {
           level: 'info',
-          message: `Replayed ${this.observed.length} executor observations from historical ACP log.`,
+          message: `Replayed ${current.length} executor observations from historical ACP log.`,
         });
       }
     } catch (e: any) {
@@ -261,6 +281,24 @@ export class CursorAcpSession implements ExecutorSession {
       ns = await this.request('session/new', { cwd: this.o.workspace, mcpServers: [] }, 60_000);
       this.id = ns.sessionId;
     }
+    this.normalizer = new AcpEventNormalizer({
+      events: this.o.events,
+      accumulator: this.accumulator,
+      journal: this.journal,
+      defaultSessionId: this.id || 'default',
+      runId: this.o.runId,
+      stageName: this.o.stageName,
+      attempt: this.o.attempt,
+      workspace: this.o.workspace,
+      qualityEpochId: this.qualityEpochId,
+      onFocusDelta: (text) => this.appendFocus(text),
+      onAgentText: (text) => {
+        this.agentText += text;
+      },
+      onPlanRequest: (m) => this.handlePlan(m),
+      onQuestionRequest: (m) => this.handleQuestion(m),
+      onPermissionRequest: (m) => this.handlePermission(m),
+    });
     this.o.callbacks.onSessionId?.(this.id);
     const cfg = ns?.configOptions || ns?.config_options || [];
     const thinking = cfg.find((x: any) => x.id === 'thinking');
@@ -341,7 +379,7 @@ export class CursorAcpSession implements ExecutorSession {
     this.pending.clear();
   }
   private async handleLine(line: string) {
-    this.sequence++;
+    this.accumulator.stepSequence();
     fs.appendFileSync(this.o.eventsFile, `SERVER ${line}\n`);
     let m: any;
     try {
@@ -361,38 +399,9 @@ export class CursorAcpSession implements ExecutorSession {
       }
       return;
     }
-    if (m.method === 'session/update') {
-      const u = m.params?.update;
-      if (u && m.params?.sessionId && !u.sessionId) u.sessionId = m.params.sessionId;
-      this.renderUpdate(u);
-      return;
-    }
-    if (m.method === 'cursor/update_todos') {
-      this.o.events.emit('executor.todos', {
-        todos: m.params?.todos || [],
-        merge: Boolean(m.params?.merge),
-      });
-      return;
-    }
-    if (m.method === 'cursor/task') {
-      this.o.events.emit('executor.task', {
-        title: m.params?.title || '',
-        summary: m.params?.summary || '',
-      });
-      return;
-    }
-    if (m.method === 'cursor/create_plan') {
-      await this.handlePlan(m);
-      return;
-    }
-    if (m.method === 'cursor/ask_question') {
-      await this.handleQuestion(m);
-      return;
-    }
-    if (m.method === 'session/request_permission') {
-      await this.handlePermission(m);
-      return;
-    }
+
+    await this.normalizer.handleMessage(m);
+
     if (m.id != null) this.respond(m.id, { outcome: { outcome: 'cancelled' } });
   }
   private appendFocus(text: string) {
@@ -400,161 +409,6 @@ export class CursorAcpSession implements ExecutorSession {
     rotateFile(this.o.focusFile, CONFIG.focusLogMaxBytes);
     fs.appendFileSync(this.o.focusFile, text);
     this.o.events.emit('executor.focus.delta', { text, focus_file: this.o.focusFile });
-  }
-  private renderUpdate(u: any) {
-    if (!u) return;
-    const t = u.sessionUpdate || u.type || '';
-    if (t === 'agent_message_chunk') {
-      const text = u.content?.text || u.text || '';
-      this.agentText += text;
-      this.o.events.emit('executor.message', { text, stream: true });
-      return;
-    }
-    if (t === 'agent_thought_chunk' || t === 'agent_progress_chunk') {
-      this.appendFocus(u.content?.text || u.text || '');
-      return;
-    }
-    if (t === 'tool_call' || t === 'tool_call_update' || u.toolCallId || u.toolCall) {
-      this.processTool(u);
-      return;
-    }
-  }
-  processTool(u: any, emitEvent = true, isReplay = false) {
-    this.sequence++;
-    const tc = u.toolCall || {};
-    const id = u.toolCallId || tc.toolCallId || tc.id || u.id || `tool-${Date.now()}`;
-    const sid = u.sessionId || tc.sessionId || this.id || 'default';
-    const compositeKey = `${sid}:${id}`;
-    const prev = this.tools.get(compositeKey) || {};
-
-    let title = u.title || tc.title || prev.title || 'Tool';
-    let kind = u.kind || tc.kind || prev.kind || '';
-
-    const newRaw = tc.rawInput ?? u.rawInput;
-    const raw =
-      newRaw && typeof newRaw === 'object' && !Array.isArray(newRaw)
-        ? { ...(prev.rawInput || {}), ...newRaw }
-        : newRaw !== undefined
-          ? newRaw
-          : (prev.rawInput ?? {});
-
-    const newOut = tc.rawOutput ?? u.rawOutput;
-    const out =
-      newOut && typeof newOut === 'object' && !Array.isArray(newOut)
-        ? { ...(prev.rawOutput || {}), ...newOut }
-        : newOut !== undefined
-          ? newOut
-          : (prev.rawOutput ?? {});
-
-    let detail = prev.detail || '';
-    let commandConfidence: 'high' | 'medium' | 'low' = prev.commandConfidence || 'low';
-
-    if (raw?.command || raw?.cmd) {
-      title = 'Run';
-      detail = String(raw.command || raw.cmd);
-      commandConfidence = 'high';
-    } else if (typeof raw === 'string' && raw.trim()) {
-      detail = raw.trim();
-      commandConfidence = 'high';
-    } else if (raw?.path || raw?.file) {
-      detail = String(raw.path || raw.file);
-    } else if (raw?.pattern || raw?.query || raw?.glob) {
-      detail = String(raw.pattern || raw.query || raw.glob);
-    }
-
-    if (!detail && title.startsWith('`') && title.endsWith('`')) {
-      detail = title.slice(1, -1);
-      title = 'Run';
-      commandConfidence = 'low';
-    } else if (!detail && /^run\s+(.+)$/i.test(title)) {
-      const m = title.match(/^run\s+(.+)$/i);
-      if (m && m[1]) {
-        detail = m[1].replace(/^`|`$/g, '').trim();
-        commandConfidence = 'low';
-      }
-    }
-
-    const status = u.status || tc.status || prev.status || 'in_progress';
-
-    const titleLower = title.toLowerCase();
-    const kindLower = kind.toLowerCase();
-    const isMutation =
-      ['edit', 'write', 'delete', 'apply_patch', 'file_edit', 'file_write'].includes(kindLower) ||
-      /edit|write|delete|patch|unlink|rmdir/i.test(titleLower) ||
-      Boolean(raw?.path && /edit|write|save/i.test(titleLower));
-    if (isMutation) {
-      this.lastMutationSequence = this.sequence;
-    }
-
-    let exit: number | null = prev.exit_code ?? null;
-    if (out && typeof out === 'object') {
-      for (const k of ['exit_code', 'exitCode', 'code']) {
-        if (out[k] != null && Number.isFinite(Number(out[k]))) {
-          exit = Number(out[k]);
-          break;
-        }
-      }
-    }
-    if (exit == null && ['failed', 'error'].includes(status)) {
-      exit = 1;
-    }
-
-    const isExecution =
-      title === 'Run' ||
-      kind === 'execute' ||
-      Boolean(raw?.command || raw?.cmd) ||
-      commandConfidence === 'high';
-    const row = {
-      id,
-      sid,
-      title: isExecution ? 'Run' : title,
-      kind,
-      detail,
-      status,
-      exit_code: exit,
-      rawInput: raw,
-      rawOutput: out,
-      commandConfidence,
-      updatedAt: Date.now(),
-    };
-    this.tools.set(compositeKey, row);
-
-    if (emitEvent) {
-      this.o.events?.emit?.('executor.tool', {
-        id,
-        title: row.title,
-        kind,
-        detail,
-        status,
-        exit_code: exit,
-        updatedAt: row.updatedAt,
-      });
-    }
-
-    if (isExecution && detail && ['completed', 'failed', 'error', 'in_progress'].includes(status)) {
-      this.recordObserved(
-        {
-          observation_id: `${sid}-${id}`,
-          run_id: this.o.runId,
-          stage: this.o.stageName,
-          attempt: this.o.attempt,
-          session_id: sid,
-          tool_id: id,
-          tool_call_id: id,
-          sequence: this.sequence,
-          timestamp: iso(),
-          source: isReplay ? 'replay' : 'acp',
-          command: detail,
-          normalized_command: detail.trim().replace(/\s+/g, ' '),
-          command_confidence: commandConfidence,
-          status: status as any,
-          exit_code: exit,
-          cwd: this.o.workspace,
-          quality_epoch_id: this.qualityEpochId || undefined,
-        },
-        isReplay,
-      );
-    }
   }
   private async handlePlan(m: any) {
     const p = m.params || {};
@@ -680,16 +534,16 @@ export class CursorAcpSession implements ExecutorSession {
           code: r.code,
           output: (r.stdout + r.stderr).slice(-20000),
         });
-        this.sequence++;
+        const seq = this.accumulator.stepSequence();
         if (
           /git\s+(apply|checkout|restore|clean)|rm\s+|mv\s+|cp\s+|touch\s+|sed\s+/i.test(
             req.command,
           )
         ) {
-          this.lastMutationSequence = this.sequence;
+          this.accumulator.markMutation(seq);
         }
         const toolCallId = `broker-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
-        this.recordObserved({
+        this.journal.record({
           observation_id: `${this.id || 'broker'}-${toolCallId}`,
           run_id: this.o.runId,
           stage: this.o.stageName,
@@ -697,7 +551,7 @@ export class CursorAcpSession implements ExecutorSession {
           session_id: this.id || 'broker',
           tool_id: toolCallId,
           tool_call_id: toolCallId,
-          sequence: this.sequence,
+          sequence: this.accumulator.currentSequence(),
           timestamp: iso(),
           source: 'broker',
           command: req.command,
@@ -724,9 +578,9 @@ export function parseAcpEvents(
   if (!fs.existsSync(eventsFilePath)) return [];
   const content = fs.readFileSync(eventsFilePath, 'utf8');
   const lines = content.split(/\r?\n/);
-  const tools = new Map<string, any>();
-  const observed: CommandObservation[] = [];
-  let sequence = 0;
+
+  const accumulator = new AcpToolAccumulator();
+  const journal = new ObservationJournal();
 
   for (const line of lines) {
     if (!line.startsWith('SERVER ')) continue;
@@ -736,7 +590,7 @@ export function parseAcpEvents(
     } catch {
       continue;
     }
-    sequence++;
+
     if (m.method === 'session/update') {
       const u = m.params?.update;
       if (
@@ -750,134 +604,25 @@ export function parseAcpEvents(
       ) {
         continue;
       }
+
       const sid = m.params?.sessionId || u.sessionId || 'default';
-      const tc = u.toolCall || {};
-      const id = u.toolCallId || tc.toolCallId || tc.id || u.id || `tool-${sequence}`;
-      const compositeKey = `${sid}:${id}`;
-      const prev = tools.get(compositeKey) || {};
-
-      let title = u.title || tc.title || prev.title || 'Tool';
-      let kind = u.kind || tc.kind || prev.kind || '';
-
-      const newRaw = tc.rawInput ?? u.rawInput;
-      const raw =
-        newRaw && typeof newRaw === 'object' && !Array.isArray(newRaw)
-          ? { ...(prev.rawInput || {}), ...newRaw }
-          : newRaw !== undefined
-            ? newRaw
-            : (prev.rawInput ?? {});
-
-      const newOut = tc.rawOutput ?? u.rawOutput;
-      const out =
-        newOut && typeof newOut === 'object' && !Array.isArray(newOut)
-          ? { ...(prev.rawOutput || {}), ...newOut }
-          : newOut !== undefined
-            ? newOut
-            : (prev.rawOutput ?? {});
-
-      let detail = prev.detail || '';
-      let commandConfidence: 'high' | 'medium' | 'low' = prev.commandConfidence || 'low';
-
-      if (raw?.command || raw?.cmd) {
-        title = 'Run';
-        detail = String(raw.command || raw.cmd);
-        commandConfidence = 'high';
-      } else if (typeof raw === 'string' && raw.trim()) {
-        detail = raw.trim();
-        commandConfidence = 'high';
-      } else if (raw?.path || raw?.file) {
-        detail = String(raw.path || raw.file);
-      } else if (raw?.pattern || raw?.query || raw?.glob) {
-        detail = String(raw.pattern || raw.query || raw.glob);
-      }
-
-      if (!detail && title.startsWith('`') && title.endsWith('`')) {
-        detail = title.slice(1, -1);
-        title = 'Run';
-        commandConfidence = 'low';
-      } else if (!detail && /^run\s+(.+)$/i.test(title)) {
-        const match = title.match(/^run\s+(.+)$/i);
-        if (match && match[1]) {
-          detail = match[1].replace(/^`|`$/g, '').trim();
-          commandConfidence = 'low';
-        }
-      }
-
-      const status = u.status || tc.status || prev.status || 'in_progress';
-
-      let exit: number | null = prev.exit_code ?? null;
-      if (out && typeof out === 'object') {
-        for (const k of ['exit_code', 'exitCode', 'code']) {
-          if (out[k] != null && Number.isFinite(Number(out[k]))) {
-            exit = Number(out[k]);
-            break;
-          }
-        }
-      }
-      if (exit == null && ['failed', 'error'].includes(status)) {
-        exit = 1;
-      }
-
-      const isExecution =
-        title === 'Run' ||
-        kind === 'execute' ||
-        Boolean(raw?.command || raw?.cmd) ||
-        commandConfidence === 'high';
-      const row = {
-        id,
-        sid,
-        title: isExecution ? 'Run' : title,
-        kind,
-        detail,
-        status,
-        exit_code: exit,
-        rawInput: raw,
-        rawOutput: out,
-        commandConfidence,
-        updatedAt: Date.now(),
-      };
-      tools.set(compositeKey, row);
-
-      if (
-        isExecution &&
-        detail &&
-        ['completed', 'failed', 'error', 'in_progress'].includes(status)
-      ) {
-        const obs: CommandObservation = {
-          observation_id: `${sid}-${id}`,
-          run_id: opts?.runId,
-          stage: opts?.stageName,
+      const result = accumulator.processUpdate(
+        { ...u, sessionId: sid },
+        {
+          defaultSessionId: sid,
+          runId: opts?.runId,
+          stageName: opts?.stageName,
           attempt: opts?.attempt,
-          session_id: sid,
-          tool_id: id,
-          tool_call_id: id,
-          sequence,
-          timestamp: iso(),
-          source: 'replay',
-          command: detail,
-          normalized_command: detail.trim().replace(/\s+/g, ' '),
-          command_confidence: commandConfidence,
-          status: status as any,
-          exit_code: exit,
-          cwd: opts?.workspace,
-        };
-        const idx = observed.findIndex(
-          (x) => x.tool_call_id === obs.tool_call_id && x.session_id === obs.session_id,
-        );
-        if (idx >= 0) {
-          observed[idx] = {
-            ...observed[idx],
-            ...obs,
-            exit_code: obs.exit_code ?? observed[idx].exit_code,
-            status: obs.status || observed[idx].status,
-            sequence: obs.sequence || observed[idx].sequence,
-          };
-        } else {
-          observed.push(obs);
-        }
+          workspace: opts?.workspace,
+          isReplay: true,
+        },
+      );
+
+      if (result.observation) {
+        journal.record(result.observation, true);
       }
     }
   }
 
-  return observed;
+  return journal.getObservations();
 }

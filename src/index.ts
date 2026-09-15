@@ -143,10 +143,49 @@ export {
   type SyncProcessOptions,
 } from './core/process.js';
 
-// Orchestrator
+// Orchestrator & Quality
 export { Orchestrator } from './orchestrator/Orchestrator.js';
-export { RecoveryManager, type RecoveryResult } from './orchestrator/RecoveryManager.js';
-export { PermissionEngine, type PermissionRequest } from './permissions/PermissionEngine.js';
+export {
+  RecoveryManager,
+  type RecoveryResult,
+  type RecoveryOptions,
+} from './orchestrator/RecoveryManager.js';
+export {
+  PermissionEngine,
+  type PermissionRequest,
+  type PermissionDecision,
+} from './permissions/PermissionEngine.js';
+export { EvidenceService, type CorroborationResult } from './quality/EvidenceService.js';
+export {
+  verifyEvidenceAgainstObserved,
+  validateEvidence,
+  normalizeCommand,
+  commandMatches,
+  type VerificationContext,
+} from './quality/EvidenceVerifier.js';
+export { AcpToolAccumulator } from './harness/cursor/AcpToolAccumulator.js';
+export {
+  type AccumulatedToolState,
+  type ProcessToolResult,
+  type ToolStatus,
+  type CommandConfidence,
+  type ParseAcpOptions,
+} from './harness/cursor/types.js';
+export {
+  AcpEventNormalizer,
+  type AcpEventNormalizerOptions,
+} from './harness/cursor/AcpEventNormalizer.js';
+export { ObservationJournal } from './harness/cursor/ObservationJournal.js';
+export { parseAcpEvents } from './harness/cursor/CursorExecutorHarness.js';
+export {
+  parseCodexEventLine,
+  validateReviewerVerdict,
+  type ParsedCodexEvent,
+  type TokenUsage,
+} from './harness/codex/CodexEventParser.js';
+export { CodexPromptBuilder } from './harness/codex/CodexPromptBuilder.js';
+export { CodexProcessRunner } from './harness/codex/CodexProcessRunner.js';
+export { CodexResultParser } from './harness/codex/CodexResultParser.js';
 
 // UI
 export { EventBus } from './ui/EventBus.js';

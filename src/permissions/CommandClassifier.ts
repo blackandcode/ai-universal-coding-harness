@@ -1,3 +1,11 @@
+/**
+ * @fileoverview Command classification and dangerous command detection.
+ *
+ * Provides cross-platform categorization of CLI commands, identifies hard-denied operations
+ * (Git history mutations, branch deletions, privilege escalations, package publishing),
+ * safe reversible read/quality commands, and verifies workspace path boundary containment.
+ */
+
 import path from 'node:path';
 
 const HARD_DENY: [RegExp, string][] = [
@@ -38,6 +46,8 @@ const SAFE_PREFIXES = [
   'tail',
   'wc',
   'ls',
+  'dir',
+  'type',
   'pwd',
   'stat',
   'file',
@@ -67,25 +77,62 @@ const SAFE_PREFIXES = [
   'bash -n',
 ];
 
-export function normalizeCommand(s = '') {
+/**
+ * Normalizes command strings by trimming whitespace and normalizing internal whitespace.
+ *
+ * @param s - Raw command string
+ * @returns Normalized command string
+ */
+export function normalizeCommand(s = ''): string {
   return String(s || '')
     .trim()
     .replace(/\s+/g, ' ');
 }
-export function commandStartsWith(command: string, prefix: string) {
-  const c = normalizeCommand(command).toLowerCase(),
-    p = normalizeCommand(prefix).toLowerCase();
+
+/**
+ * Checks whether a command starts with a specified command or prefix.
+ *
+ * @param command - Full command to check
+ * @param prefix - Prefix to check against
+ * @returns True if command matches prefix exactly or prefix followed by space
+ */
+export function commandStartsWith(command: string, prefix: string): boolean {
+  const c = normalizeCommand(command).toLowerCase();
+  const p = normalizeCommand(prefix).toLowerCase();
   return c === p || c.startsWith(p + ' ');
 }
-export function hardDangerous(text: string) {
+
+/**
+ * Checks if a command text matches non-negotiable hard dangerous patterns.
+ *
+ * @param text - Command text or operation description
+ * @returns Reason string if dangerous, empty string if not hard-denied
+ */
+export function hardDangerous(text: string): string {
   const s = normalizeCommand(text);
-  for (const [re, reason] of HARD_DENY) if (re.test(s)) return reason;
+  for (const [re, reason] of HARD_DENY) {
+    if (re.test(s)) return reason;
+  }
   return '';
 }
-export function knownSafeCommand(command: string) {
+
+/**
+ * Checks if a command is recognized as safe and routinely reversible for development.
+ *
+ * @param command - Command string
+ * @returns True if recognized as a safe prefix
+ */
+export function knownSafeCommand(command: string): boolean {
   return SAFE_PREFIXES.some((p) => commandStartsWith(command, p));
 }
-export function commandCategory(command: string) {
+
+/**
+ * Classifies a command into a domain category for signature hashing and policy routing.
+ *
+ * @param command - Command string
+ * @returns Category identifier
+ */
+export function commandCategory(command: string): string {
   const c = normalizeCommand(command);
   if (!c) return 'non-command';
   const exe = c.split(' ')[0].toLowerCase();
@@ -102,8 +149,18 @@ export function commandCategory(command: string) {
   if (['rm', 'mv', 'cp', 'mkdir', 'touch'].includes(exe)) return 'filesystem';
   return exe;
 }
-export function pathInside(root: string, candidate: string) {
-  const abs = path.resolve(root, candidate);
-  const rel = path.relative(root, abs);
-  return !rel.startsWith('..') && !path.isAbsolute(rel);
+
+/**
+ * Verifies that a target candidate path is strictly inside the root directory,
+ * normalizing path separators across Windows and POSIX boundaries.
+ *
+ * @param root - Absolute root directory path
+ * @param candidate - Absolute or relative candidate path
+ * @returns True if candidate resides inside root
+ */
+export function pathInside(root: string, candidate: string): boolean {
+  const absRoot = path.resolve(root);
+  const absCandidate = path.resolve(root, candidate);
+  const rel = path.relative(absRoot, absCandidate);
+  return !rel.startsWith('..') && !path.isAbsolute(rel) && rel !== '..';
 }

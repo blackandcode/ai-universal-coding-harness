@@ -1,3 +1,11 @@
+/**
+ * @fileoverview Permission classification and autonomous policy engine.
+ *
+ * Implements deterministic classification (auto_safe, allowlist, allow_all, ask_reviewer),
+ * signature generation, cached decisions, and workspace path boundary validation.
+ * Non-negotiable: reviewer denials apply strictly to individual operations and do not terminate stages.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse, printParseErrorCode } from 'jsonc-parser';
@@ -17,6 +25,7 @@ export interface PermissionRequest {
   paths?: string[];
   raw: any;
 }
+
 export interface PermissionDecision {
   allow: boolean;
   source: string;
@@ -29,6 +38,7 @@ export class PermissionEngine {
   private allowlist: string[] = [];
   private denylist: string[] = [];
   private cache = new Map<string, PermissionDecision>();
+
   constructor(
     private workspace: string,
     private mode: PermissionMode,
@@ -36,7 +46,8 @@ export class PermissionEngine {
   ) {
     this.load(permissionsFile);
   }
-  private load(file: string) {
+
+  private load(file: string): void {
     if (!fs.existsSync(file)) return;
     const errors: any[] = [];
     const doc: any = parse(fs.readFileSync(file, 'utf8'), errors, {
@@ -50,13 +61,21 @@ export class PermissionEngine {
     this.allowlist = Array.isArray(doc?.terminalAllowlist) ? doc.terminalAllowlist.map(String) : [];
     this.denylist = Array.isArray(doc?.terminalDenylist) ? doc.terminalDenylist.map(String) : [];
   }
-  signature(req: PermissionRequest) {
+
+  /**
+   * Generates a stable deterministic signature for a permission request.
+   *
+   * @param req - Permission request
+   * @returns JSON serialized signature string
+   */
+  signature(req: PermissionRequest): string {
     const command = normalizeCommand(req.command || '');
     const category = commandCategory(command);
     const paths = (req.paths || []).map((p) => path.resolve(this.workspace, p)).sort();
     return JSON.stringify({ category, command: command.split(' ').slice(0, 4).join(' '), paths });
   }
-  private workspacePathsSafe(req: PermissionRequest) {
+
+  private workspacePathsSafe(req: PermissionRequest): boolean {
     return (req.paths || []).every((p) => {
       if (!pathInside(this.workspace, p)) return false;
       const rel = path
@@ -76,6 +95,13 @@ export class PermissionEngine {
       );
     });
   }
+
+  /**
+   * Evaluates deterministic rules against the permission request.
+   *
+   * @param req - Permission request
+   * @returns Decision or null if reviewer judgment is required
+   */
   deterministic(req: PermissionRequest): PermissionDecision | null {
     const sig = this.signature(req);
     if (this.cache.has(sig)) return this.cache.get(sig)!;
@@ -133,14 +159,27 @@ export class PermissionEngine {
     }
     return null;
   }
-  cached(req: PermissionRequest) {
+
+  /**
+   * Retrieves a previously cached decision for an equivalent request.
+   */
+  cached(req: PermissionRequest): PermissionDecision | null {
     return this.cache.get(this.signature(req)) || null;
   }
-  remember(req: PermissionRequest, d: PermissionDecision) {
+
+  /**
+   * Remembers a decision in the cache when caching is permitted.
+   */
+  remember(req: PermissionRequest, d: PermissionDecision): void {
     if (d.cache) this.cache.set(d.signature, d);
   }
+
+  /**
+   * Converts a reviewer verdict into a domain PermissionDecision.
+   * Note: Denials are operation-specific and do not terminate the stage.
+   */
   fromReviewer(req: PermissionRequest, verdict: PermissionVerdict): PermissionDecision {
-    const d = {
+    const d: PermissionDecision = {
       allow: verdict.verdict === 'ALLOW',
       source: 'reviewer',
       reason: verdict.reason || '',

@@ -5,7 +5,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { LATEST_FILE, RUNS_ROOT } from '../core/paths.js';
+import { RUNS_ROOT } from '../core/paths.js';
 import { ensureDir, writeJson, writeText, appendText } from '../core/fs.js';
 import { iso } from '../core/time.js';
 import type { RunState, StageRuntimeState } from '../types.js';
@@ -75,12 +75,12 @@ export function validateStageRuntimeState(data: unknown): StageRuntimeState {
 }
 
 export class RunStateStore {
-  constructor() {
-    ensureDir(RUNS_ROOT);
+  constructor(private runsRoot = RUNS_ROOT) {
+    ensureDir(this.runsRoot);
   }
 
   runDir(id: string): string {
-    return path.join(RUNS_ROOT, safeRunId(id));
+    return path.join(this.runsRoot, safeRunId(id));
   }
 
   runStatePath(id: string): string {
@@ -99,13 +99,14 @@ export class RunStateStore {
   }
 
   latestId(): string {
-    return fs.existsSync(LATEST_FILE) ? fs.readFileSync(LATEST_FILE, 'utf8').trim() : '';
+    const latestPath = path.join(this.runsRoot, 'latest');
+    return fs.existsSync(latestPath) ? fs.readFileSync(latestPath, 'utf8').trim() : '';
   }
 
   save(state: RunState): void {
     state.updated_at = iso();
     writeJson(this.runStatePath(state.run_id), state);
-    writeText(LATEST_FILE, state.run_id + '\n');
+    writeText(path.join(this.runsRoot, 'latest'), state.run_id + '\n');
     this.writeRunMarkdown(state);
   }
 

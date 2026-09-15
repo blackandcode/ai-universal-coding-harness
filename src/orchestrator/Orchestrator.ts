@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG } from '../core/config.js';
-import { ROOT, STAGE_INPUT_ROOT, STAGE_RUNTIME_ROOT } from '../core/paths.js';
+import { ROOT, STAGE_INPUT_ROOT } from '../core/paths.js';
 import {
   copyDir,
   ensureDir,
@@ -21,7 +21,7 @@ import { PermissionEngine, type PermissionRequest } from '../permissions/Permiss
 import { StageSource } from '../stages/StageSource.js';
 import { frozenStageContext, relevantSkills, skillIndex } from '../stages/context.js';
 import { PlanCoordinator } from '../stages/PlanCoordinator.js';
-import { validateEvidence, verifyEvidenceAgainstObserved } from '../quality/EvidenceVerifier.js';
+import { EvidenceService } from '../quality/EvidenceService.js';
 import { EventBus } from '../ui/EventBus.js';
 import type { RunState, SelectedStage, QuestionVerdict, FinalVerdict } from '../types.js';
 
@@ -30,6 +30,7 @@ export class Orchestrator {
   store = new RunStateStore();
   registry = new HarnessRegistry();
   branch = new BranchManager(this.git, (s) => this.store.save(s));
+  evidenceService = new EvidenceService();
   activeExecutor: ExecutorSession | null = null;
   constructor(public events: EventBus) {}
 
@@ -355,24 +356,15 @@ export class Orchestrator {
       let feedback = '';
       let approvedFinal: FinalVerdict | null = null;
       let _finalEvidence: any = null;
-      let pendingResumedEvidence: any = null;
-      if (
-        (runtime0.phase === 'quality' || runtime0.phase === 'review') &&
-        runtime0.evidence_file &&
-        runtime0.patch_fingerprint === this.patchFingerprint() &&
-        fs.existsSync(runtime0.evidence_file)
-      ) {
-        try {
-          pendingResumedEvidence = {
-            ok: true,
-            e: JSON.parse(fs.readFileSync(runtime0.evidence_file, 'utf8')),
-            resumed: true,
-          };
-          this.events.emit('log', {
-            level: 'info',
-            message: 'Reusing previously corroborated quality evidence for unchanged patch.',
-          });
-        } catch {}
+      let pendingResumedEvidence = this.evidenceService.checkReusableEvidence(
+        runtime0,
+        this.patchFingerprint(),
+      );
+      if (pendingResumedEvidence) {
+        this.events.emit('log', {
+          level: 'info',
+          message: 'Reusing previously corroborated quality evidence for unchanged patch.',
+        });
       }
       for (let attempt = 1; attempt <= CONFIG.maxExecutionAttempts; attempt++) {
         this.branch.assertActive(state);
@@ -384,17 +376,13 @@ export class Orchestrator {
         }
         let epochId = '';
         if (!ev) {
-          const runtimeEvidence = path.join(STAGE_RUNTIME_ROOT, stage.name, 'evidence.json');
-          ensureDir(path.dirname(runtimeEvidence));
-          try {
-            fs.unlinkSync(runtimeEvidence);
-          } catch {}
+          this.evidenceService.clearRuntimeEvidence(stage.name);
           epochId = `${state.run_id}-${stage.name}-${attempt}-${Date.now()}`;
           session.setQualityEpoch?.(epochId);
           await session.prompt(
             this.executionPrompt(stage.name, approved, carry, feedback, attempt, state.quality_cmd),
           );
-          ev = validateEvidence(runtimeEvidence, stage.name, attempt);
+          ev = this.evidenceService.validateRuntimeEvidence(stage.name, attempt);
         }
         if (!ev?.ok) {
           feedback = `Execution evidence invalid: ${ev?.reason || 'missing'}. Re-run required checks and regenerate evidence.json.`;
@@ -419,7 +407,7 @@ export class Orchestrator {
           continue;
         }
         const diffCheck = this.git.diffCheck();
-        const observed = verifyEvidenceAgainstObserved(ev.e, session.observedCommands(), {
+        const corroboration = this.evidenceService.corroborate(ev.e, session.observedCommands(), {
           stage: stage.name,
           attempt,
           quality_epoch_id: epochId || undefined,
@@ -427,8 +415,8 @@ export class Orchestrator {
           last_mutation_sequence: session.lastMutationSeq?.(),
           orchestrator_diff_check_ok: diffCheck.ok,
         });
-        if (!ev.resumed && !observed.ok) {
-          feedback = `Execution evidence could not be corroborated against executor ACP results:\n${observed.issues.map((x: string) => `- ${x}`).join('\n')}\nRerun the exact quality commands and regenerate evidence.json.`;
+        if (!ev.resumed && !corroboration.ok) {
+          feedback = `Execution evidence could not be corroborated against executor ACP results:\n${corroboration.issues.map((x: string) => `- ${x}`).join('\n')}\nRerun the exact quality commands and regenerate evidence.json.`;
           this.events.emit('quality.result', { status: 'FAIL', summary: feedback });
           this.store.appendHuman(
             state.run_id,
@@ -449,13 +437,12 @@ export class Orchestrator {
           this.store.save(state);
           continue;
         }
-        ev.e.observed_quality = observed;
-        ev.e.patch_fingerprint = this.patchFingerprint();
-        const saved = path.join(stageRunDir, `evidence-attempt-${attempt}.json`);
-        writeJson(saved, ev.e);
-        writeText(
-          path.join(stageRunDir, `evidence-attempt-${attempt}.md`),
-          `# Execution evidence — attempt ${attempt}\n\n\`\`\`json\n${JSON.stringify(ev.e, null, 2)}\n\`\`\`\n`,
+        const finalEvidence = corroboration.evidence || ev.e;
+        finalEvidence.patch_fingerprint = this.patchFingerprint();
+        const saved = this.evidenceService.saveCorroboratedEvidence(
+          stageRunDir,
+          finalEvidence,
+          attempt,
         );
         this.events.emit('quality.result', { ...ev.e, summary: ev.e.quality_summary });
         this.store.appendHuman(

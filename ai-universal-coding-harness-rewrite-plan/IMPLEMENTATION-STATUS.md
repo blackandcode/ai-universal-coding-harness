@@ -92,7 +92,56 @@ Status: Completed (Ready for review / stage gate)
 
 ## Stage 03 — Harness, Evidence and Recovery Hardening
 
-Status: Not started
+Status: Completed (Ready for review / stage gate)
+
+- **Quality Commands (Measured Results)**:
+  - `npm run format:check` — Oxfmt formatting verification passed (0 violations across 178 files).
+  - `npm run lint` — Oxlint static analysis and automated rule fixture check (`scripts/verify-oxlint-rules.mjs`) passed (0 errors, all 8 rule categories verified).
+  - `npm run typecheck` — TypeScript 7 compiler verification under strict compilation (`tsc -p tsconfig.json --noEmit`) passed (0 errors).
+  - `npm test` — Fresh build compilation and unit test suite execution: 109 tests passing across all test suites (0 failures).
+  - `npm run test:cli` — CLI smoke execution passing across all verification scenarios.
+  - `npm run verify` — Comprehensive quality gate passing (clean build, format check, lint, typecheck, unit tests, CLI smoke, bidirectional lockfile verification, and packaging consumer check).
+  - `npm run check` — Standalone alias for `npm run verify` passed cleanly.
+  - `npm pack --dry-run` — 184 files in package tarball inventory; 0 test files and 0 internal development artifacts.
+- **Cursor ACP Protocol Modularization & Streaming Normalization**:
+  - Decomposed monolithic Cursor executor into single-responsibility modules under `src/harness/cursor/`:
+    - `types.ts`: Boundary types (`AccumulatedToolState`, `ProcessToolResult`, `ToolStatus`, `CommandConfidence`, `ParseAcpOptions`).
+    - `AcpToolAccumulator.ts`: Manages multi-chunk tool calls keyed by `${sessionId}:${toolCallId}`, deep-merges partial `rawInput`/`rawOutput`, tracks mutation sequences, extracts exit codes across variants (`exitCode`, `exit_code`, `code`), and prevents inferring exit 0 on unstated completed status.
+    - `AcpEventNormalizer.ts`: Safely routes and normalizes unknown JSON-RPC 2.0 messages from Cursor ACP into domain representations.
+    - `ObservationJournal.ts`: Thread-safe in-memory cache and append-only persistence to `executor-observations.jsonl`.
+    - `CursorAcpSession.ts` & `CursorExecutorHarness.ts`: Implements `ExecutorHarness` and `ExecutorSession` contracts.
+  - Added comprehensive regression suite in `src/harness/cursor/acp-regression.test.ts`.
+- **Evidence Integrity & EvidenceService**:
+  - Hardened `EvidenceVerifier.ts` with `VerificationContext` (`quality_epoch_id`, `expected_patch_fingerprint`, `last_mutation_sequence`, `orchestrator_diff_check_ok`, `workspace`).
+  - Added strict command normalization rejecting false-positive substring containment while supporting genuine shell wrappers (`bash -c`, `sh -c`, `cmd /c`, `powershell -Command`).
+  - Enforced chronological evaluation: latest command execution is authoritative.
+  - Disallowed autonomous permission broker executions (`source: 'broker'`) from validating quality evidence.
+  - Created `EvidenceService.ts` extracting evidence lifecycle operations out of `Orchestrator.ts`.
+  - Added comprehensive regression suite in `src/quality/evidence-integrity.test.ts`.
+- **Codex Reviewer Modularization & Role Boundary Enforcement**:
+  - Decomposed Codex reviewer harness into single-responsibility modules under `src/harness/codex/`:
+    - `types.ts`: Typed options and decision models (`CodexDecisionKind`, `PromptBuilderOptions`, `CodexExecutionOptions`).
+    - `CodexPromptBuilder.ts`: Builds structured Markdown prompts with frozen stage context and relevant skills digests.
+    - `CodexProcessRunner.ts`: Executes ephemeral subprocesses in isolated git repositories with JSON-RPC stdio streaming.
+    - `CodexEventParser.ts`: Parses event lines, accounts for token usage (`input`, `cached`, `output`), and detects role boundary violations (`file_change`, `mcp_tool_call`, `web_search`, `command_execution`).
+    - `CodexResultParser.ts`: Reads, parses, and validates schema-conforming structured verdicts.
+  - Added comprehensive test suite in `src/harness/codex/codex-reviewer.test.ts`.
+- **Permission Engine Hardening**:
+  - Hardened `CommandClassifier.ts` with cross-platform `pathInside` handling relative/absolute boundaries and Windows/POSIX separators.
+  - Enforced non-negotiable hard dangerous command invariants (`hardDangerous`) even under `allow_all`.
+  - Enforced non-fatal reviewer denials: individual denied commands reject the operation without terminating the stage.
+  - Added test suite in `src/permissions/permission-hardening.test.ts`.
+- **Recovery Hardening**:
+  - Enhanced `RecoveryManager.ts` with dual recovery resume points based on provable evidence:
+    - Resumes at `REVIEW` when corroborated green evidence matches the patch fingerprint and passes authoritative git diff check.
+    - Resumes at `QUALITY` when evidence is missing, uncorroborated, or stale.
+  - Built-in automatic timestamped backup generation (`run.backup.<timestamp>.json`, `stage-state.backup.<timestamp>.json`).
+  - Automatic reconstruction of missing `executor-observations.jsonl` from historical `executor-acp.jsonl`.
+  - Safe dry-run mode (`apply: false`) reporting planned transitions without filesystem modifications.
+  - Added comprehensive test suite in `src/orchestrator/recovery-hardening.test.ts`.
+- **Public API & Exports**:
+  - Exported all new modular services and types in `src/index.ts`.
+  - Verified public exports in `src/index.test.ts`.
 
 ## Stage 06 — Reviewer Routing, Fallback and Orchestrator Resilience
 
