@@ -1,0 +1,11 @@
+---
+description: Architectural invariants for orchestration, harnesses, Git lifecycle, permissions, and state
+alwaysApply: true
+---
+- The orchestration engine is harness-neutral.
+- Harness adapters own model/binary/protocol details.
+- Executor performs implementation and quality commands; reviewer makes decisions from evidence.
+- One run equals one AI branch; one approved stage equals one stage-named commit.
+- Never automatically push or merge.
+- Permission and plan-review budgets must not become accidental stage blockers.
+- UI consumes semantic events and never controls business state.

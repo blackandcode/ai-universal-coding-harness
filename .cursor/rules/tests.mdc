@@ -1,0 +1,9 @@
+---
+description: Testing and verification conventions
+globs: "src/**/*.test.ts, scripts/**/*.mjs, .github/workflows/*.yml"
+alwaysApply: false
+---
+- Test failure paths, resume behavior, configuration precedence, and cross-platform process assumptions.
+- Prefer deterministic tests over spawning real paid AI harnesses.
+- Keep mocked adapter tests separate from true harness preflight checks.
+- Run `npm run verify` after changing runtime behavior.

@@ -1,0 +1,79 @@
+{
+  "name": "ai-universal-coding-harness",
+  "version": "1.0.0",
+  "description": "A cross-platform CLI that orchestrates autonomous coding harnesses through structured stages, review, quality gates, and clean Git history.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "bin": {
+    "ai-harness": "./dist/bin.js",
+    "ai-universal-coding-harness": "./dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blackandcode/ai-universal-coding-harness.git"
+  },
+  "homepage": "https://github.com/blackandcode/ai-universal-coding-harness#readme",
+  "bugs": {
+    "url": "https://github.com/blackandcode/ai-universal-coding-harness/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/",
+    "schemas/",
+    "permissions.default.jsonc",
+    "config.example.jsonc",
+    "docs/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "tsc -p tsconfig.json && node scripts/postbuild.mjs",
+    "compile": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "node scripts/run-tests.mjs",
+    "test": "npm run build && npm run test:unit",
+    "verify": "npm run typecheck && npm test && npm run test:cli && node scripts/package-check.mjs",
+    "prepare": "npm run build",
+    "prepack": "npm run verify",
+    "test:cli": "node scripts/cli-smoke.mjs"
+  },
+  "dependencies": {
+    "adm-zip": "0.6.1",
+    "ink": "5.2.1",
+    "jsonc-parser": "3.3.1",
+    "react": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.13.14",
+    "@types/react": "18.3.18",
+    "ink-testing-library": "4.0.0",
+    "typescript": "5.9.3"
+  },
+  "keywords": [
+    "ai",
+    "coding-agent",
+    "cli",
+    "orchestrator",
+    "cursor",
+    "codex",
+    "agents",
+    "typescript",
+    "automation",
+    "harness"
+  ]
+}

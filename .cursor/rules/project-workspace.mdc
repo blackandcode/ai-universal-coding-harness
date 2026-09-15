@@ -1,0 +1,10 @@
+---
+description: Project init and local runtime workspace invariants
+globs: "src/project/**/*.ts, src/core/paths.ts, src/core/config.ts, src/state/**/*.ts"
+alwaysApply: false
+---
+- `.ai-orchestrator/` is the only project-local runtime/state root.
+- Initialization is explicit, safe, idempotent, and Git-local via `.git/info/exclude`.
+- History reset preserves project configuration and permissions.
+- Stage validation happens before AI branch creation.
+- Run-history deletion must respect the repository run lock.

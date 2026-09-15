@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "verdict": { "type": "string", "enum": ["ANSWER", "BLOCKED"] },
+    "answers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "question_id": { "type": "string" },
+          "selected_option_ids": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["question_id", "selected_option_ids"]
+      }
+    },
+    "rationale": { "type": "string" }
+  },
+  "required": ["verdict", "answers", "rationale"]
+}

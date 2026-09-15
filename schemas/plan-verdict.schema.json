@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "verdict": { "type": "string", "enum": ["APPROVE", "REPLAN", "BLOCKED"] },
+    "summary": { "type": "string" },
+    "missing_items": { "type": "array", "items": { "type": "string" } },
+    "feedback_for_cursor": { "type": "string" }
+  },
+  "required": ["verdict", "summary", "missing_items", "feedback_for_cursor"]
+}

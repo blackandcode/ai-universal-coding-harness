@@ -1,0 +1,34 @@
+// AI Universal Coding Harness configuration example.
+// Preferred project-local config is created by `ai-harness init` at .ai-orchestrator/config.jsonc.
+// A tracked project override may be placed at .ai-universal-coding-harness.jsonc.
+// Global config location is shown by `ai-harness config paths`.
+{
+  "executorHarness": "cursor",
+  "reviewerHarness": "codex",
+  "permissionMode": "auto_safe",
+  "qualityCommand": "npm run check",
+  "branchPrefix": "ai-harness",
+  "maxPlanReviews": 3,
+  "finalPlanReview": true,
+  "maxExecutionAttempts": 3,
+
+  // Additional harness adapter packages can register themselves here.
+  "harnessModules": [],
+
+  "harnesses": {
+    "cursor": {
+      "binary": "agent",
+      "model": "gemini-3.8-flash",
+      "thinking": "high",
+      "turnTimeoutMinutes": 45
+    },
+    "codex": {
+      "binary": "codex",
+      "model": "gpt-6-astra",
+      "reasoningEffort": "low",
+      "verbosity": "low",
+      "timeoutMinutes": 8,
+      "contextMode": "evidence_only"
+    }
+  }
+}

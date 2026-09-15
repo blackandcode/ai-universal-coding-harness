@@ -1,0 +1,65 @@
+name: Publish npm
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'blackandcode/ai-universal-coding-harness'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      # Trusted publishing requires npm 11.5.1+; use a current npm 11 release explicitly.
+      - name: Use trusted-publishing-capable npm
+        run: npm install --global 'npm@^11.15.0'
+
+      - name: Verify release tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: node -e "const p=require('./package.json'); if(process.env.RELEASE_TAG !== 'v'+p.version){console.error('Release tag must equal v'+p.version); process.exit(1)}"
+
+      - name: Require committed dependency lock
+        run: test -f package-lock.json || (echo 'package-lock.json must be committed before npm publishing' && exit 1)
+
+      - run: npm ci
+      - run: npm run verify
+      - run: npm pack --dry-run
+
+      # The bootstrap release may have been published manually before npm can attach
+      # a trusted publisher. Treat an already-published exact version as success.
+      - name: Check whether this version is already published
+        id: npm-version
+        shell: bash
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "${NAME}@${VERSION}" version --json >/dev/null 2>&1; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "${NAME}@${VERSION} already exists on npm; publish step will be skipped."
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # npm exchanges the GitHub OIDC token for a short-lived publishing credential.
+      # No long-lived registry write credential is stored in GitHub.
+      - name: Publish to npm
+        if: steps.npm-version.outputs.already_published != 'true'
+        run: npm publish

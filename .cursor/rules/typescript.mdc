@@ -1,0 +1,10 @@
+---
+description: TypeScript implementation conventions for orchestrator source and tests
+globs: "src/**/*.ts"
+alwaysApply: false
+---
+- Prefer small modules with explicit responsibility boundaries.
+- Keep public interfaces typed even where external CLI/protocol payloads require `any` at the edge.
+- Normalize external payloads at adapter boundaries instead of leaking protocol-specific structures into the engine.
+- Prefer Node standard library APIs for cross-platform operations.
+- Do not add OS-specific shell assumptions to core code.

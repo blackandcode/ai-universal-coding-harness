@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "verdict": { "type": "string", "enum": ["ALLOW", "DENY"] },
+    "cache_for_stage": { "type": "boolean" },
+    "reason": { "type": "string" }
+  },
+  "required": ["verdict", "cache_for_stage", "reason"]
+}
