@@ -5,3 +5,5 @@ dist/
 coverage/
 .ai-orchestrator/
 .env
+.cursor
+.vscode/
