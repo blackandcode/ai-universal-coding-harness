@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+### Fixed
+
+- Awaited ACP child process termination in `CursorAcpSession.stop()` and enabled retrying directory cleanup to eliminate Windows `EPERM` file lock errors in test suites
+
 ## [2.1.6] - 2026-09-16
 
 ### Fixed

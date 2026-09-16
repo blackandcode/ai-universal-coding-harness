@@ -12,6 +12,12 @@ import { CodexProcessRunner } from '../../../src/harness/codex/CodexProcessRunne
 import type { PlanReviewVerdict } from '../../../src/types.js';
 import { ProcessExecutionError } from '../../../src/errors.js';
 
+function safeRm(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch {}
+}
+
 function createMockCodexBinary(tmpDir: string): string {
   const scriptPath = path.join(tmpDir, 'mock-codex.mjs');
   const scriptContent = `#!/usr/bin/env node
@@ -113,7 +119,7 @@ test('CodexProcessRunner: executes successful plan review and records tokens and
     assert.ok(runLogContent.includes('[reviewer-stderr] Test warning message on stderr'));
   } finally {
     delete process.env.TEST_CODEX_MODE;
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -144,7 +150,7 @@ test('CodexProcessRunner: supports evidence_only mode with default stageName fal
     assert.ok(execution.decisionDir.includes('_run'));
   } finally {
     delete process.env.TEST_CODEX_MODE;
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -174,7 +180,7 @@ test('CodexProcessRunner: detects role boundary violation and throws error', asy
     }, /role boundary violation/);
   } finally {
     delete process.env.TEST_CODEX_MODE;
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -211,6 +217,6 @@ test('CodexProcessRunner: throws ProcessExecutionError on non-zero exit code', a
     );
   } finally {
     delete process.env.TEST_CODEX_MODE;
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });

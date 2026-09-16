@@ -15,6 +15,12 @@ import { CodexReviewerHarness } from '../../../src/harness/codex/CodexReviewerHa
 import { CodexProcessRunner } from '../../../src/harness/codex/CodexProcessRunner.js';
 import type { CodexExecutionOptions } from '../../../src/harness/codex/types.js';
 
+function safeRm(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch {}
+}
+
 function createMockCodexPreflightBinary(
   tmpDir: string,
   mode: 'ok' | 'bad-help' | 'missing-schema'
@@ -81,7 +87,7 @@ test('CodexReviewerHarness: preflight validates exec help output and schema flag
     assert.equal(missingSchema.ok, false);
     assert.ok(missingSchema.details.some((d) => d.includes('output-schema')));
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 

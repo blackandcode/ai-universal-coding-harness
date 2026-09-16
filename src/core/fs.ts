@@ -117,7 +117,9 @@ export function makeWritableTree(dir: string): void {
 export function removeTree(dir: string): void {
   if (!fs.existsSync(dir)) return;
   makeWritableTree(dir);
-  fs.rmSync(dir, { recursive: true, force: true });
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch {}
 }
 
 /**

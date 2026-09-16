@@ -17,6 +17,12 @@ import { AcpToolAccumulator } from '../../../src/harness/cursor/AcpToolAccumulat
 import { ObservationJournal } from '../../../src/harness/cursor/ObservationJournal.js';
 import { EventBus } from '../../../src/ui/EventBus.js';
 
+function safeRm(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch {}
+}
+
 test('parseAcpEvents accumulates state across multi-chunk tool calls', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-test-'));
   const eventsFile = path.join(tmpDir, 'test-acp.jsonl');
@@ -45,7 +51,7 @@ test('parseAcpEvents accumulates state across multi-chunk tool calls', () => {
     assert.equal(observed[0].exit_code, 0);
     assert.equal(observed[0].command_confidence, 'high');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -70,7 +76,7 @@ test('parseAcpEvents extracts exit codes from various key formats', () => {
     assert.equal(observed[1].exit_code, 0);
     assert.equal(observed[2].exit_code, 1);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -90,7 +96,7 @@ test('parseAcpEvents extracts commands from backtick titles when rawInput is emp
     assert.equal(observed[0].exit_code, 0);
     assert.equal(observed[0].status, 'completed');
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -168,7 +174,7 @@ test('CursorAcpSession: creates session and manages state and epochs', () => {
     session.setQualityEpoch('epoch-1');
     assert.equal(session.currentSequence(), 0);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -517,7 +523,7 @@ test('CursorExecutorHarness: preflight succeeds when model available and fails w
     assert.ok(missingResult.details.some((d) => d.includes('not available')));
   } finally {
     delete process.env.TEST_CURSOR_MODELS;
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -670,7 +676,7 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
     await resumedSession.stop();
   } finally {
     eventsBus.close();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -707,7 +713,7 @@ test('parseAcpEvents replays tool observations and ignores malformed server line
     assert.equal(observations[0].command, 'npm test');
     assert.equal(parseAcpEvents(path.join(tmpDir, 'missing.jsonl')).length, 0);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -826,7 +832,7 @@ test('AcpToolAccumulator and ObservationJournal: unit test methods and persisten
     journal.clear();
     assert.equal(journal.getObservations().length, 0);
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -896,7 +902,7 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
     await noThink.stop();
     delete process.env.TEST_CURSOR_NO_THINKING;
     busThink.close();
-    fs.rmSync(thinkDir, { recursive: true, force: true });
+    safeRm(thinkDir);
 
     process.env.TEST_CURSOR_CONFIG_FAIL = '1';
     const cfgDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-cfg-'));
@@ -907,7 +913,7 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
     await cfgFail.stop();
     delete process.env.TEST_CURSOR_CONFIG_FAIL;
     busCfg.close();
-    fs.rmSync(cfgDir, { recursive: true, force: true });
+    safeRm(cfgDir);
   } finally {
     delete process.env.TEST_CURSOR_AUTH_FAIL;
     delete process.env.TEST_CURSOR_LOAD_FAIL;
@@ -915,8 +921,8 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
     delete process.env.TEST_CURSOR_CONFIG_FAIL;
     busAuth.close();
     busLoad.close();
-    fs.rmSync(authDir, { recursive: true, force: true });
-    fs.rmSync(loadDir, { recursive: true, force: true });
+    safeRm(authDir);
+    safeRm(loadDir);
   }
 });
 
@@ -939,7 +945,7 @@ test('CursorAcpSession: prompt timeout and child exit reject in-flight requests'
     await exitSession.stop();
   } finally {
     eventsBus.close();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -977,7 +983,7 @@ test('CursorAcpSession: replays historical SERVER tool observations on start', a
     await session.stop();
   } finally {
     eventsBus.close();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });
 
@@ -1002,6 +1008,6 @@ test('CursorAcpSession: setQualityEpoch rebuilds normalizer and records epoch on
     await session.stop();
   } finally {
     eventsBus.close();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    safeRm(tmpDir);
   }
 });

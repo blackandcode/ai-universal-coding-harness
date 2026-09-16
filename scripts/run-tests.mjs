@@ -1,7 +1,7 @@
 /**
  * @fileoverview Test runner script using Node.js native test runner and code coverage.
  * Discovers compiled tests in .test-dist/tests (or targeted files passed via arguments),
- * enforces native Node 24 coverage thresholds (95% lines, 95% functions, 84% branches),
+ * enforces native Node 24 coverage thresholds (95% lines, 95% functions, 85% branches),
  * and verifies critical security, quality, and recovery modules.
  */
 
@@ -23,9 +23,36 @@ function walk(dir, out = []) {
 }
 
 const specifiedArgs = process.argv.slice(2);
+const includes = [];
+const fileArgs = [];
+
+for (let i = 0; i < specifiedArgs.length; i++) {
+  const arg = specifiedArgs[i];
+  if (arg === '--coverage' || arg === '--coverage-gate') {
+    continue;
+  }
+  if (arg.startsWith('--include=')) {
+    includes.push(arg.slice('--include='.length));
+    continue;
+  }
+  if (arg.startsWith('--test-coverage-include=')) {
+    includes.push(arg.slice('--test-coverage-include='.length));
+    continue;
+  }
+  if (arg === '--include' && i + 1 < specifiedArgs.length) {
+    includes.push(specifiedArgs[++i]);
+    continue;
+  }
+  if (arg.startsWith('--')) {
+    continue;
+  }
+  fileArgs.push(arg);
+}
+
 const isCoverage =
-  specifiedArgs.includes('--coverage') || specifiedArgs.includes('--coverage-gate');
-const fileArgs = specifiedArgs.filter((arg) => !arg.startsWith('--'));
+  specifiedArgs.includes('--coverage') ||
+  specifiedArgs.includes('--coverage-gate') ||
+  includes.length > 0;
 
 let testFiles = [];
 
@@ -61,9 +88,12 @@ if (isCoverage) {
     '--experimental-test-coverage',
     '--test-coverage-lines=95',
     '--test-coverage-functions=95',
-    '--test-coverage-branches=84',
+    '--test-coverage-branches=85',
     '--test-coverage-exclude=.test-dist/tests/**'
   );
+  for (const inc of includes) {
+    args.push(`--test-coverage-include=${inc}`);
+  }
 }
 args.push('--experimental-test-module-mocks', '--test', ...testFiles);
 

@@ -497,11 +497,50 @@ export class CursorAcpSession implements ExecutorSession {
       this.er?.close();
     } catch {}
     try {
-      this.child?.stdin?.end();
+      this.child?.stdin?.destroy();
     } catch {}
     try {
-      this.child?.kill('SIGTERM');
+      this.child?.stdout?.destroy();
     } catch {}
+    try {
+      this.child?.stderr?.destroy();
+    } catch {}
+
+    const child = this.child;
+    if (child && child.exitCode === null && child.signalCode === null) {
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+        };
+        const timer = setTimeout(() => {
+          try {
+            child.kill('SIGKILL');
+          } catch {}
+          finish();
+        }, 3000);
+
+        child.once('exit', () => {
+          clearTimeout(timer);
+          finish();
+        });
+        child.once('close', () => {
+          clearTimeout(timer);
+          finish();
+        });
+
+        try {
+          child.kill('SIGTERM');
+        } catch {
+          clearTimeout(timer);
+          finish();
+        }
+      });
+    }
+
     this.pending.clear();
   }
 
