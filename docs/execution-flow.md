@@ -59,7 +59,38 @@ It never means “block the whole stage.”
 
 ## Quality evidence corroboration and recovery
 
-The orchestrator mechanically cross-checks executor `evidence.json` against observed commands recorded by the executor harness session (including tool calls, command exits, and background broker executions).
+```mermaid
+flowchart TD
+  subgraph ExecutorRun [1. Executor Quality Phase]
+    ExecCmd[Executor executes quality command] --> Out[Capture exit code, stdout, stderr]
+    Out --> WriteEvidence[Executor writes evidence.json]
+  end
+
+  subgraph MechanicalVerification [2. Mechanical Corroboration]
+    WriteEvidence --> ReadEv[EvidenceVerifier reads evidence.json]
+    ObsJournal[ObservationJournal captures tool calls & exits] --> MatchObs{Exit code 0 & command observed?}
+    ReadEv --> MatchObs
+    GitRepo[GitRepository diffCheck & patchFingerprint] --> MatchDiff{Diff clean & valid?}
+    MatchObs -->|PASS| MatchDiff
+    MatchObs -->|FAIL / missing observation| RejectEv[Mark evidence uncorroborated]
+    MatchDiff -->|PASS| Corroborated[Save corroborated evidence JSON + MD]
+    MatchDiff -->|FAIL| RejectEv
+  end
+
+  subgraph ReviewerEvaluation [3. Reviewer Final Evaluation]
+    Corroborated --> RevPrompt[Reviewer receives corroborated evidence + git diff]
+    RevPrompt --> Verdict{Reviewer verdict}
+    Verdict -->|APPROVE| CommitStage[Commit stage to dedicated AI branch]
+    Verdict -->|REWORK| NextAttempt[Increment attempt & rerun executor with feedback]
+    RejectEv --> NextAttempt
+  end
+```
+
+The orchestrator mechanically cross-checks executor `evidence.json` against observed commands recorded by the executor harness session (including tool calls, command exits, and background broker executions). Neither executor assertions nor reviewer declarations can bypass mechanical corroboration:
+
+1. **Command Observation**: The exact quality command and subcommands must be recorded in the `ObservationJournal` with exit code `0`.
+2. **Patch Fingerprint**: The repository working tree must produce a valid patch fingerprint matching the observed test run.
+3. **Artifact Integrity**: Corroborated evidence is persisted in both machine-readable `evidence-corroborated.json` and human-auditable `EVIDENCE_CORROBORATED.md`.
 
 If a stage run was interrupted or failed due to missing observations in an earlier session, the automated recovery command can reconstruct observations from historical logs and transition the stage safely:
 

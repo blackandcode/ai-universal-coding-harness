@@ -1,3 +1,8 @@
+/**
+ * @fileoverview CI dependency installer script.
+ * Enforces clean, deterministic dependency installation from package-lock.json with npm ci.
+ */
+
 import fs from 'node:fs';
 import { spawnNpm } from './lib/npm-invoke.mjs';
 

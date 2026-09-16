@@ -147,6 +147,59 @@ test('Footer renders navigation hints for normal and minimal layouts', () => {
   unmountMin();
 });
 
+test('ToolActivity renders system error and info messages with distinct colors', () => {
+  const { lastFrame, unmount } = render(
+    <ToolActivity
+      messages={[
+        { id: '1', role: 'system', kind: 'error', text: 'Critical failure' },
+        { id: '2', role: 'system', kind: 'info', text: 'System notice' },
+      ]}
+      tools={{}}
+      toolOrder={[]}
+      quality={null}
+      height={4}
+      width={80}
+    />,
+  );
+
+  const frame = lastFrame() ?? '';
+  assert.ok(frame.includes('◆ Critical failure'));
+  assert.ok(frame.includes('◆ System notice'));
+  unmount();
+});
+
+test('UI components handle zero or negative height gracefully', () => {
+  const { lastFrame: tFrame, unmount: unmountT } = render(
+    <ToolActivity messages={[]} tools={{}} toolOrder={[]} quality={null} height={0} width={80} />,
+  );
+  assert.equal(tFrame() ?? '', '');
+  unmountT();
+
+  const { lastFrame: fFrame, unmount: unmountF } = render(
+    <Footer height={0} minimal={false} reviewerCalls={0} />,
+  );
+  assert.equal(fFrame() ?? '', '');
+  unmountF();
+
+  const { lastFrame: fpFrame, unmount: unmountFp } = render(
+    <FocusPreview text="focus" height={0} width={80} />,
+  );
+  assert.equal(fpFrame() ?? '', '');
+  unmountFp();
+
+  const { lastFrame: lpFrame, unmount: unmountLp } = render(
+    <ListPanel title="List" lines={['Item']} height={0} />,
+  );
+  assert.equal(lpFrame() ?? '', '');
+  unmountLp();
+
+  const { lastFrame: pFrame, unmount: unmountP } = render(
+    <FocusPanel text="focus" height={0} width={80} offset={0} follow={false} />,
+  );
+  assert.equal(pFrame() ?? '', '');
+  unmountP();
+});
+
 test('FocusPanel renders stream lines and following status', () => {
   const { lastFrame, unmount } = render(
     <FocusPanel

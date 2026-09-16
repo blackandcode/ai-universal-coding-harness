@@ -20,7 +20,13 @@ import {
   readJsonc,
   harnessString,
   harnessNumber,
+  loadEffectiveConfig,
 } from './index.js';
+import {
+  configTemplate,
+  projectPlaceholderConfigTemplate,
+  projectPermissionsTemplate,
+} from './templates.js';
 import { ConfigError } from '../errors.js';
 
 test('configuration defaults are harness-neutral and safe', () => {
@@ -62,12 +68,29 @@ test('validateAndNormalizeConfig clamps bounds and validates permission modes', 
       maxPlanReviews: 99,
       maxExecutionAttempts: -2,
       permissionMode: 'invalid_mode',
+      permissionsFile: 'relative/permissions.jsonc',
+      harnessModules: ['m1', 42],
     },
     DEFAULT_CONFIG,
+    '/test/project',
   );
   assert.equal(normalized.maxPlanReviews, 10);
   assert.equal(normalized.maxExecutionAttempts, 1);
   assert.equal(normalized.permissionMode, 'auto_safe');
+  assert.equal(
+    normalized.permissionsFile,
+    path.resolve('/test/project', 'relative/permissions.jsonc'),
+  );
+  assert.deepEqual(normalized.harnessModules, ['m1', '42']);
+
+  const absNormalized = validateAndNormalizeConfig(
+    {
+      permissionsFile: '/absolute/permissions.jsonc',
+    },
+    DEFAULT_CONFIG,
+    '/test/project',
+  );
+  assert.equal(absNormalized.permissionsFile, '/absolute/permissions.jsonc');
 
   assert.throws(() => validateAndNormalizeConfig('not-an-object', DEFAULT_CONFIG), ConfigError);
 });
@@ -106,9 +129,22 @@ test('compatible config provides uppercase legacy aliases delegating to camelCas
   assert.equal(CONFIG.MAX_PLAN_REVIEWS, CONFIG.maxPlanReviews);
   assert.equal(CONFIG.FINAL_PLAN_REVIEW, CONFIG.finalPlanReview);
   assert.equal(CONFIG.MAX_EXECUTION_ATTEMPTS, CONFIG.maxExecutionAttempts);
+  assert.equal(CONFIG.MAX_UNIQUE_QUESTIONS_PER_STAGE, CONFIG.maxUniqueQuestionsPerStage);
   assert.equal(CONFIG.PERMISSION_MODE, CONFIG.permissionMode);
   assert.equal(CONFIG.QUALITY_CMD, CONFIG.qualityCommand);
   assert.equal(CONFIG.BRANCH_PREFIX, CONFIG.branchPrefix);
+  assert.equal(CONFIG.MAX_DIFF_CHARS, CONFIG.maxDiffChars);
+  assert.equal(CONFIG.MAX_CONTEXT_FILE_CHARS, CONFIG.maxContextFileChars);
+  assert.equal(CONFIG.UI_EVENT_COALESCE_MS, CONFIG.uiEventCoalesceMs);
+  assert.equal(CONFIG.UI_DASHBOARD_MAX_ROWS, CONFIG.uiDashboardMaxRows);
+  assert.equal(CONFIG.RUN_LOG_MAX_BYTES, CONFIG.runLogMaxBytes);
+  assert.equal(CONFIG.FOCUS_LOG_MAX_BYTES, CONFIG.focusLogMaxBytes);
+});
+
+test('configuration templates generate valid template strings', () => {
+  assert.ok(configTemplate().includes('executorHarness'));
+  assert.ok(projectPlaceholderConfigTemplate().includes('Local project overrides'));
+  assert.ok(projectPermissionsTemplate().includes('terminalAllowlist'));
 });
 
 test('harness helper functions return typed fallbacks', () => {
@@ -116,4 +152,22 @@ test('harness helper functions return typed fallbacks', () => {
   assert.equal(harnessString('nonexistent', 'binary', 'default-bin'), 'default-bin');
   assert.equal(harnessNumber('cursor', 'turnTimeoutMinutes', 10), 45);
   assert.equal(harnessNumber('nonexistent', 'turnTimeoutMinutes', 10), 10);
+});
+
+test('loadEffectiveConfig reads legacy .ai-stage-orchestrator.jsonc', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cfg-legacy-'));
+  try {
+    fs.writeFileSync(
+      path.join(tmpDir, '.ai-stage-orchestrator.jsonc'),
+      JSON.stringify({
+        permissionMode: 'allow_all',
+        maxPlanReviews: 5,
+      }),
+    );
+    const loaded = loadEffectiveConfig(tmpDir);
+    assert.equal(loaded.permissionMode, 'allow_all');
+    assert.equal(loaded.maxPlanReviews, 5);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

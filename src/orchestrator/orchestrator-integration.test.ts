@@ -1,0 +1,1058 @@
+/**
+ * @fileoverview Deterministic integration tests for Orchestrator stage execution flows.
+ *
+ * Exercises end-to-end orchestrator coordination in isolated temporary Git repositories using
+ * scripted fake executor and reviewer harnesses. Validates:
+ * 1. Successful stage execution and commit generation.
+ * 2. Reviewer rework feedback loop and subsequent approval.
+ * 3. Interruption and resume with approved plan reuse.
+ * 4. Recovery resume-point determination (REVIEW vs QUALITY).
+ * 5. High-volume permission requests without stage termination.
+ * 6. Plan review budget exhaustion and graceful consolidation.
+ */
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { execSync } from 'node:child_process';
+import { Orchestrator } from './Orchestrator.js';
+import { EventBus } from '../ui/EventBus.js';
+import { HarnessRegistry } from '../harness/registry.js';
+import { GitRepository } from '../git/GitRepository.js';
+import { RecoveryManager } from './RecoveryManager.js';
+import { RunStateStore } from '../state/RunStateStore.js';
+import { removeTree } from '../core/fs.js';
+import type { ExecutorSession } from '../harness/types.js';
+import type { CommandObservation, FinalVerdict, ExecutionEvidence } from '../types.js';
+
+/**
+ * Creates an isolated temporary Git repository configured for testing.
+ */
+function createTestRepo(): string {
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-integ-repo-'));
+  execSync('git init -b main', { cwd: repoDir, stdio: 'ignore' });
+  execSync('git config user.name "Harness Test"', { cwd: repoDir, stdio: 'ignore' });
+  execSync('git config user.email "test@example.com"', { cwd: repoDir, stdio: 'ignore' });
+  fs.writeFileSync(path.join(repoDir, 'README.md'), '# Initial Repository\n');
+  execSync('git add README.md && git commit -m "initial commit"', {
+    cwd: repoDir,
+    stdio: 'ignore',
+  });
+  const infoDir = path.join(repoDir, '.git', 'info');
+  fs.mkdirSync(infoDir, { recursive: true });
+  fs.writeFileSync(path.join(infoDir, 'exclude'), '.ai-orchestrator/\n');
+  return repoDir;
+}
+
+/**
+ * Creates a valid stage specification directory in the target repository.
+ */
+function createStageSource(targetDir: string, stageName = 'stage-01-core'): string {
+  const stagesDir = path.join(targetDir, 'stages');
+  const stageDir = path.join(stagesDir, stageName);
+  fs.mkdirSync(stageDir, { recursive: true });
+
+  fs.writeFileSync(
+    path.join(stageDir, 'functional-spec.md'),
+    '# Functional Specification\n\n## Requirements\n- Must implement core feature.\n',
+  );
+  fs.writeFileSync(
+    path.join(stageDir, 'technical-spec.md'),
+    '# Technical Specification\n\nArchitecture and quality instructions.\n',
+  );
+  fs.writeFileSync(
+    path.join(stageDir, 'prompt.md'),
+    '# Implementation Prompt\n\nExecute the stage requirements.\n',
+  );
+
+  return stagesDir;
+}
+
+test('orchestrator integration: successful stage produces approved commit on AI branch', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-feature');
+  const eventLog = path.join(repoDir, '.ai-orchestrator', 'test-events.jsonl');
+  const events = new EventBus(eventLog);
+
+  try {
+    const registry = new HarnessRegistry();
+    let currentAttempt = 0;
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => {
+        let qualityEpoch = '';
+        const observations: CommandObservation[] = [];
+
+        return {
+          id: 'test-session-1',
+          setMode: async () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
+          },
+          observedCommands: () => observations,
+          prompt: async (promptText) => {
+            if (promptText.includes('Work in PLAN mode')) {
+              await opts.callbacks.onPlan('Comprehensive test implementation plan.', {});
+              return { text: 'Plan submitted.', result: {} };
+            }
+
+            currentAttempt++;
+            // Implementation mode: write code change
+            fs.writeFileSync(path.join(repoDir, 'feature.txt'), 'Feature implementation\n');
+
+            // Record passing quality observations
+            observations.push({
+              observation_id: `obs-quality-${currentAttempt}`,
+              session_id: 'test-session-1',
+              tool_id: 'tool-quality',
+              tool_call_id: 'tool-quality',
+              sequence: 1,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'npm test',
+              normalized_command: 'npm test',
+              command_confidence: 'high',
+              status: 'completed',
+              exit_code: 0,
+              quality_epoch_id: qualityEpoch,
+            });
+            observations.push({
+              observation_id: `obs-diff-${currentAttempt}`,
+              session_id: 'test-session-1',
+              tool_id: 'tool-diff',
+              tool_call_id: 'tool-diff',
+              sequence: 2,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'git diff --check',
+              normalized_command: 'git diff --check',
+              command_confidence: 'high',
+              status: 'completed',
+              exit_code: 0,
+              quality_epoch_id: qualityEpoch,
+            });
+
+            // Write runtime evidence
+            const runtimeDir = path.join(
+              repoDir,
+              '.ai-orchestrator',
+              'stage-runtime',
+              'stage-01-feature',
+            );
+            fs.mkdirSync(runtimeDir, { recursive: true });
+            const evidence: ExecutionEvidence = {
+              stage: 'stage-01-feature',
+              attempt: currentAttempt,
+              status: 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: 'All checks green.',
+              changed_files: ['feature.txt'],
+              unresolved: [],
+            };
+            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+
+            return { text: 'Implementation finished.', result: {} };
+          },
+          stop: async () => {},
+        };
+      },
+    }));
+
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => ({
+        verdict: 'APPROVE',
+        summary: 'Plan is sound and complete.',
+        missing_items: [],
+        feedback_for_cursor: '',
+      }),
+      answerQuestions: async () => ({ verdict: 'ANSWER', rationale: 'OK', answers: [] }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'Safe' }),
+      reviewImplementation: async (): Promise<FinalVerdict> => ({
+        verdict: 'APPROVE',
+        summary: 'Implementation satisfies all requirements.',
+      }),
+    }));
+
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test',
+    });
+
+    const finalState = await orchestrator.run(state);
+
+    const git = new GitRepository(repoDir);
+    assert.equal(finalState.status, 'completed');
+    assert.equal(finalState.stages[0].status, 'completed');
+
+    // Assert commit was created with stage name
+    const logOut = execSync('git log -1 --pretty=format:"%s%n%b"', {
+      cwd: repoDir,
+      encoding: 'utf8',
+    });
+    assert.ok(logOut.includes('stage-01-feature'));
+    assert.ok(logOut.includes('AI-Orchestrator-Run:'));
+    assert.ok(logOut.includes('Stage-Spec-SHA256:'));
+    assert.equal(git.currentBranch(), state.branch);
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: reviewer rework triggers rerun and approval on attempt 2', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-rework');
+  const eventLog = path.join(repoDir, '.ai-orchestrator', 'rework-events.jsonl');
+  const events = new EventBus(eventLog);
+
+  try {
+    const registry = new HarnessRegistry();
+    let currentAttempt = 0;
+    let reviewerCalls = 0;
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => {
+        let qualityEpoch = '';
+        const observations: CommandObservation[] = [];
+
+        return {
+          id: 'rework-session',
+          setMode: async () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
+          },
+          observedCommands: () => observations,
+          prompt: async (promptText) => {
+            if (promptText.includes('Work in PLAN mode')) {
+              await opts.callbacks.onPlan('Initial plan', {});
+              return { text: 'Plan OK', result: {} };
+            }
+
+            currentAttempt++;
+            fs.writeFileSync(
+              path.join(repoDir, 'output.txt'),
+              `Content attempt ${currentAttempt}\n`,
+            );
+
+            observations.push({
+              observation_id: `obs-q-${currentAttempt}`,
+              session_id: 'rework-session',
+              tool_id: 'tool-q',
+              tool_call_id: 'tool-q',
+              sequence: currentAttempt * 2 - 1,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'npm test',
+              normalized_command: 'npm test',
+              command_confidence: 'high',
+              status: 'completed',
+              exit_code: 0,
+              quality_epoch_id: qualityEpoch,
+            });
+            observations.push({
+              observation_id: `obs-d-${currentAttempt}`,
+              session_id: 'rework-session',
+              tool_id: 'tool-d',
+              tool_call_id: 'tool-d',
+              sequence: currentAttempt * 2,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'git diff --check',
+              normalized_command: 'git diff --check',
+              command_confidence: 'high',
+              status: 'completed',
+              exit_code: 0,
+              quality_epoch_id: qualityEpoch,
+            });
+
+            const runtimeDir = path.join(
+              repoDir,
+              '.ai-orchestrator',
+              'stage-runtime',
+              'stage-01-rework',
+            );
+            fs.mkdirSync(runtimeDir, { recursive: true });
+            const evidence: ExecutionEvidence = {
+              stage: 'stage-01-rework',
+              attempt: currentAttempt,
+              status: 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: `Attempt ${currentAttempt} verified.`,
+              changed_files: ['output.txt'],
+              unresolved: [],
+            };
+            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+
+            return { text: `Attempt ${currentAttempt} done`, result: {} };
+          },
+          stop: async () => {},
+        };
+      },
+    }));
+
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => ({
+        verdict: 'APPROVE',
+        summary: 'Plan ok',
+        missing_items: [],
+        feedback_for_cursor: '',
+      }),
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [], rationale: 'OK' }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'Safe' }),
+      reviewImplementation: async (): Promise<FinalVerdict> => {
+        reviewerCalls++;
+        if (reviewerCalls === 1) {
+          return {
+            verdict: 'REWORK',
+            summary: 'Need additional error handling.',
+            rework_instructions: 'Add error handling for null input.',
+          };
+        }
+        return {
+          verdict: 'APPROVE',
+          summary: 'Rework completed satisfactorily.',
+        };
+      },
+    }));
+
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test',
+    });
+
+    const finalState = await orchestrator.run(state);
+
+    assert.equal(currentAttempt, 2);
+    assert.equal(reviewerCalls, 2);
+    assert.equal(finalState.status, 'completed');
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: resume flow reuses approved plan without planning phase', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-resume');
+  const eventLog = path.join(repoDir, '.ai-orchestrator', 'resume-events.jsonl');
+  const events = new EventBus(eventLog);
+
+  try {
+    let planCalls = 0;
+    const registry = new HarnessRegistry();
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => ({
+        id: 'session-resume',
+        setMode: async () => {},
+        observedCommands: () => [],
+        prompt: async (promptText) => {
+          if (promptText.includes('Work in PLAN mode')) {
+            planCalls++;
+            await opts.callbacks.onPlan('Approved plan text', {});
+            // Simulate interruption right after planning
+            throw new Error('SIMULATED_INTERRUPTION_AFTER_PLAN');
+          }
+          return { text: 'Unreached on first run', result: {} };
+        },
+        stop: async () => {},
+      }),
+    }));
+
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => ({
+        verdict: 'APPROVE',
+        summary: 'Plan approved',
+        missing_items: [],
+        feedback_for_cursor: '',
+      }),
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [], rationale: 'OK' }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'Safe' }),
+      reviewImplementation: async () => ({ verdict: 'APPROVE', summary: 'OK' }),
+    }));
+
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test',
+    });
+
+    // Run 1: will fail with SIMULATED_INTERRUPTION_AFTER_PLAN
+    await assert.rejects(async () => orchestrator.run(state), /SIMULATED_INTERRUPTION_AFTER_PLAN/);
+    assert.equal(planCalls, 1);
+
+    // Run 2: resume should reuse the approved plan without invoking plan mode prompt
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async () => {
+        let qualityEpoch = '';
+        const observations: CommandObservation[] = [];
+
+        return {
+          id: 'session-resume-2',
+          setMode: async () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
+          },
+          observedCommands: () => observations,
+          prompt: async (promptText) => {
+            if (promptText.includes('Work in PLAN mode')) {
+              planCalls++;
+              return { text: 'Should not happen', result: {} };
+            }
+
+            fs.writeFileSync(path.join(repoDir, 'resumed.txt'), 'Done\n');
+            observations.push({
+              observation_id: 'obs-q-resume',
+              session_id: 'session-resume-2',
+              tool_id: 'tool-q',
+              tool_call_id: 'tool-q',
+              sequence: 1,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'npm test',
+              normalized_command: 'npm test',
+              command_confidence: 'high',
+              status: 'completed',
+              exit_code: 0,
+              quality_epoch_id: qualityEpoch,
+            });
+            observations.push({
+              observation_id: 'obs-d-resume',
+              session_id: 'session-resume-2',
+              tool_id: 'tool-d',
+              tool_call_id: 'tool-d',
+              sequence: 2,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'git diff --check',
+              normalized_command: 'git diff --check',
+              command_confidence: 'high',
+              status: 'completed',
+              exit_code: 0,
+              quality_epoch_id: qualityEpoch,
+            });
+
+            const runtimeDir = path.join(
+              repoDir,
+              '.ai-orchestrator',
+              'stage-runtime',
+              'stage-01-resume',
+            );
+            fs.mkdirSync(runtimeDir, { recursive: true });
+            const evidence: ExecutionEvidence = {
+              stage: 'stage-01-resume',
+              attempt: 1,
+              status: 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: 'Resumed gate passes.',
+              changed_files: ['resumed.txt'],
+              unresolved: [],
+            };
+            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+
+            return { text: 'Done', result: {} };
+          },
+          stop: async () => {},
+        };
+      },
+    }));
+
+    const resumedState = orchestrator.store.load(state.run_id);
+    const finalState = await orchestrator.run(resumedState);
+
+    // Plan calls remained 1: planning was completely skipped upon resume!
+    assert.equal(planCalls, 1);
+    assert.equal(finalState.status, 'completed');
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: recovery selects REVIEW for valid evidence and QUALITY for stale evidence', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-recovery');
+  const store = new RunStateStore(path.join(repoDir, '.ai-orchestrator', 'runs'));
+  const runId = 'recovery-test-run';
+  const stageName = 'stage-01-recovery';
+  const stageRunDir = store.stageDir(runId, stageName);
+  fs.mkdirSync(stageRunDir, { recursive: true });
+
+  try {
+    const git = new GitRepository(repoDir);
+    // Write a modification
+    fs.writeFileSync(path.join(repoDir, 'recovered.txt'), 'content\n');
+    const patchFingerprint = git.patchFingerprint();
+
+    // 1. Valid corroborated evidence matching patch fingerprint
+    const validEvidence: ExecutionEvidence = {
+      stage: stageName,
+      attempt: 1,
+      status: 'PASS',
+      quality_command: 'npm test',
+      quality_exit_code: 0,
+      git_diff_check_exit_code: 0,
+      focused_tests: [],
+      quality_summary: 'Corroborated green',
+      changed_files: ['recovered.txt'],
+      unresolved: [],
+      patch_fingerprint: patchFingerprint,
+    };
+    const evidencePath = path.join(stageRunDir, 'evidence-attempt-1.json');
+    fs.writeFileSync(evidencePath, JSON.stringify(validEvidence));
+
+    const acp = [
+      'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t1","title":"Run","status":"completed","rawInput":{"command":"npm test"},"rawOutput":{"exit_code":0}}}}',
+      'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t2","title":"Run","status":"completed","rawInput":{"command":"git diff --check"},"rawOutput":{"exit_code":0}}}}',
+    ];
+    fs.writeFileSync(path.join(stageRunDir, 'executor-acp.jsonl'), acp.join('\n') + '\n');
+
+    store.save({
+      version: 1,
+      run_id: runId,
+      created_at: new Date().toISOString(),
+      status: 'failed',
+      workspace: repoDir,
+      base_ref: 'HEAD',
+      base_commit: git.head(),
+      branch: 'ai-harness/recovery-test',
+      branch_created: true,
+      original_branch: 'main',
+      original_head: git.head(),
+      stage_source: stagesDir,
+      feature: null,
+      stages: [
+        {
+          name: stageName,
+          selector: '01',
+          status: 'failed',
+          manifest: {
+            name: stageName,
+            selector: '01',
+            source: stagesDir,
+            relative_path: stageName,
+            sha256: {},
+          },
+        },
+      ],
+      executor_harness: 'cursor',
+      reviewer_harness: 'codex',
+      quality_cmd: 'npm test',
+    });
+
+    store.saveStage(runId, stageName, {
+      phase: 'implementation',
+      attempt: 1,
+      evidence_file: evidencePath,
+      patch_fingerprint: patchFingerprint,
+    });
+
+    const recoveryMgr = new RecoveryManager(repoDir, store, git);
+    const planReview = await recoveryMgr.recover({ runId, stageName, apply: false });
+    assert.equal(planReview.resumePhase, 'review');
+
+    // 2. Modify repository to change patch fingerprint -> evidence becomes stale!
+    fs.appendFileSync(path.join(repoDir, 'recovered.txt'), 'extra line\n');
+    const planQuality = await recoveryMgr.recover({ runId, stageName, apply: false });
+    assert.equal(planQuality.resumePhase, 'quality');
+  } finally {
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: permission volume resilience with 25+ requests', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-perms');
+  const eventLog = path.join(repoDir, '.ai-orchestrator', 'perm-events.jsonl');
+  const events = new EventBus(eventLog);
+
+  try {
+    const registry = new HarnessRegistry();
+    let permissionsRequested = 0;
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => {
+        let qualityEpoch = '';
+        const observations: CommandObservation[] = [];
+
+        return {
+          id: 'perm-session',
+          setMode: async () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
+          },
+          observedCommands: () => observations,
+          prompt: async (promptText) => {
+            if (promptText.includes('Work in PLAN mode')) {
+              await opts.callbacks.onPlan('Plan with permissions', {});
+              return { text: 'Plan ok', result: {} };
+            }
+
+            // Request 25 distinct command execution permissions
+            for (let i = 1; i <= 25; i++) {
+              permissionsRequested++;
+              await opts.callbacks.onPermission(
+                {
+                  command: `echo test_${i}`,
+                  raw: { command: `echo test_${i}` },
+                },
+                {},
+              );
+            }
+
+            fs.writeFileSync(path.join(repoDir, 'perm-done.txt'), 'Completed permissions\n');
+            observations.push({
+              observation_id: 'obs-q-perm',
+              session_id: 'perm-session',
+              tool_id: 'tool-q',
+              tool_call_id: 'tool-q',
+              sequence: 1,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'npm test',
+              normalized_command: 'npm test',
+              command_confidence: 'high',
+              status: 'completed',
+              exit_code: 0,
+              quality_epoch_id: qualityEpoch,
+            });
+            observations.push({
+              observation_id: 'obs-d-perm',
+              session_id: 'perm-session',
+              tool_id: 'tool-d',
+              tool_call_id: 'tool-d',
+              sequence: 2,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'git diff --check',
+              normalized_command: 'git diff --check',
+              command_confidence: 'high',
+              status: 'completed',
+              exit_code: 0,
+              quality_epoch_id: qualityEpoch,
+            });
+
+            const runtimeDir = path.join(
+              repoDir,
+              '.ai-orchestrator',
+              'stage-runtime',
+              'stage-01-perms',
+            );
+            fs.mkdirSync(runtimeDir, { recursive: true });
+            const evidence: ExecutionEvidence = {
+              stage: 'stage-01-perms',
+              attempt: 1,
+              status: 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: 'Permissions test ok',
+              changed_files: ['perm-done.txt'],
+              unresolved: [],
+            };
+            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+
+            return { text: 'Done', result: {} };
+          },
+          stop: async () => {},
+        };
+      },
+    }));
+
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => ({
+        verdict: 'APPROVE',
+        summary: 'OK',
+        missing_items: [],
+        feedback_for_cursor: '',
+      }),
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [], rationale: 'OK' }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'Safe test command' }),
+      reviewImplementation: async () => ({ verdict: 'APPROVE', summary: 'OK' }),
+    }));
+
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test',
+    });
+
+    const finalState = await orchestrator.run(state);
+
+    assert.equal(permissionsRequested, 25);
+    assert.equal(finalState.status, 'completed');
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: plan review budget exhaustion consolidates into executable plan', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-budget');
+  const eventLog = path.join(repoDir, '.ai-orchestrator', 'budget-events.jsonl');
+  const events = new EventBus(eventLog);
+
+  try {
+    const registry = new HarnessRegistry();
+    let planReviewPasses = 0;
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => {
+        let qualityEpoch = '';
+        const observations: CommandObservation[] = [];
+
+        return {
+          id: 'budget-session',
+          setMode: async () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
+          },
+          observedCommands: () => observations,
+          prompt: async (promptText) => {
+            if (promptText.includes('Work in PLAN mode')) {
+              // Submit plans that reviewer rejects repeatedly
+              await opts.callbacks.onPlan(`Plan proposal attempt ${planReviewPasses + 1}`, {});
+              return { text: 'Submitted plan', result: {} };
+            }
+
+            // In implementation mode:
+            fs.writeFileSync(
+              path.join(repoDir, 'budget-done.txt'),
+              'Completed under consolidated plan\n',
+            );
+            observations.push({
+              observation_id: 'obs-q-budget',
+              session_id: 'budget-session',
+              tool_id: 'tool-q',
+              tool_call_id: 'tool-q',
+              sequence: 1,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'npm test',
+              normalized_command: 'npm test',
+              command_confidence: 'high',
+              status: 'completed',
+              exit_code: 0,
+              quality_epoch_id: qualityEpoch,
+            });
+            observations.push({
+              observation_id: 'obs-d-budget',
+              session_id: 'budget-session',
+              tool_id: 'tool-d',
+              tool_call_id: 'tool-d',
+              sequence: 2,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'git diff --check',
+              normalized_command: 'git diff --check',
+              command_confidence: 'high',
+              status: 'completed',
+              exit_code: 0,
+              quality_epoch_id: qualityEpoch,
+            });
+
+            const runtimeDir = path.join(
+              repoDir,
+              '.ai-orchestrator',
+              'stage-runtime',
+              'stage-01-budget',
+            );
+            fs.mkdirSync(runtimeDir, { recursive: true });
+            const evidence: ExecutionEvidence = {
+              stage: 'stage-01-budget',
+              attempt: 1,
+              status: 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: 'Consolidated plan implementation verified.',
+              changed_files: ['budget-done.txt'],
+              unresolved: [],
+            };
+            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+
+            return { text: 'Done', result: {} };
+          },
+          stop: async () => {},
+        };
+      },
+    }));
+
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async (_input, opts) => {
+        planReviewPasses++;
+        if (opts?.finalConsolidation) {
+          return {
+            verdict: 'APPROVE',
+            summary: 'Final consolidation accepted with carryover notes.',
+            missing_items: [],
+            feedback_for_cursor: 'Ensure non-functional requirements are kept.',
+          };
+        }
+        return {
+          verdict: 'REPLAN',
+          summary: `Plan needs further iteration pass ${planReviewPasses}.`,
+          missing_items: ['Missing comprehensive error handling'],
+          feedback_for_cursor: 'Please expand edge case handling.',
+        };
+      },
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [], rationale: 'OK' }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'Safe' }),
+      reviewImplementation: async () => ({ verdict: 'APPROVE', summary: 'OK' }),
+    }));
+
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test',
+    });
+
+    const finalState = await orchestrator.run(state);
+
+    // Assert that budget exhaustion did not block stage and execution proceeded to completion
+    assert.ok(planReviewPasses >= 3, `Expected at least 3 plan reviews, got ${planReviewPasses}`);
+    assert.equal(finalState.status, 'completed');
+    assert.equal(finalState.stages[0].status, 'completed');
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: handles executor question and reviewer context request', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-question');
+  const events = new EventBus(path.join(repoDir, 'events.jsonl'), true);
+
+  try {
+    const registry = new HarnessRegistry();
+    let questionAnswered = false;
+    let contextRequested = false;
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => {
+        const stageName = 'stage-01-question';
+        const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', stageName);
+        fs.mkdirSync(runtimeDir, { recursive: true });
+
+        const session: ExecutorSession = {
+          id: 'test-session-question',
+          setMode: async () => {},
+          prompt: async (text) => {
+            if (text.includes('Work in PLAN mode')) {
+              await opts.callbacks.onPlan('1. Comprehensive plan with DB choice\n', {});
+              return { text: 'Plan submitted', result: {} };
+            }
+
+            // Ask question during implementation
+            const qResult = await opts.callbacks.onQuestion({
+              title: 'Database selection',
+              questions: [
+                {
+                  id: 'db-type',
+                  prompt: 'Which database engine to use?',
+                  options: [
+                    { id: 'postgres', label: 'PostgreSQL' },
+                    { id: 'sqlite', label: 'SQLite' },
+                  ],
+                },
+              ],
+            });
+            if (qResult.answers.length > 0) {
+              questionAnswered = true;
+            }
+
+            // Make repository edit
+            fs.writeFileSync(path.join(repoDir, 'db.txt'), 'postgres engine selected\n');
+
+            // Write green evidence
+            const evidence: ExecutionEvidence = {
+              stage: stageName,
+              attempt: 1,
+              status: 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: 'All checks passed',
+              changed_files: ['db.txt'],
+              unresolved: [],
+            };
+            fs.writeFileSync(
+              path.join(runtimeDir, 'evidence.json'),
+              JSON.stringify(evidence, null, 2),
+            );
+
+            return { text: 'Implementation finished', result: {} };
+          },
+          stop: async () => {},
+          observedCommands: () => [
+            {
+              observation_id: 'obs-1',
+              session_id: 's1',
+              tool_id: 'bash',
+              tool_call_id: 'call-1',
+              sequence: 1,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'npm test',
+              normalized_command: 'npm test',
+              status: 'completed',
+              exit_code: 0,
+              command_confidence: 'high',
+            },
+            {
+              observation_id: 'obs-2',
+              session_id: 's1',
+              tool_id: 'bash',
+              tool_call_id: 'call-2',
+              sequence: 2,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'git diff --check',
+              normalized_command: 'git diff --check',
+              status: 'completed',
+              exit_code: 0,
+              command_confidence: 'high',
+            },
+          ],
+        };
+        return session;
+      },
+    }));
+
+    let reviewCall = 0;
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => ({
+        verdict: 'APPROVE',
+        summary: 'Plan approved',
+        missing_items: [],
+        feedback_for_cursor: '',
+      }),
+      answerQuestions: async () => ({
+        verdict: 'ANSWER',
+        answers: [{ question_id: 'db-type', selected_option_ids: ['postgres'] }],
+        rationale: 'PostgreSQL preferred for persistence requirements',
+      }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'Safe' }),
+      reviewImplementation: async (payload: any) => {
+        reviewCall++;
+        if (reviewCall === 1) {
+          contextRequested = true;
+          return {
+            verdict: 'NEEDS_CONTEXT',
+            summary: 'Need context on README.md',
+            requested_paths: ['README.md'],
+          };
+        }
+        assert.ok(payload.requested_context_diff !== undefined);
+        return { verdict: 'APPROVE', summary: 'Implementation approved after context review' };
+      },
+    }));
+
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test',
+    });
+
+    const finalState = await orchestrator.run(state);
+
+    assert.equal(questionAnswered, true, 'Question should have been answered');
+    assert.equal(contextRequested, true, 'Reviewer should have requested extra context');
+    assert.equal(finalState.status, 'completed');
+    assert.equal(finalState.stages[0].status, 'completed');
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: prepareFrozenInputs sets up read-only stage inputs', () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-frozen');
+  const events = new EventBus(path.join(repoDir, 'events.jsonl'), true);
+
+  try {
+    const orchestrator = new Orchestrator(events, { workspace: repoDir });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      qualityCmd: 'npm test',
+    });
+
+    orchestrator.prepareFrozenInputs(state);
+
+    const frozenInput = path.join(
+      repoDir,
+      '.ai-orchestrator',
+      'stage-input',
+      'stage-01-frozen',
+      'prompt.md',
+    );
+    assert.ok(fs.existsSync(frozenInput));
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});

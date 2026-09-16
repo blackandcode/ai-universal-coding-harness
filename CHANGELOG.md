@@ -2,32 +2,37 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
-## [Unreleased]
+## [2.0.0] - 2026-09-16
+
+### Breaking Changes
+
+- **Engine Minimum**: Node.js runtime minimum requirement is now `>=24.18.0` (specified in `.nvmrc` and enforced by `package.json`).
+- **Configuration Namespace Modernization**:
+  - Legacy `AI_STAGE_*` environment variables are deprecated in favor of `AI_HARNESS_*` (compatibility fallback mapping preserved).
+  - Legacy `.ai-stage-orchestrator.jsonc` is deprecated in favor of `.ai-universal-coding-harness.jsonc` (compatibility fallback loader preserved).
+  - Internal uppercase configuration properties are deprecated in favor of camelCase (backward-compatible Proxy mapping preserved).
+- **Toolchain Upgrades**: Upgraded to TypeScript 7.0.2 with `target: "ES2024"`, `module: "NodeNext"`, and `verbatimModuleSyntax: true`; upgraded to React 19.2.8 and Ink 7.1.1.
 
 ### Added
 
-- Modularized React 19 / Ink 7 UI architecture: typed presentation model in `src/ui/types.ts`, pure state machine reducer in `src/ui/reducer.ts`, pure selectors in `src/ui/selectors.ts`, text formatting and status glyph helpers in `src/ui/text.ts`, JSONL stream reading and tailing with partial line buffering in `src/ui/eventFile.ts`, and typed TSX presentation components in `src/ui/components/`.
-- Interactive keyboard navigation and modal panels for full focus stream (`f`), task todos (`t`), changed files (`d`), recent logs (`l`), quiet mode (`q`), escape return (`Esc`), and focus stream scrolling (`↑`/`↓`/`PgUp`/`PgDn`/`Home`/`End`).
-- Comprehensive UI test suites: pure reducer transitions (`src/ui/reducer.test.ts`), pure selectors (`src/ui/selectors.test.ts`), event-file streaming and corruption handling (`src/ui/eventFile.test.ts`), and `ink-testing-library` render and interaction tests (`src/ui/components.test.tsx`).
-- Modularized Cursor ACP protocol handling into `AcpToolAccumulator`, `AcpEventNormalizer`, and `ObservationJournal`.
-- Implemented `EvidenceService` for cohesive evidence validation, corroboration, and disk persistence.
-- Modularized Codex reviewer harness into `CodexPromptBuilder`, `CodexProcessRunner`, `CodexEventParser`, and `CodexResultParser`.
-- Hardened `RecoveryManager` with dual deterministic resume points (`REVIEW` vs `QUALITY`), dry-run mode, and timestamped backups.
-- Added comprehensive regression test suites for ACP multi-chunk streaming, evidence integrity, Codex reviewer role-boundary enforcement, recovery resilience, and permission hardening.
-- Added Oxfmt (v0.68.0) for fast, deterministic code formatting across TypeScript, TSX, JSON, JSONC, and Markdown.
-- Added Oxlint (v1.83.0) for modern TypeScript-aware linting with active AST-based Promise, Node correctness, and React rules.
-- Added `.nvmrc` specifying Node `24.18.0`.
-- Added executable TSX smoke fixture (`src/ui/tsx-smoke.test.tsx`) asserting React 19 JSX compilation and `node:test` execution.
-- Added test suite for package invariants (`src/tooling/package-invariants.test.ts`).
-- Added native test coverage reporting via `npm run test:coverage`.
-- Added authoritative local lockfile validation and TS7 consumer declaration fixture verification in `scripts/package-check.mjs`.
+- **Native Node 24 Coverage Gates**: Enforced strict native code coverage gates using Node 24's `--experimental-test-coverage` (≥85% lines, ≥85% functions, ≥80% branches) with zero external coverage dependencies.
+- **Critical Subsystem Coverage Thresholds**: Independent coverage invariants for security, recovery, and evidence modules (`src/permissions/**`, `src/quality/**`, `src/orchestrator/RecoveryManager.ts`).
+- **Deterministic Orchestrator Integration Suite**: End-to-end test suite (`src/orchestrator/orchestrator-integration.test.ts`) validating complete stage lifecycles (success, rework, resume, recovery, permission volume resilience, budget exhaustion) using scripted fake harnesses in isolated temporary Git repositories.
+- **CLI Dispatch & Consumer Verification**: Comprehensive test coverage for CLI argument parsing and dispatching (`src/cli/dispatch.test.ts`) and end-to-end packed tarball consumer validation (`scripts/package-check.mjs`) testing clean installation, ESM imports, TS7 declaration generation, and CLI subcommands in temporary environments.
+- **Architectural Documentation & 7 Mermaid Diagrams**: Complete architectural documentation across `docs/` and root `README.md` including 7 Mermaid diagrams: package architecture, harness adapter boundary, run/stage lifecycle, autonomous permission decision flow, evidence/quality corroboration flow, state persistence/resume/recovery flow, and UI semantic event flow.
+- **Modularized React 19 / Ink 7 UI Architecture**: Typed presentation model in `src/ui/types.ts`, pure state machine reducer in `src/ui/reducer.ts`, pure selectors in `src/ui/selectors.ts`, text formatting and status glyph helpers in `src/ui/text.ts`, JSONL stream reading and tailing with partial line buffering in `src/ui/eventFile.ts`, and typed TSX presentation components in `src/ui/components/`.
+- **Interactive Keyboard Navigation**: Modal overlays for full scrollable focus stream (`f`), task todos (`t`), changed files (`d`), recent logs (`l`), quiet mode (`q`), and escape return (`Esc`).
+- **Pluggable External Harness Modules**: Support for third-party executor and reviewer harness packages via `harnessModules` in configuration.
+- **Evidence Lifecycle & Corroboration**: `EvidenceService` for mechanical corroboration of tool observations against `ObservationJournal` and patch fingerprint matching.
+- **Hardened Autonomous Recovery**: `RecoveryManager` with dry-run inspection, timestamped backup snapshots, automatic observation reconstruction from raw ACP session logs, and dual resume points (`REVIEW` vs `QUALITY`).
+- **Oxfmt & Oxlint Quality Toolchain**: Modern formatting via Oxfmt (0.68.0) and fast AST-based linting via Oxlint (1.83.0) with custom verification for Promise, Node correctness, and React rules.
+- **Repository-wide Docblock Audit**: Complete `@fileoverview` header blocks and comprehensive JSDoc/TSDoc annotations across all source, test, script, and configuration files.
 
 ### Changed
 
 - Replaced monolithic `src/ui/InkUi.ts` (untyped `React.createElement`) with modern, typed React 19 / Ink 7 TSX architecture (`src/ui/App.tsx` and `src/ui/InkUi.tsx`).
-- Modernized `tsconfig.json` for Node 24 with `target: "ES2024"`, `module: "NodeNext"`, `verbatimModuleSyntax: true`, `types: ["node"]`, and `jsx: "react-jsx"`.
 - Consolidated build ownership into `npm run build` with clean pre-compilation step (`npm run clean`).
-- Implemented nested `dist/.npmignore` postbuild generator ensuring zero test files and zero development artifacts are packaged into the npm tarball.
+- Implemented nested `dist/.npmignore` postbuild generator ensuring zero test files and zero development artifacts are packaged into the published npm tarball.
 - Expanded CI platform matrix across Ubuntu, Windows, and macOS on Node 24.18.0 with strict non-repairing `npm ci`.
 
 ## [1.0.3] - 2026-09-15

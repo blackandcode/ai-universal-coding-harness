@@ -1,9 +1,18 @@
+/**
+ * @fileoverview Unit tests for CursorExecutorHarness and ACP session processing.
+ * Tests ACP event stream accumulation, exit code extraction, preflight validation, and session management.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { parseAcpEvents } from './CursorExecutorHarness.js';
+import {
+  parseAcpEvents,
+  CursorExecutorHarness,
+  CursorAcpSession,
+} from './CursorExecutorHarness.js';
 
 test('parseAcpEvents accumulates state across multi-chunk tool calls', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-test-'));
@@ -110,4 +119,52 @@ test('parseAcpEvents correctly parses Stage 07 real-world fixture', () => {
   assert.ok(allDiffChecks.length > 0, 'Should find completed git diff --check');
   const latestDiffCheck = allDiffChecks[allDiffChecks.length - 1];
   assert.equal(latestDiffCheck.exit_code, 0);
+});
+
+test('CursorExecutorHarness: configures harness info and performs preflight check', async () => {
+  const harness = new CursorExecutorHarness({
+    executorBinary: 'nonexistent-binary-cursor-test-xyz',
+    executorModel: 'custom-model',
+  });
+  assert.equal(harness.info.id, 'cursor');
+  assert.equal(harness.info.role, 'executor');
+  assert.equal(harness.info.model, 'custom-model');
+
+  const preflight = await harness.preflight();
+  assert.equal(preflight.ok, false);
+  assert.ok(preflight.details.some((d) => d.includes('not found')));
+});
+
+test('CursorAcpSession: creates session and manages state and epochs', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-session-test-'));
+  try {
+    const session = new CursorAcpSession({
+      workspace: tmpDir,
+      runLog: path.join(tmpDir, 'run.log'),
+      eventsFile: path.join(tmpDir, 'events.jsonl'),
+      focusFile: path.join(tmpDir, 'focus.txt'),
+      callbacks: {
+        onPlan: async () => ({ outcome: 'accepted', accepted: true, status: 'APPROVE' }),
+        onQuestion: async () => ({ answers: [], rationale: '' }),
+        onPermission: async () => ({ allow: true, reason: '' }),
+      },
+      binary: 'dummy',
+      model: 'model',
+      thinking: 'high',
+      turnTimeoutMinutes: 10,
+      events: null,
+      stageName: 'stage-01',
+      attempt: 1,
+    });
+
+    assert.equal(session.currentSequence(), 0);
+    assert.equal(session.lastMutationSeq(), 0);
+    assert.deepEqual(session.observedCommands(), []);
+
+    // Sets quality epoch without error
+    session.setQualityEpoch('epoch-1');
+    assert.equal(session.currentSequence(), 0);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

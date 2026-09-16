@@ -1,8 +1,7 @@
 /**
- * Domain errors for AI Universal Coding Harness.
- *
- * Distinguishes actionable failure categories across configuration,
- * stage sources, Git lifecycle, run locks, run states, and process execution.
+ * @fileoverview Domain error class hierarchy for AI Universal Coding Harness.
+ * Distinguishes actionable failure categories across configuration, stage sources,
+ * Git lifecycle, run locks, run states, evidence verification, and process execution.
  */
 
 export interface ErrorOptions {

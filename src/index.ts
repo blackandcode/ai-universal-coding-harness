@@ -1,7 +1,7 @@
 /**
- * AI Universal Coding Harness
- *
- * A harness-neutral orchestration engine for staged AI software development.
+ * @fileoverview Public library entry point for AI Universal Coding Harness.
+ * Exports domain errors, types, configuration APIs, core utilities, Git lifecycle managers,
+ * harness adapter interfaces, orchestration engine, quality verifier, and UI event systems.
  */
 
 // Domain errors

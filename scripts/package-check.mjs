@@ -1,8 +1,41 @@
+/**
+ * @fileoverview Package integrity and consumer fixture verification script.
+ *
+ * Enforces npm release standards: required disk artifacts, executable bin scripts,
+ * absence of forbidden shell wrappers, exact frozen dependencies, bidirectional
+ * lockfile consistency, GitHub OIDC trusted publishing configuration, tarball inventory,
+ * TS7 declaration typechecking, runtime ESM imports, and full CLI functionality in an
+ * isolated clean consumer fixture.
+ */
+
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { spawnNpm } from './lib/npm-invoke.mjs';
+
+function makeWritableTree(dir) {
+  if (!fs.existsSync(dir)) return;
+  try {
+    fs.chmodSync(dir, 0o755);
+  } catch {}
+  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, ent.name);
+    if (ent.isDirectory()) {
+      makeWritableTree(p);
+    } else {
+      try {
+        fs.chmodSync(p, 0o644);
+      } catch {}
+    }
+  }
+}
+
+function cleanTree(dir) {
+  if (!fs.existsSync(dir)) return;
+  makeWritableTree(dir);
+  fs.rmSync(dir, { recursive: true, force: true });
+}
 
 const requiredDiskFiles = [
   'dist/bin.js',
@@ -369,8 +402,142 @@ const prodName: string = PRODUCT_NAME;
     if (checkResult.stderr) console.error(checkResult.stderr);
     process.exit(2);
   }
+
+  // Runtime ESM import verification
+  const importTestFile = path.join(fixtureDir, 'import-test.mjs');
+  fs.writeFileSync(
+    importTestFile,
+    `import assert from 'node:assert/strict';
+import {
+  HarnessRegistry,
+  StageSource,
+  PermissionEngine,
+  ProjectWorkspace,
+  VERSION,
+  PACKAGE_NAME,
+  PRODUCT_NAME,
+} from 'ai-universal-coding-harness';
+
+assert.ok(HarnessRegistry);
+assert.ok(StageSource);
+assert.ok(PermissionEngine);
+assert.ok(ProjectWorkspace);
+assert.equal(typeof VERSION, 'string');
+assert.equal(PACKAGE_NAME, 'ai-universal-coding-harness');
+assert.equal(PRODUCT_NAME, 'AI Universal Coding Harness');
+`,
+  );
+
+  const importResult = spawnSync(process.execPath, [importTestFile], {
+    cwd: fixtureDir,
+    encoding: 'utf8',
+  });
+  if (importResult.error || importResult.status !== 0) {
+    console.error('Consumer runtime import check failed:');
+    if (importResult.error) console.error('Subprocess error:', importResult.error);
+    if (importResult.stdout) console.error(importResult.stdout);
+    if (importResult.stderr) console.error(importResult.stderr);
+    process.exit(2);
+  }
+
+  // Initialize Git in consumer fixture for workspace init validation
+  spawnSync('git', ['init', '-b', 'main'], { cwd: fixtureDir, stdio: 'ignore' });
+  spawnSync('git', ['config', 'user.name', 'Consumer Test'], { cwd: fixtureDir, stdio: 'ignore' });
+  spawnSync('git', ['config', 'user.email', 'test@example.com'], {
+    cwd: fixtureDir,
+    stdio: 'ignore',
+  });
+
+  const cliBin = path.join(
+    fixtureDir,
+    'node_modules',
+    'ai-universal-coding-harness',
+    'dist',
+    'bin.js',
+  );
+
+  // ai-harness --version
+  const versionRes = spawnSync(process.execPath, [cliBin, '--version'], {
+    cwd: fixtureDir,
+    encoding: 'utf8',
+  });
+  if (versionRes.error || versionRes.status !== 0 || !versionRes.stdout.includes(pkg.version)) {
+    console.error(`Consumer CLI version check failed. Expected ${pkg.version}:`);
+    if (versionRes.error) console.error(versionRes.error);
+    if (versionRes.stdout) console.error(versionRes.stdout);
+    if (versionRes.stderr) console.error(versionRes.stderr);
+    process.exit(2);
+  }
+
+  // ai-harness init
+  const initRes = spawnSync(process.execPath, [cliBin, 'init'], {
+    cwd: fixtureDir,
+    encoding: 'utf8',
+  });
+  if (
+    initRes.error ||
+    initRes.status !== 0 ||
+    !fs.existsSync(path.join(fixtureDir, '.ai-orchestrator'))
+  ) {
+    console.error('Consumer CLI init check failed:');
+    if (initRes.error) console.error(initRes.error);
+    if (initRes.stdout) console.error(initRes.stdout);
+    if (initRes.stderr) console.error(initRes.stderr);
+    process.exit(2);
+  }
+
+  // ai-harness config show
+  const configRes = spawnSync(process.execPath, [cliBin, 'config', 'show'], {
+    cwd: fixtureDir,
+    encoding: 'utf8',
+  });
+  if (configRes.error || configRes.status !== 0) {
+    console.error('Consumer CLI config show check failed:');
+    if (configRes.error) console.error(configRes.error);
+    if (configRes.stdout) console.error(configRes.stdout);
+    if (configRes.stderr) console.error(configRes.stderr);
+    process.exit(2);
+  }
+  try {
+    const parsedConfig = JSON.parse(configRes.stdout);
+    if (!parsedConfig.effective) {
+      throw new Error('Missing effective configuration section');
+    }
+  } catch (err) {
+    console.error('Consumer CLI config show did not return valid JSON:', err);
+    process.exit(2);
+  }
+
+  // ai-harness validate
+  const fixtureStageDir = path.join(fixtureDir, 'stages', 'stage-01-fixture');
+  fs.mkdirSync(fixtureStageDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(fixtureStageDir, 'functional-spec.md'),
+    '# Functional Spec\n\n- Valid spec\n',
+  );
+  fs.writeFileSync(
+    path.join(fixtureStageDir, 'technical-spec.md'),
+    '# Technical Spec\n\n- Implementation details\n',
+  );
+  fs.writeFileSync(path.join(fixtureStageDir, 'prompt.md'), '# Prompt\n\n- Execute the stage\n');
+
+  const validateRes = spawnSync(
+    process.execPath,
+    [cliBin, 'validate', '--stage-source', path.join(fixtureDir, 'stages'), '--stage', '01'],
+    {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+    },
+  );
+  if (validateRes.error || validateRes.status !== 0) {
+    console.error('Consumer CLI validate check failed:');
+    if (validateRes.error) console.error(validateRes.error);
+    if (validateRes.stdout) console.error(validateRes.stdout);
+    if (validateRes.stderr) console.error(validateRes.stderr);
+    process.exit(2);
+  }
 } finally {
-  fs.rmSync(fixtureDir, { recursive: true, force: true });
+  cleanTree(fixtureDir);
 }
 
 console.log('Package check OK.');

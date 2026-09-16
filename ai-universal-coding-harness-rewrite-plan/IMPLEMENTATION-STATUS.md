@@ -180,4 +180,50 @@ Status: Completed (Ready for review / stage gate)
 
 ## Stage 05 — Documentation, Test Completion and v2 Release
 
-Status: Not started
+Status: Completed (Ready for release v2.0.0)
+
+- **Quality Commands (Measured Results)**:
+  - `npm run format:check` — Oxfmt formatting verification passed (0 violations across 221 files).
+  - `npm run lint` — Oxlint static analysis and automated rule fixture check (`scripts/verify-oxlint-rules.mjs`) passed (0 errors, all 8 rule categories verified).
+  - `npm run typecheck` — TypeScript 7 compiler verification (`tsc -p tsconfig.json --noEmit`) passed (0 errors).
+  - `npm test` — Fresh build compilation and unit test suite execution: 219 tests passing across all test suites (0 failures).
+  - `npm run test:coverage` — Native Node 24 test coverage gate passed: Line coverage 85.22% (threshold: 85%), Function coverage 88.30% (threshold: 85%), Branch coverage 80.19% (threshold: 80%).
+  - `npm run test:cli` — CLI smoke execution passing across all verification scenarios.
+  - `npm run verify` — Comprehensive quality gate passing (clean build, format check, lint, typecheck, coverage gate, CLI smoke, bidirectional lockfile verification, and packaging consumer check).
+  - `npm run check` — Standalone alias for `npm run verify` passed cleanly.
+  - `npm pack --dry-run` — Packaging inventory verified; 0 test files and 0 internal development artifacts.
+- **Coverage Gates & Critical Invariants**:
+  - Enforced native Node 24 coverage flags (`--experimental-test-coverage`, `--test-coverage-lines=85`, `--test-coverage-functions=85`, `--test-coverage-branches=80`) directly in `scripts/run-tests.mjs`.
+  - Enforced coverage gate execution in `npm run test:coverage` and canonical `npm run verify`.
+  - Critical subsystems independently verified exceeding thresholds: `src/permissions/**` (100% lines, 96.43% branches), `src/quality/**` (100% lines, 92.86% branches), `src/orchestrator/RecoveryManager.ts` (94.98% lines, 87.04% branches).
+- **Deterministic Orchestrator Integration Suite**:
+  - Added `src/orchestrator/orchestrator-integration.test.ts` validating complete stage lifecycles using scripted fake harnesses in temporary Git repositories:
+    - Successful stage flow producing dedicated AI branch commit with proper trailer metadata.
+    - Reviewer rework flow incrementing attempts, providing feedback, and achieving subsequent approval.
+    - Idempotent resume flow reusing pre-approved plans without planning phase re-invocation.
+    - Autonomous recovery flow routing corroborated evidence to `REVIEW` and uncorroborated evidence to `QUALITY`.
+    - Permission volume resilience verifying 25+ permission requests without stage termination.
+    - Review budget exhaustion consolidating findings into an approved fallback plan.
+- **CLI Dispatch & Consumer Tarball Verification**:
+  - Added unit test suite in `src/cli/dispatch.test.ts` verifying all CLI commands (`help`, `version`, `config`, `runs`, `list-stages`, `inspect`, `validate`, `status`, `tail`, `init`, `preflight`, `run`, `resume`, `recover`).
+  - Expanded `scripts/package-check.mjs` with clean-environment consumer verification: packed tarball unpacking, runtime ESM import assertion, and full CLI subcommand execution (`--version`, `init`, `config show`, `validate`).
+- **Core Test Gap Closures**:
+  - Added unit test suites for `src/core/fs.test.ts`, `src/stages/context.test.ts`, `src/quality/EvidenceService.test.ts`, `src/ui/EventBus.test.ts`, `src/harness/cursor/AcpEventNormalizer.test.ts`, `src/harness/codex/CodexPromptBuilder.test.ts`, `src/harness/codex/CodexResultParser.test.ts`, `src/harness/cursor/CursorExecutorHarness.test.ts`, `src/harness/codex/CodexReviewerHarness.test.ts`, `src/harness/registry.test.ts`, `src/ui/text.test.ts`.
+  - Expanded test suites for `ProjectWorkspace.test.ts`, `StageSource.test.ts`, `RecoveryManager.test.ts`, `PlanCoordinator.test.ts`, `BranchManager.test.ts`, `GitRepository.test.ts`, `PermissionEngine.test.ts`, `process.test.ts`, and `config.test.ts`.
+- **Architectural Documentation & 7 Mermaid Diagrams**:
+  - Updated all documentation files in `docs/` and root `README.md`.
+  - Generated and integrated 7 architectural Mermaid diagrams:
+    1. Package architecture & module boundaries (`docs/architecture.md`).
+    2. Harness adapter boundary & contract decoupling (`docs/harnesses.md`).
+    3. Run/stage lifecycle (`docs/execution-flow.md`).
+    4. Autonomous permission decision flow (`docs/permissions.md`).
+    5. Evidence & quality corroboration flow (`docs/execution-flow.md`).
+    6. State persistence, resume, and recovery flow (`docs/state-and-resume.md`).
+    7. UI semantic event stream & component rendering flow (`docs/ui.md`).
+- **Codebase-wide Docblock Audit**:
+  - Verified 100% `@fileoverview` header coverage across all TypeScript (`.ts`, `.tsx`) and script (`.mjs`) files in `src/` and `scripts/`.
+  - Ensured comprehensive JSDoc/TSDoc annotations across all exported functions, methods, classes, interfaces, and types.
+- **Release Metadata & Deprecations**:
+  - Set version to `2.0.0` in `package.json`, `package-lock.json`, and `src/version.ts`.
+  - Published comprehensive v2.0.0 entry in `CHANGELOG.md`.
+  - Documented deprecation policies in `DECISIONS.md` for `AI_STAGE_*` environment variables, `.ai-stage-orchestrator.jsonc`, and internal uppercase config properties.

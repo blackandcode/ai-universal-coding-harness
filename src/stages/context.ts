@@ -1,8 +1,20 @@
+/**
+ * @fileoverview Context extraction and skill indexing utilities for stage execution.
+ * Reads frozen stage inputs, indexes repository skills, and ranks skills relevant to stage context.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG } from '../core/config.js';
 
-export function frozenStageContext(stageDir: string, maxEach = CONFIG.maxContextFileChars) {
+/**
+ * Reads and bundles the three mandatory frozen stage specification files.
+ *
+ * @param stageDir - Directory containing the frozen stage specification files.
+ * @param maxEach - Maximum character limit for each specification file before truncation.
+ * @returns Combined Markdown text containing functional spec, technical spec, and prompt.
+ */
+export function frozenStageContext(stageDir: string, maxEach = CONFIG.maxContextFileChars): string {
   return ['functional-spec.md', 'technical-spec.md', 'prompt.md']
     .map((f) => {
       const p = path.join(stageDir, f);
@@ -11,7 +23,16 @@ export function frozenStageContext(stageDir: string, maxEach = CONFIG.maxContext
     })
     .join('\n\n');
 }
-export function skillIndex(workspace: string) {
+
+/**
+ * Scans a target repository workspace for agent skills located in .agents/skills and .cursor/skills.
+ *
+ * @param workspace - Absolute path to the target repository workspace.
+ * @returns Array of discovered skill metadata objects containing relative path, title, and content.
+ */
+export function skillIndex(
+  workspace: string,
+): Array<{ path: string; title: string; content: string }> {
   const roots = [
     path.join(workspace, '.agents', 'skills'),
     path.join(workspace, '.cursor', 'skills'),
@@ -37,11 +58,20 @@ export function skillIndex(workspace: string) {
   }
   return out;
 }
+
+/**
+ * Ranks discovered skills against a text prompt and returns the most relevant skills within a character budget.
+ *
+ * @param skills - Array of candidate skills discovered in the target repository.
+ * @param text - Prompt or stage context text used to score relevance keywords.
+ * @param maxChars - Total character budget allocated for skills context.
+ * @returns Markdown string of concatenated relevant skill definitions.
+ */
 export function relevantSkills(
   skills: Array<{ path: string; title: string; content: string }>,
   text: string,
   maxChars = 40000,
-) {
+): string {
   const words = new Set(
     text
       .toLowerCase()

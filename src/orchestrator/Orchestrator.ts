@@ -1,7 +1,16 @@
+/**
+ * @fileoverview Autonomous stage orchestration engine for AI Universal Coding Harness.
+ *
+ * Coordinates stage lifecycle (creation, planning, execution, evidence corroboration,
+ * review, and commit), manages git branch state and exclusions, bridges executor and
+ * reviewer harnesses, and integrates with EventBus, RunStateStore, and EvidenceService.
+ * Supports configurable workspace roots and dependency injection for reliable integration testing.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG } from '../core/config.js';
-import { ROOT, STAGE_INPUT_ROOT } from '../core/paths.js';
+import { ROOT } from '../core/paths.js';
 import {
   copyDir,
   ensureDir,
@@ -25,17 +34,38 @@ import { EvidenceService } from '../quality/EvidenceService.js';
 import { EventBus } from '../ui/EventBus.js';
 import type { RunState, SelectedStage, QuestionVerdict, FinalVerdict } from '../types.js';
 
+export interface OrchestratorOptions {
+  workspace?: string;
+  store?: RunStateStore;
+  registry?: HarnessRegistry;
+}
+
 export class Orchestrator {
-  git = new GitRepository(ROOT);
-  store = new RunStateStore();
-  registry = new HarnessRegistry();
-  branch = new BranchManager(this.git, (s) => this.store.save(s));
-  evidenceService = new EvidenceService();
+  git: GitRepository;
+  store: RunStateStore;
+  registry: HarnessRegistry;
+  branch: BranchManager;
+  evidenceService: EvidenceService;
   activeExecutor: ExecutorSession | null = null;
-  constructor(public events: EventBus) {}
+  readonly workspace: string;
+
+  constructor(
+    public events: EventBus,
+    options: OrchestratorOptions = {},
+  ) {
+    this.workspace = options.workspace ? path.resolve(options.workspace) : ROOT;
+    this.git = new GitRepository(this.workspace);
+    this.store =
+      options.store || new RunStateStore(path.join(this.workspace, '.ai-orchestrator', 'runs'));
+    this.registry = options.registry || new HarnessRegistry();
+    this.branch = new BranchManager(this.git, (s) => this.store.save(s));
+    this.evidenceService = new EvidenceService(
+      path.join(this.workspace, '.ai-orchestrator', 'stage-runtime'),
+    );
+  }
 
   ensureExclude() {
-    const p = path.join(ROOT, '.git', 'info', 'exclude');
+    const p = path.join(this.workspace, '.git', 'info', 'exclude');
     if (!fs.existsSync(path.dirname(p))) return;
     const lines = ['.ai-orchestrator/'];
     let txt = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
@@ -93,7 +123,7 @@ export class Orchestrator {
         run_id: runId,
         created_at: iso(),
         status: 'created',
-        workspace: ROOT,
+        workspace: this.workspace,
         base_ref: baseRef,
         base_commit: baseCommit,
         original_branch: originalBranch,
@@ -117,7 +147,7 @@ export class Orchestrator {
   }
 
   prepareFrozenInputs(state: RunState) {
-    const root = STAGE_INPUT_ROOT;
+    const root = path.join(this.workspace, '.ai-orchestrator', 'stage-input');
     removeTree(root);
     ensureDir(root);
     for (const s of state.stages) {
@@ -155,7 +185,39 @@ export class Orchestrator {
     attempt: number,
     quality: string,
   ) {
-    return `You are the implementation executor for ${stage}. Work autonomously on the dedicated AI branch.\n\nNON-NEGOTIABLE:\n- Read and follow relevant .agents/skills/**/SKILL.md and .cursor/skills/**/SKILL.md, .cursor/rules, and AGENTS.md.\n- Frozen requirements in .ai-orchestrator/stage-input/${stage}/ are immutable.\n- Implement ALL requirements in the approved plan and frozen specs.\n- Do not create/switch/merge/rebase/reset branches, commit, push, stash, or rewrite Git history. The orchestrator owns Git lifecycle.\n- Request permissions normally. Permission denials apply only to that operation; choose another safe approach and continue.\n- If you need a product/design decision, ask a concrete multiple-choice question; the reviewer will answer autonomously.\n\nAPPROVED PLAN:\n${plan}\n\nMANDATORY PLAN-REVIEW CARRY-OVER:\n${carry || '_None._'}\n\n${feedback ? `REWORK INSTRUCTIONS FROM FINAL REVIEW / QUALITY:\n${feedback}\n` : ''}IMPLEMENTATION ATTEMPT: ${attempt}\n\nAfter all code edits are complete, run quality checks as STANDALONE separate commands (do NOT combine or chain with && or ;):\n1. First, run focused tests if applicable.\n2. Next, execute the full deterministic quality gate alone:\n   ${quality}\n3. Then, execute the diff hygiene check alone:\n   git diff --check\nFix any failures and rerun the commands standalone until both exit with code 0. No file edits should take place after running these quality checks.\n\nFinally write .ai-orchestrator/stage-runtime/${stage}/evidence.json with:\n{\n  \"stage\": \"${stage}\",\n  \"attempt\": ${attempt},\n  \"status\": \"PASS\" or \"FAIL\",\n  \"quality_command\": ${JSON.stringify(quality)},\n  \"quality_exit_code\": integer,\n  \"git_diff_check_exit_code\": integer,\n  \"focused_tests\": [{\"command\":\"...\",\"exit_code\":0,\"summary\":\"...\"}],\n  \"quality_summary\": \"...\",\n  \"changed_files\": [\"...\"],\n  \"unresolved\": []\n}\nOnly set PASS when the full quality command and git diff --check both completed with exit code 0 and no required item remains unresolved.`;
+    return (
+      `You are the implementation executor for ${stage}. Work autonomously on the dedicated AI branch.\n\n` +
+      `NON-NEGOTIABLE:\n` +
+      `- Read and follow relevant .agents/skills/**/SKILL.md and .cursor/skills/**/SKILL.md, .cursor/rules, and AGENTS.md.\n` +
+      `- Frozen requirements in .ai-orchestrator/stage-input/${stage}/ are immutable.\n` +
+      `- Implement ALL requirements in the approved plan and frozen specs.\n` +
+      `- Do not create/switch/merge/rebase/reset branches, commit, push, stash, or rewrite Git history. The orchestrator owns Git lifecycle.\n` +
+      `- Request permissions normally. Permission denials apply only to that operation; choose another safe approach and continue.\n` +
+      `- If you need a product/design decision, ask a concrete multiple-choice question; the reviewer will answer autonomously.\n\n` +
+      `APPROVED PLAN:\n${plan}\n\n` +
+      `MANDATORY PLAN-REVIEW CARRY-OVER:\n${carry || '_None._'}\n\n` +
+      `${feedback ? `REWORK INSTRUCTIONS FROM FINAL REVIEW / QUALITY:\n${feedback}\n` : ''}` +
+      `IMPLEMENTATION ATTEMPT: ${attempt}\n\n` +
+      `After all code edits are complete, run quality checks as STANDALONE separate commands (do NOT combine or chain with && or ;):\n` +
+      `1. First, run focused tests if applicable.\n` +
+      `2. Next, execute the full deterministic quality gate alone:\n   ${quality}\n` +
+      `3. Then, execute the diff hygiene check alone:\n   git diff --check\n` +
+      `Fix any failures and rerun the commands standalone until both exit with code 0. No file edits should take place after running these quality checks.\n\n` +
+      `Finally write .ai-orchestrator/stage-runtime/${stage}/evidence.json with:\n` +
+      `{\n` +
+      `  "stage": "${stage}",\n` +
+      `  "attempt": ${attempt},\n` +
+      `  "status": "PASS" or "FAIL",\n` +
+      `  "quality_command": ${JSON.stringify(quality)},\n` +
+      `  "quality_exit_code": integer,\n` +
+      `  "git_diff_check_exit_code": integer,\n` +
+      `  "focused_tests": [{"command":"...","exit_code":0,"summary":"..."}],\n` +
+      `  "quality_summary": "...",\n` +
+      `  "changed_files": ["..."],\n` +
+      `  "unresolved": []\n` +
+      `}\n` +
+      `Only set PASS when the full quality command and git diff --check both completed with exit code 0 and no required item remains unresolved.`
+    );
   }
 
   async preflight(stateOrInput: { executor_harness?: string; reviewer_harness?: string }) {
@@ -165,11 +227,11 @@ export class Orchestrator {
     });
     const rev = this.registry.reviewer(stateOrInput.reviewer_harness || CONFIG.reviewerHarness, {
       events: this.events,
-      runDir: ROOT,
+      runDir: this.workspace,
       stageName: '_preflight',
       stageContext: '',
       skillsText: '',
-      runLog: path.join(ROOT, '.ai-orchestrator', 'preflight.log'),
+      runLog: path.join(this.workspace, '.ai-orchestrator', 'preflight.log'),
     });
     const [a, b] = await Promise.all([exec.preflight(), rev.preflight()]);
     if (!a.ok || !b.ok)
@@ -277,9 +339,9 @@ export class Orchestrator {
       if (!fs.existsSync(p)) writeText(p, `# ${title}\n\n`);
     }
     const runLog = path.join(this.store.runDir(state.run_id), 'run.log');
-    const frozenDir = path.join(STAGE_INPUT_ROOT, stage.name);
+    const frozenDir = path.join(this.workspace, '.ai-orchestrator', 'stage-input', stage.name);
     const stageContext = frozenStageContext(frozenDir);
-    const skillsText = relevantSkills(skillIndex(ROOT), stageContext);
+    const skillsText = relevantSkills(skillIndex(this.workspace), stageContext);
     const reviewer = this.registry.reviewer(state.reviewer_harness, {
       events: this.events,
       runDir: this.store.runDir(state.run_id),
@@ -288,7 +350,11 @@ export class Orchestrator {
       skillsText,
       runLog,
     });
-    const permission = new PermissionEngine(ROOT, CONFIG.permissionMode, CONFIG.permissionsFile);
+    const permission = new PermissionEngine(
+      this.workspace,
+      CONFIG.permissionMode,
+      CONFIG.permissionsFile,
+    );
     const planCoord = new PlanCoordinator({
       runId: state.run_id,
       stage,
@@ -314,7 +380,7 @@ export class Orchestrator {
     const qcache = new Map<string, any>();
     const executorHarness = this.registry.executor(state.executor_harness, { events: this.events });
     const session = await executorHarness.createSession({
-      workspace: ROOT,
+      workspace: this.workspace,
       runLog,
       eventsFile: path.join(stageRunDir, 'executor-acp.jsonl'),
       focusFile: path.join(stageRunDir, 'executor-focus.log'),

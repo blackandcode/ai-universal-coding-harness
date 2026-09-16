@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Unit tests for GitRepository wrapper in src/git/GitRepository.ts.
+ * Validates diff checks, patch fingerprint calculation, review diff generation, and branch existence queries.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -108,6 +113,36 @@ test('GitRepository.reviewDiff handles untracked directories with -uall and non-
     // Ensure directory itself is not in changed files
     assert.ok(!changed.includes('nested/'));
     assert.ok(!changed.includes('nested/sub/'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('GitRepository: run failure, branchExists, and diff filtering', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-repo-extra-'));
+  try {
+    execSync('git init -b main', { cwd: tmpDir });
+    execSync('git config user.name "Test"', { cwd: tmpDir });
+    execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, 'f1.txt'), 'f1 content\n');
+    fs.writeFileSync(path.join(tmpDir, 'f2.txt'), 'f2 content\n');
+    execSync('git add . && git commit -m "initial"', { cwd: tmpDir });
+
+    const git = new GitRepository(tmpDir);
+
+    // run throws GitLifecycleError on failed command without allowFail
+    assert.throws(() => git.run(['checkout', 'nonexistent-branch-xyz']), /failed/);
+
+    // branchExists
+    assert.equal(git.branchExists('main'), true);
+    assert.equal(git.branchExists('nonexistent-branch'), false);
+
+    // diff with path filter
+    fs.writeFileSync(path.join(tmpDir, 'f1.txt'), 'f1 modified\n');
+    fs.writeFileSync(path.join(tmpDir, 'f2.txt'), 'f2 modified\n');
+    const filteredDiff = git.diff(['f1.txt']);
+    assert.match(filteredDiff, /f1\.txt/);
+    assert.doesNotMatch(filteredDiff, /f2\.txt/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

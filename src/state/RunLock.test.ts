@@ -63,3 +63,23 @@ test('RunLock recovers from stale lock when PID is dead', () => {
     lock.release();
   }
 });
+
+test('RunLock: handles corrupt lock content and unowned update/release', () => {
+  // Corrupt / non-numeric pid lock file
+  fs.mkdirSync(path.dirname(LOCK_FILE), { recursive: true });
+  fs.writeFileSync(LOCK_FILE, JSON.stringify({ pid: 'invalid', run_id: 'corrupt' }));
+
+  const lock = new RunLock();
+  try {
+    lock.acquire('run-corrupt-recovered', 'branch-corrupt');
+    assert.equal(lock.owned, true);
+  } finally {
+    lock.release();
+  }
+
+  // Update and release when not owned
+  const unowned = new RunLock();
+  unowned.update('noop-run'); // Does not throw
+  unowned.release(); // Does not throw
+  assert.equal(unowned.owned, false);
+});

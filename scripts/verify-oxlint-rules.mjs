@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Verification test ensuring Oxlint enforces required AST-based linter rules.
+ * Generates dynamic code fixtures violating critical rules and verifies Oxlint catches each one.
+ */
+
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

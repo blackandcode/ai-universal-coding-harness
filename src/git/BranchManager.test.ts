@@ -110,3 +110,38 @@ test('BranchManager assertActive throws GitLifecycleError when dirty on wrong br
 
   assert.throws(() => bm.assertActive(state), GitLifecycleError);
 });
+
+test('BranchManager assertActive switches back to AI branch when clean', () => {
+  let switchedTo = '';
+  const mockGit = createMockGit({
+    currentBranch: () => 'other-branch',
+    isDirty: () => false,
+    switch: (b) => {
+      switchedTo = b;
+    },
+  });
+
+  const bm = new BranchManager(mockGit, () => {});
+  const state = createDummyRunState();
+
+  bm.assertActive(state);
+  assert.equal(switchedTo, state.branch);
+});
+
+test('BranchManager reconcile recovers existing pre-run stash', () => {
+  let savedState: RunState | null = null;
+  const mockGit = createMockGit({
+    branchExists: () => true,
+    currentBranch: () => 'main',
+    findStash: (label) => (label.includes('test-run-123') ? 'recovered-stash-commit' : ''),
+  });
+
+  const bm = new BranchManager(mockGit, (s) => {
+    savedState = s;
+  });
+  const state = createDummyRunState();
+  bm.reconcile(state);
+
+  const res = savedState as RunState | null;
+  assert.equal(res?.pre_run_stash?.commit, 'recovered-stash-commit');
+});

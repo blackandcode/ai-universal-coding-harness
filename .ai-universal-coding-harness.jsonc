@@ -1,0 +1,28 @@
+// AI Universal Coding Harness configuration
+// Precedence: CLI > AI_HARNESS_* env > .ai-orchestrator/config.jsonc > .ai-universal-coding-harness.jsonc > global > defaults.
+{
+  "executorHarness": "cursor",
+  "reviewerHarness": "codex",
+  "permissionMode": "auto_safe",
+  "qualityCommand": "npm run check",
+  "branchPrefix": "ai-harness",
+  "maxPlanReviews": 3,
+  "finalPlanReview": true,
+  "maxExecutionAttempts": 3,
+  "harnesses": {
+    "cursor": {
+      "binary": "agent",
+      "model": "gemini-3.8-flash",
+      "thinking": "high",
+      "turnTimeoutMinutes": 45,
+    },
+    "codex": {
+      "binary": "codex",
+      "model": "gpt-6-astra",
+      "reasoningEffort": "low",
+      "verbosity": "low",
+      "timeoutMinutes": 8,
+      "contextMode": "evidence_only",
+    },
+  },
+}

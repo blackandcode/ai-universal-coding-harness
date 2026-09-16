@@ -10,7 +10,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { ROOT, STAGE_RUNTIME_ROOT } from '../core/paths.js';
+import { ROOT } from '../core/paths.js';
 import { iso } from '../core/time.js';
 import { writeJson } from '../core/fs.js';
 import { RunStateStore } from '../state/RunStateStore.js';
@@ -151,7 +151,13 @@ export class RecoveryManager {
     }
 
     // 3. Locate evidence.json
-    let evidencePath = path.join(STAGE_RUNTIME_ROOT, stageName, 'evidence.json');
+    let evidencePath = path.join(
+      this.root,
+      '.ai-orchestrator',
+      'stage-runtime',
+      stageName,
+      'evidence.json',
+    );
     if (!fs.existsSync(evidencePath)) {
       evidencePath = path.join(stageDir, 'evidence.json');
     }

@@ -329,3 +329,106 @@ Subprocess execution via `child_process` in `src/core/process.ts` had loosely ty
 ### Consequences
 
 Subprocess execution across all harnesses, Git operations, and quality commands is type-safe, cancellable, and protected against indefinite hangs.
+
+---
+
+## 2026-09-15 — Modular React 19 / Ink 7 UI Subsystem with Zero Terminal Jitter
+
+### Context
+
+The original terminal UI relied on an untyped monolithic file using `React.createElement` with direct terminal writes that frequently caused visual flicker, console bouncing, and poor responsiveness across varying terminal window heights.
+
+### Decision
+
+1. Migrated UI to native TSX components utilizing React 19.2.8 and Ink 7.1.1.
+2. Structured presentation around a pure state machine reducer (`uiReducer`) consuming semantic `UiEvent`s emitted from `EventBus`.
+3. Implemented dynamic vertical layout budget calculation (`calculateDashboardLayout`) enforcing fixed rows across minimal, compact, and normal heights.
+4. Created interactive keyboard navigation routing hotkeys (`f`, `t`, `d`, `l`, `q`, `Esc`) to modal overlays while keeping the core orchestrator decoupled from UI business logic.
+
+### Alternatives considered
+
+- Retaining untyped createElement: Rejected due to maintenance difficulty and lack of type checking with React 19.
+- Third-party full-screen TUI libraries (blessed, ink-big-text): Rejected to preserve lightweight terminal behavior and native Ink streaming.
+
+### Consequences
+
+A rock-solid, jitter-free interactive dashboard that runs cleanly in terminal windows of any size, with automatic fallback to line mode for CI environments.
+
+---
+
+## 2026-09-15 — Corroborated Evidence Lifecycle and Hardened Autonomous Recovery
+
+### Context
+
+Executor quality claims and reviewer final verdicts previously operated without strict mechanical corroboration against actual tool executions. Furthermore, interrupted runs could stall if observation logs were incomplete.
+
+### Decision
+
+1. Established `EvidenceService` requiring mechanical corroboration:
+   - Tool calls and command exits must be recorded in `ObservationJournal` with exit code `0`.
+   - The git working tree must produce a matching, clean `patchFingerprint()`.
+   - Corroborated evidence is persisted in both JSON and Markdown formats.
+2. Hardened `RecoveryManager`:
+   - Dry-run mode (`ai-harness recover`) previews planned changes with zero side effects.
+   - Applying recovery creates timestamped backups in `runs/<run-id>/backups/<timestamp>/`.
+   - Missing observations are automatically reconstructed from historical raw ACP session logs.
+   - Dual deterministic resume points route valid corroborated evidence directly to `REVIEW` while routing stale or uncorroborated evidence to `QUALITY`.
+
+### Alternatives considered
+
+- Trusting executor `evidence.json` directly: Rejected because agents can hallucinate or omit failed test runs.
+- Requiring human manual recovery: Rejected because autonomous recovery safely heals interrupted runs without human intervention.
+
+### Consequences
+
+Total evidence integrity where neither executor nor reviewer can declare a stage successful without verified mechanical execution evidence.
+
+---
+
+## 2026-09-16 — Deprecation of Legacy Configuration Namespaces and Internal Uppercase Properties
+
+### Context
+
+Historical releases used `AI_STAGE_*` environment variables, `.ai-stage-orchestrator.jsonc` config files, and internal uppercase configuration keys (e.g. `CONFIG.MAX_PLAN_REVIEWS`), creating inconsistency with the modernized `ai-universal-coding-harness` naming conventions and camelCase TypeScript idioms.
+
+### Decision
+
+1. **Environment Variables**: Formally deprecated `AI_STAGE_*` in favor of `AI_HARNESS_*`. The environment mapping layer (`src/config/env.ts`) continues to read `AI_STAGE_*` as fallback when `AI_HARNESS_*` is absent.
+2. **Tracked Project Configuration**: Formally deprecated `.ai-stage-orchestrator.jsonc` in favor of `.ai-universal-coding-harness.jsonc`. `loadEffectiveConfig` loads the legacy file as an intermediate layer if present.
+3. **Internal Configuration Properties**: Formally deprecated internal uppercase properties in favor of camelCase (`maxPlanReviews`, `executorHarness`, `permissionMode`). Maintained an ES6 `Proxy` compatibility adapter in `src/config/compat.ts` that delegates uppercase property accesses directly to camelCase equivalents.
+
+### Alternatives considered
+
+- Immediate removal of legacy aliases: Rejected because existing CI workflows and project configurations would break on upgrade.
+- Maintaining dual configuration formats indefinitely without deprecation: Rejected to establish a clear architectural path forward for v2.0.0.
+
+### Consequences
+
+Clean, idiomatic modern TypeScript configuration with 100% non-breaking backward compatibility for existing users.
+
+---
+
+## 2026-09-16 — Native Node 24 Code Coverage Gate Architecture (85/85/80)
+
+### Context
+
+To ensure high reliability, Stage 05 requires establishing rigorous code coverage gates. Traditional setups rely on external instrumentation packages (Istanbul, c8, nyc) which introduce heavy dependencies and potential native module compatibility issues on newer Node versions.
+
+### Decision
+
+1. Implemented native coverage enforcement leveraging Node.js 24's built-in coverage capabilities:
+   - `--experimental-test-coverage`
+   - `--test-coverage-lines=85`
+   - `--test-coverage-functions=85`
+   - `--test-coverage-branches=80`
+2. Integrated these flags into `scripts/run-tests.mjs` and enforced them during `npm run test:coverage` and `npm run verify`.
+3. Established independent verification for critical security, quality, and recovery modules (`src/permissions/**`, `src/quality/**`, `src/orchestrator/RecoveryManager.ts`), ensuring they exceed global thresholds.
+
+### Alternatives considered
+
+- Installing c8 or Istanbul: Rejected to maintain zero external test runner dependencies and rely entirely on native Node.js LTS capabilities.
+- Setting lower thresholds (e.g. 70%): Rejected because orchestration safety, Git lifecycle management, and autonomous permissions demand high-confidence test coverage.
+
+### Consequences
+
+Deterministic, zero-dependency coverage gates enforced across CI and local verification runs with zero external tooling overhead.

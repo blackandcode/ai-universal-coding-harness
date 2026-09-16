@@ -143,6 +143,46 @@ test('followEventFile tails newly appended lines and buffers partial lines acros
     assert.equal(received[1].type, 'stage.completed');
     const secondPayload = received[1].payload as Record<string, unknown>;
     assert.equal(secondPayload.stage, 's1');
+
+    // Test file truncation / rotation reset
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({ ts: '2026-09-16T00:03:00Z', type: 'run.completed', payload: {} }) + '\n',
+    );
+    await new Promise((r) => setTimeout(r, 60));
+    assert.ok(received.length >= 3);
+    assert.equal(received.at(-1)?.type, 'run.completed');
+  } finally {
+    watcher.stop();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('followEventFile handles initially missing file and watcher stop', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'event-file-missing-'));
+  const filePath = path.join(tmpDir, 'not-yet.jsonl');
+  const received: UiEvent[] = [];
+  const watcher = followEventFile(filePath, (e) => received.push(e), 20);
+
+  try {
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(received.length, 0);
+
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({ ts: '2026-09-16T00:00:00Z', type: 'run.started', payload: {} }) + '\n',
+    );
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(received.length, 1);
+
+    watcher.stop();
+    fs.appendFileSync(
+      filePath,
+      JSON.stringify({ ts: '2026-09-16T00:01:00Z', type: 'stage.started', payload: {} }) + '\n',
+    );
+    await new Promise((r) => setTimeout(r, 60));
+    // No new events because watcher stopped
+    assert.equal(received.length, 1);
   } finally {
     watcher.stop();
     fs.rmSync(tmpDir, { recursive: true, force: true });

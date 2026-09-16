@@ -78,3 +78,65 @@ test('commandExists returns true for node and false for nonexistent binary', () 
   assert.equal(commandExists('definitely-not-a-real-binary-name-xyz'), false);
   assert.equal(commandExists(''), false);
 });
+
+test('runProcess: handles stdinText and stderr lines', async () => {
+  const stderrLines: string[] = [];
+  const res = await runProcess(
+    process.execPath,
+    [
+      '-e',
+      'require("readline").createInterface({input:process.stdin}).on("line", l => { process.stderr.write("echo:" + l + "\\n"); });',
+    ],
+    {
+      stdinText: 'hello stdin\n',
+      onStderrLine: (l) => stderrLines.push(l),
+    },
+  );
+  assert.equal(res.exitCode, 0);
+  assert.ok(stderrLines.some((l) => l.includes('echo:hello stdin')));
+});
+
+test('runProcess: rejects immediately when signal is already aborted', async () => {
+  const controller = new AbortController();
+  controller.abort('pre-aborted');
+
+  await assert.rejects(
+    async () => {
+      await runProcess(process.execPath, ['-v'], { signal: controller.signal });
+    },
+    (err: unknown) => {
+      assert.ok(err instanceof ProcessExecutionError);
+      assert.ok(err.message.includes('aborted before start'));
+      return true;
+    },
+  );
+});
+
+test('runShellCommand: handles timeout and pre-aborted signal', async () => {
+  const controller = new AbortController();
+  controller.abort('pre-aborted-shell');
+
+  await assert.rejects(
+    async () => {
+      await runShellCommand('echo test', { signal: controller.signal });
+    },
+    (err: unknown) => {
+      assert.ok(err instanceof ProcessExecutionError);
+      assert.ok(err.message.includes('aborted before start'));
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    async () => {
+      await runShellCommand(`"${process.execPath}" -e "setTimeout(()=>{}, 5000)"`, {
+        timeoutMs: 100,
+      });
+    },
+    (err: unknown) => {
+      assert.ok(err instanceof ProcessExecutionError);
+      assert.equal(err.timedOut, true);
+      return true;
+    },
+  );
+});

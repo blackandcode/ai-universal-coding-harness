@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * @fileoverview Executable CLI launcher for ai-harness / ai-universal-coding-harness.
+ * Resolves repository target directory and launches the main CLI dispatcher.
+ */
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 

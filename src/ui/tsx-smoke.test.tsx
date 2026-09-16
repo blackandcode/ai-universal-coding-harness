@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Smoke tests for TSX compilation and React JSX runtime execution via node:test.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';

@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Unit tests for EvidenceVerifier in src/quality/EvidenceVerifier.ts.
+ * Validates command normalization, matching, ACP observation corroboration, and failure detection.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {

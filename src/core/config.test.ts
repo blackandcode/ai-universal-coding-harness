@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Unit tests for core configuration re-exports in src/core/config.ts.
+ * Verifies default configuration and configuration path resolution APIs.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';

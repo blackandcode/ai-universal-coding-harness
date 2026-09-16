@@ -1,3 +1,7 @@
+/**
+ * @fileoverview Unit tests for terminal dashboard layout modes and vertical row budgets.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dashboardLayout } from './layout.js';

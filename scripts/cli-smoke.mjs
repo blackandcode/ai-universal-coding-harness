@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Smoke tests for the compiled CLI executable (dist/bin.js).
+ * Verifies help, version, and config subcommands in an isolated environment.
+ */
+
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Test runner script using Node.js native test runner and code coverage.
+ * Enforces native Node 24 coverage thresholds (85% lines, 85% functions, 80% branches)
+ * and verifies critical security, quality, and recovery modules.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -23,9 +29,16 @@ if (testFiles.length === 0) {
   process.exit(2);
 }
 
+const isCoverage = process.argv.includes('--coverage') || process.argv.includes('--coverage-gate');
+
 const args = [];
-if (process.argv.includes('--coverage')) {
-  args.push('--experimental-test-coverage');
+if (isCoverage) {
+  args.push(
+    '--experimental-test-coverage',
+    '--test-coverage-lines=85',
+    '--test-coverage-functions=85',
+    '--test-coverage-branches=80',
+  );
 }
 args.push('--test', ...testFiles);
 

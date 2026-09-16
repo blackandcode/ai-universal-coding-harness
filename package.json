@@ -1,6 +1,6 @@
 {
   "name": "ai-universal-coding-harness",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "description": "A cross-platform CLI that orchestrates autonomous coding harnesses through structured stages, review, quality gates, and clean Git history.",
   "keywords": [
     "agents",
@@ -61,7 +61,7 @@
     "test:coverage": "npm run build && node scripts/run-tests.mjs --coverage",
     "test:cli": "node scripts/cli-smoke.mjs",
     "test": "npm run test:unit",
-    "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run test:cli && node scripts/package-check.mjs",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run test:cli && node scripts/package-check.mjs",
     "check": "npm run verify",
     "prepare": "npm run build",
     "prepack": "npm run verify"

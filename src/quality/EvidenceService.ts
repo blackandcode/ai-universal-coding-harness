@@ -25,6 +25,8 @@ export interface CorroborationResult {
 }
 
 export class EvidenceService {
+  constructor(private stageRuntimeRoot: string = STAGE_RUNTIME_ROOT) {}
+
   /**
    * Validates the existence and syntactic structure of the runtime evidence.json file.
    *
@@ -36,7 +38,7 @@ export class EvidenceService {
     stageName: string,
     attempt: number,
   ): { ok: boolean; reason: string; e?: ExecutionEvidence } {
-    const runtimeEvidence = path.join(STAGE_RUNTIME_ROOT, stageName, 'evidence.json');
+    const runtimeEvidence = path.join(this.stageRuntimeRoot, stageName, 'evidence.json');
     return validateEvidence(runtimeEvidence, stageName, attempt);
   }
 
@@ -46,7 +48,7 @@ export class EvidenceService {
    * @param stageName - Name of the stage
    */
   clearRuntimeEvidence(stageName: string): void {
-    const runtimeEvidence = path.join(STAGE_RUNTIME_ROOT, stageName, 'evidence.json');
+    const runtimeEvidence = path.join(this.stageRuntimeRoot, stageName, 'evidence.json');
     ensureDir(path.dirname(runtimeEvidence));
     try {
       if (fs.existsSync(runtimeEvidence)) {

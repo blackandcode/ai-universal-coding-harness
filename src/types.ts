@@ -1,5 +1,6 @@
 /**
- * Core domain types and contracts for AI Universal Coding Harness.
+ * @fileoverview Core domain types, models, branded identifiers, and contracts for AI Universal Coding Harness.
+ * Defines run and stage states, verdicts, execution evidence, UI event streams, and manifests.
  */
 
 // Semantic branded identifier types

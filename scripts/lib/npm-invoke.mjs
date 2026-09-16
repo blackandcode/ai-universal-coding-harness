@@ -1,7 +1,17 @@
+/**
+ * @fileoverview Utility module for spawning npm CLI processes portably across platforms.
+ * Resolves npm CLI path to prevent cmd.exe/shell escaping issues on Windows.
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+/**
+ * Discovers the absolute path to npm-cli.js from the current Node environment.
+ *
+ * @returns Path to npm-cli.js, or null if not found.
+ */
 export function findNpmCli() {
   if (process.env.npm_execpath && fs.existsSync(process.env.npm_execpath)) {
     return process.env.npm_execpath;
@@ -19,6 +29,13 @@ export function findNpmCli() {
   return null;
 }
 
+/**
+ * Spawns an npm CLI invocation using Node.js directly or shell fallback.
+ *
+ * @param args - CLI arguments passed to npm.
+ * @param options - Options passed to spawnSync.
+ * @returns Result object from spawnSync.
+ */
 export function spawnNpm(args, options = {}) {
   const npmCli = findNpmCli();
   let result;
@@ -28,10 +45,10 @@ export function spawnNpm(args, options = {}) {
       ...options,
     });
   } else {
-    const cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    result = spawnSync(cmd, args, {
+    const isWindows = process.platform === 'win32';
+    result = spawnSync(isWindows ? 'npm.cmd' : 'npm', args, {
+      shell: isWindows,
       windowsHide: true,
-      shell: process.platform === 'win32',
       ...options,
     });
   }

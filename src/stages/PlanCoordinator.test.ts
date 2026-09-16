@@ -191,3 +191,18 @@ test('empty plan submission is rejected immediately', async () => {
   assert.equal(res.outcome, 'needs_revision');
   assert.equal(res.feedback, 'Plan is empty.');
 });
+
+test('PlanCoordinator: forceAccept creates approved plan with carryover', () => {
+  const f = fixture();
+  const p = new PlanCoordinator({
+    runId: 'r',
+    stage: f.stage,
+    stageContext: 'specs',
+    reviewer: f.reviewer,
+    store: f.store,
+  });
+
+  const acceptedPlan = p.forceAccept('emergency plan');
+  assert.equal(acceptedPlan, 'emergency plan');
+  assert.ok(fs.existsSync(path.join(f.root, 'PLAN.md')));
+});

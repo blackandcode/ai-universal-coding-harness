@@ -28,6 +28,21 @@ ai-harness resume
 
 The AI branch is intentionally preserved. The orchestrator never automatically pushes or merges it.
 
+## Corroboration or evidence failure
+
+If an interrupted run dropped tool observations or stalled prior to final review:
+
+```bash
+# Preview recovery actions safely (dry-run)
+ai-harness recover
+
+# Apply recovery, reconstruct tool observations, and corroborate evidence
+ai-harness recover --apply
+
+# Resume the run to complete evaluation and commit
+ai-harness resume
+```
+
 ## Permission denied
 
 A denied operation should not automatically end the stage. The executor is instructed to choose another safe approach. See [Permissions](permissions.md).

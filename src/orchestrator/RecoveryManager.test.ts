@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Unit tests for RecoveryManager in src/orchestrator/RecoveryManager.ts.
+ * Validates recovery analysis, state reset to attempt 1, corroborated evidence handling,
+ * and error handling for missing runs, invalid stages, and corrupted state files.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -117,6 +123,63 @@ test('RecoveryManager resets recovered stage to attempt 1 with corroborated evid
     const recoveredRun = store.load(runId);
     assert.equal(recoveredRun.status, 'running');
     assert.equal(recoveredRun.stages[0].status, 'running');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('RecoveryManager error cases: missing run, invalid stage, and corrupted run file', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'recovery-err-'));
+  try {
+    execSync('git init -b main', { cwd: tmpDir });
+    execSync('git config user.name "Test"', { cwd: tmpDir });
+    execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, 'readme.md'), '# Test\n');
+    execSync('git add readme.md && git commit -m "initial"', { cwd: tmpDir });
+
+    const git = new GitRepository(tmpDir);
+    const store = new RunStateStore(path.join(tmpDir, '.ai-orchestrator', 'runs'));
+    const rm = new RecoveryManager(tmpDir, store, git);
+
+    // 1. No run found
+    const noRun = await rm.recover({});
+    assert.equal(noRun.ok, false);
+    assert.equal(noRun.error, 'No run found.');
+
+    // 2. Corrupted run state
+    const corruptId = 'corrupt-run-id';
+    const corruptDir = store.runDir(corruptId);
+    fs.mkdirSync(corruptDir, { recursive: true });
+    fs.writeFileSync(path.join(corruptDir, 'run.json'), 'invalid json');
+    const loadErr = await rm.recover({ runId: corruptId });
+    assert.equal(loadErr.ok, false);
+    assert.match(loadErr.error || '', /Failed to load run/);
+
+    // 3. Stage cannot be determined
+    const emptyRunId = 'empty-stages-run';
+    store.save({
+      version: 1,
+      run_id: emptyRunId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      status: 'completed',
+      workspace: tmpDir,
+      base_ref: 'HEAD',
+      base_commit: 'abc',
+      branch: 'ai-harness/test',
+      branch_created: true,
+      original_branch: 'main',
+      original_head: 'abc',
+      stage_source: 'test',
+      feature: null,
+      stages: [],
+      executor_harness: 'cursor',
+      reviewer_harness: 'codex',
+      quality_cmd: 'npm test',
+    });
+    const noStage = await rm.recover({ runId: emptyRunId, stageName: 'nonexistent-stage' });
+    assert.equal(noStage.ok, false);
+    assert.equal(noStage.error, 'Could not determine stage to recover.');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
