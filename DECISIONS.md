@@ -1,9 +1,7 @@
 # Architecture Decisions
 
 This document tracks all material architecture choices for AI Universal Coding Harness.
-The authoritative log of rewrite decisions is maintained in `ai-universal-coding-harness-rewrite-plan/DECISIONS.md`.
-
-Please refer to [ai-universal-coding-harness-rewrite-plan/DECISIONS.md](./ai-universal-coding-harness-rewrite-plan/DECISIONS.md) for the complete history of decisions, rationale, alternatives considered, and consequences.
+This root document is the authoritative log of all architectural decisions, design choices, rationale, and consequences for the project.
 
 ## Summary of Key Architectural Decisions
 
@@ -22,3 +20,4 @@ Please refer to [ai-universal-coding-harness-rewrite-plan/DECISIONS.md](./ai-uni
 13. **Native Node 24 Coverage Gate Architecture**: Zero external coverage libraries; strict enforcement of native Node 24 coverage flags (`--experimental-test-coverage`, `--test-coverage-lines=85`, `--test-coverage-functions=85`, `--test-coverage-branches=80`) integrated into `npm run test:coverage` and `npm run verify`, with dedicated invariants for critical security, quality, and recovery modules.
 14. **Protocol and Transport Boundary Separation**: Decomposed Cursor ACP integration into isolated boundaries: `CursorAcpTransport` for subprocess management and JSON-RPC transport, `AcpEventDecoder` as a pure deterministic protocol decoder and single source of truth, and `AcpEventNormalizer` for semantic event normalization across both live execution and historical log replay. Zero production `any` across all harness adapters and orchestrator boundaries. (Refer to [ADR-0001](./docs/adr/0001-protocol-and-transport-boundary-separation.md)).
 15. **Durable Quality Epoch Markers and Evidence Corroboration Trust Hardening**: Bound observations to multi-dimensional execution identity (`run_id`, `session_id`, `stage`, `attempt`, `quality_epoch_id`), eliminated resume corroboration bypass (`!isResumed && !corroboration.ok`), enforced exact patch fingerprint and corroborated verification for recovery to `review`, and implemented durable epoch markers (`record_type: 'quality_epoch_started'`) with deterministic reconstruction during historical ACP log replay. Prevented silent state corruption by making corrupt `stage-state.json` throw `RunStateError` while maintaining pending defaults for missing files. (Refer to [ADR-0002](./docs/adr/0002-evidence-state-and-recovery-trust-hardening.md)).
+16. **Independent Critical Subsystem Coverage Gates and Authoritative Verification Chain**: Enforced independent machine-checked coverage gates for critical security (`permissions`), quality corroboration (`evidence`), and crash recovery (`recovery`) modules (`lines >= 90%`, `functions >= 90%`, `branches >= 85%`) in `scripts/run-critical-coverage.mjs`. Integrated all script governance tests (`tests/scripts/*.test.mjs`) into `npm run verify` via `scripts/run-script-tests.mjs`, corrected the CI minimum-runtime platform matrix to test exact Node `24.18.0` on Ubuntu, Windows, and macOS, and added deterministic relative documentation link validation (`scripts/check-doc-links.mjs`).

@@ -21,6 +21,15 @@ All notable changes to this project are documented here. The project follows Sem
 - Added `ObservationJournal.loadJournal()` in `src/harness/cursor/ObservationJournal.ts` with schema validation via `validateCommandObservation()` and automatic epoch boundary assignment.
 - Added `normalizeVerificationContext()` in `src/quality/EvidenceVerifier.ts` to canonicalize camelCase and snake_case verification context aliases.
 - Documented Decision 15 ("Durable Quality Epoch Markers and Evidence Corroboration Trust Hardening") in `DECISIONS.md`.
+- Added centralized coverage configuration in `scripts/coverage-config.mjs` defining authoritative thresholds for global, incremental, and critical subsystems.
+- Implemented independent critical subsystem coverage runner in `scripts/run-critical-coverage.mjs` enforcing machine-checked gates on `permissions`, `evidence`, and `recovery` subsystems (lines >= 90%, functions >= 90%, branches >= 85%).
+- Created cross-platform script test runner in `scripts/run-script-tests.mjs` dynamically executing all `tests/scripts/*.test.mjs` files and wired `npm run test:scripts` into `npm run verify`.
+- Implemented repository-relative Markdown link validator in `scripts/check-doc-links.mjs` and wired `npm run docs:links` into `npm run verify`.
+- Created root `IMPLEMENTATION-STATUS.md` tracking architecture milestones, modernization progress, and quality gate structure.
+- Documented Decision 16 ("Independent Critical Subsystem Coverage Gates and Authoritative Verification Chain") in `DECISIONS.md`.
+- Added `DECISIONS.md` and `IMPLEMENTATION-STATUS.md` to `requiredDiskFiles` in `scripts/package-check.mjs`.
+- Added Section 7 ("Stage Closure History") to root `IMPLEMENTATION-STATUS.md` detailing concrete deliverables across Stages 01, 02, and 03.
+- Added governance and link integrity regression test suites in `tests/scripts/governance.test.mjs`, `tests/scripts/critical-coverage.test.mjs`, and `tests/scripts/doc-links.test.mjs`, including verification subcommands invariant testing.
 
 ### Changed
 
@@ -38,8 +47,13 @@ All notable changes to this project are documented here. The project follows Sem
 - Wired stage attempt into `executorHarness.createSession()` in `src/orchestrator/Orchestrator.ts`.
 - Enhanced `ObservationJournal` in `src/harness/cursor/ObservationJournal.ts` and `CursorExecutorHarness` in `src/harness/cursor/CursorExecutorHarness.ts` to persist `QualityEpochMarker` records and reconstruct epoch boundaries during ACP log replay.
 - Modified `RunStateStore.loadStage` in `src/state/RunStateStore.ts` to throw `RunStateError` on corrupted `stage-state.json` files while preserving pending defaults for missing files.
+- Updated `.github/workflows/ci.yml` matrix with explicit `include` testing exact Node `24.18.0` on Ubuntu, Windows, and macOS, plus forward Node `24` latest on Ubuntu.
+- Updated `scripts/run-tests.mjs` to dynamically consume `INCREMENTAL_COVERAGE_THRESHOLDS` (95/95/85) for targeted test runs and `GLOBAL_COVERAGE_THRESHOLDS` (85/85/80) for full test runs from `scripts/coverage-config.mjs`.
+- Reconciled quality gate documentation across `docs/testing.md`, `docs/development.md`, and `docs/Functional-specification.md`.
 
 ### Fixed
+
+- Fixed moved integration test path reference in `docs/testing.md` to point to `tests/orchestrator/orchestrator-integration.test.ts`.
 
 - Fixed external binary execution and scope leak in test coverage by hermetically mocking `Orchestrator` preflight in CLI tests and scoping default Node test coverage to `.test-dist/src/**`
 - Silenced incidental CLI stderr and stdout from dispatch unit tests during test runs and migrated test mock.module options to exports.
@@ -51,6 +65,9 @@ All notable changes to this project are documented here. The project follows Sem
 - Resolved recovery and resume vulnerabilities that allowed stale or uncorroborated evidence to bypass verification (Findings F-05, F-06).
 - Fixed recovery failure when reconstructing observations from `executor-observations.jsonl` by replacing ACP line filtering with structured journal ingestion.
 - Fixed patch fingerprint and quality epoch dropping in `EvidenceService.corroborate()` caused by casing mismatch on `VerificationContext`.
+- Repaired 22 broken documentation links across `DECISIONS.md` and `docs/stage-02-cursor-plan.md`.
+- Hardened branch and function coverage in `tests/orchestrator/RecoveryManager.test.ts` to achieve 100% lines, 85% branches, and 100% functions.
+- Sanitized `NODE_TEST_CONTEXT` and `NODE_TEST_WORKER_ID` in `scripts/run-critical-coverage.mjs` to ensure child processes accurately enforce native coverage failure exit codes when spawned under parent test runners.
 
 ## [2.1.7] - 2026-09-16
 
@@ -192,6 +209,10 @@ All notable changes to this project are documented here. The project follows Sem
 - Expanded CI platform matrix across Ubuntu, Windows, and macOS on Node 24.18.0 with strict non-repairing `npm ci`.
 
 ## [1.0.3] - 2026-09-15
+
+### Changed
+
+- Established modernization gap-closure audit baseline release tracking modernization milestones (Stages 01 through 04) and architecture invariant audits.
 
 ## [1.0.2] - 2026-09-15
 

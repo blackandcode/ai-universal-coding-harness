@@ -43,6 +43,8 @@ const requiredDiskFiles = [
   'dist/index.d.ts',
   'README.md',
   'CHANGELOG.md',
+  'DECISIONS.md',
+  'IMPLEMENTATION-STATUS.md',
   'LICENSE',
   'permissions.default.jsonc',
   'config.example.jsonc',

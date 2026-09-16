@@ -867,11 +867,15 @@ npm run build
 npm run typecheck
 npm run test:unit
 npm test
+npm run test:coverage
+npm run test:critical-coverage
+npm run test:scripts
 npm run test:cli
+npm run docs:links
 npm run verify
 ```
 
-`npm run verify` is expected to combine type checking, test/build verification, CLI smoke tests, and package validation.
+`npm run verify` is expected to combine formatting, linting, type checking, global test coverage, independent critical subsystem coverage gates, script governance tests, CLI smoke tests, package artifact validation, and relative documentation link integrity.
 
 ---
 

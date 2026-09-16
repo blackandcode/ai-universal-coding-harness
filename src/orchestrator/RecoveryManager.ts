@@ -250,8 +250,7 @@ export class RecoveryManager {
       try {
         const raw = JSON.parse(fs.readFileSync(evidencePath, 'utf8'));
         const validation = validateCorroboratedEvidence(raw, {
-          stage: stageName,
-          patchFingerprint: currentPatchFingerprint
+          stage: stageName
         });
         if (validation.ok && validation.e) {
           evidence = validation.e;

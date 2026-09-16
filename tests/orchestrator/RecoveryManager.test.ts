@@ -289,3 +289,133 @@ test('RecoveryManager error cases: missing run, invalid stage, and corrupted run
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('RecoveryManager branch coverage: diff check failures, corrupt stage-state, invalid evidence JSON, and corroboration mismatches', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'recovery-branch-test-'));
+  try {
+    execSync('git init -b main', { cwd: tmpDir });
+    execSync('git config user.name "Test"', { cwd: tmpDir });
+    execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, 'readme.md'), '# Test\n');
+    execSync('git add readme.md && git commit -m "initial"', { cwd: tmpDir });
+
+    const git = new GitRepository(tmpDir);
+    const store = new RunStateStore(path.join(tmpDir, '.ai-orchestrator', 'runs'));
+    const runId = 'branch-test-run';
+    const stageName = 'stage-01';
+    const stageDir = store.stageDir(runId, stageName);
+    fs.mkdirSync(stageDir, { recursive: true });
+
+    store.save({
+      version: 1,
+      run_id: runId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      status: 'failed',
+      workspace: tmpDir,
+      base_ref: 'HEAD',
+      base_commit: git.head(),
+      branch: 'ai-harness/test',
+      branch_created: true,
+      original_branch: 'main',
+      original_head: git.head(),
+      stage_source: 'test',
+      feature: null,
+      stages: [
+        {
+          name: stageName,
+          selector: '01',
+          status: 'failed',
+          manifest: {
+            name: stageName,
+            selector: '01',
+            source: 'test',
+            relative_path: stageName,
+            sha256: {}
+          }
+        }
+      ],
+      executor_harness: 'cursor',
+      reviewer_harness: 'codex',
+      quality_cmd: 'npm test',
+      current_stage_index: 0
+    });
+
+    store.saveStage(runId, stageName, {
+      phase: 'quality',
+      attempt: 1
+    });
+
+    // 1. git.diffCheck() failure branch
+    const gitDiffFail = {
+      diffCheck: () => ({ ok: false, issues: ['trailing whitespace in file.ts'] }),
+      patchFingerprint: () => 'fp-fake',
+      head: () => git.head()
+    } as unknown as GitRepository;
+    const rmDiffFail = new RecoveryManager(tmpDir, store, gitDiffFail);
+    const diffFailRes = await rmDiffFail.recover({ runId, stageName });
+    assert.equal(diffFailRes.ok, false);
+    assert.match(diffFailRes.error || '', /Authoritative git diff check failed/);
+    assert.match(diffFailRes.error || '', /trailing whitespace in file.ts/);
+
+    const rm = new RecoveryManager(tmpDir, store, git);
+
+    // 2. Corrupt stage-state.json (loadStage throws error)
+    fs.writeFileSync(path.join(stageDir, 'stage-state.json'), 'not valid json');
+    const corruptStageRes = await rm.recover({ runId, stageName });
+    assert.equal(corruptStageRes.ok, false);
+    assert.match(corruptStageRes.error || '', /Failed to load stage state/);
+
+    // Restore valid stage-state.json
+    fs.writeFileSync(
+      path.join(stageDir, 'stage-state.json'),
+      JSON.stringify({
+        phase: 'quality',
+        attempt: 1
+      })
+    );
+
+    // 3. Invalid JSON in evidence.json
+    fs.writeFileSync(path.join(stageDir, 'evidence.json'), '{ broken json');
+    const invalidEvidenceRes = await rm.recover({ runId, stageName });
+    assert.equal(invalidEvidenceRes.ok, true);
+    assert.equal(invalidEvidenceRes.resumePhase, 'quality');
+    assert.ok(invalidEvidenceRes.details.some((d) => d.includes('contains invalid JSON')));
+
+    // 4. Evidence with patch fingerprint mismatch AND corroboration issues (exercises arrow func mapping issues)
+    const mismatchEvidence = {
+      stage: stageName,
+      attempt: 1,
+      status: 'PASS',
+      quality_command: 'npm test',
+      quality_exit_code: 0,
+      git_diff_check_exit_code: 0,
+      focused_tests: [],
+      quality_summary: 'All checks passed',
+      changed_files: [],
+      unresolved: [],
+      patch_fingerprint: 'different-mismatch-fingerprint',
+      quality_epoch_id: 'epoch-1'
+    };
+    fs.writeFileSync(path.join(stageDir, 'evidence.json'), JSON.stringify(mismatchEvidence));
+    const mismatchRes = await rm.recover({ runId, stageName });
+    assert.equal(mismatchRes.ok, true);
+    assert.equal(mismatchRes.resumePhase, 'quality');
+    assert.ok(mismatchRes.details.some((d) => d.includes('Patch fingerprint mismatch')));
+    assert.ok(mismatchRes.details.some((d) => d.includes('Corroboration issues:')));
+
+    // 5. Evidence located at .ai-orchestrator/stage-runtime/<stageName>/evidence.json
+    const runtimeEvidenceDir = path.join(tmpDir, '.ai-orchestrator', 'stage-runtime', stageName);
+    fs.mkdirSync(runtimeEvidenceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(runtimeEvidenceDir, 'evidence.json'),
+      JSON.stringify(mismatchEvidence)
+    );
+    fs.rmSync(path.join(stageDir, 'evidence.json'));
+    const runtimeEvidenceRes = await rm.recover({ runId, stageName });
+    assert.equal(runtimeEvidenceRes.ok, true);
+    assert.ok(runtimeEvidenceRes.details.some((d) => d.includes('Patch fingerprint mismatch')));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

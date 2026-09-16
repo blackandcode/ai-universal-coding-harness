@@ -42,11 +42,14 @@ npm run setup          # Build dist/ and configure Git hooks (after npm install 
 npm run build          # Clean, compile production code to dist/, and postbuild
 npm run build:tests    # Compile tests and src to .test-dist/
 npm run test:unit      # Build and run unit tests from .test-dist/tests/
-npm run test:coverage  # Build and run tests with coverage
+npm run test:coverage  # Build and run tests with global coverage
+npm run test:critical-coverage # Run independent coverage gates for critical subsystems
+npm run test:scripts   # Run repository script and governance tests
 npm run test:cli       # Run CLI smoke test
 npm test               # Run all unit tests
+npm run docs:links     # Validate relative documentation links
 npm run pre-push       # Run pre-push gate (npm run verify; halts git push on failure)
-npm run verify         # Complete quality gate and package check
+npm run verify         # Complete 9-step quality gate and package check
 npm run check          # Alias for verify
 npm pack --dry-run     # Test npm package tarball creation
 ```

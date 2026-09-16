@@ -35,9 +35,23 @@ Delivered:
 
 ## Stage 03 — Quality Gates, CI and Governance Closure
 
-Status: Not started
+Status: Completed
 
 Primary findings: F-07, F-08, F-09, F-10, F-11
+
+Delivered:
+
+- Authoritative Decision 16 added to `DECISIONS.md`, establishing root `DECISIONS.md` as the authoritative single source of architectural decisions.
+- Created root `IMPLEMENTATION-STATUS.md` detailing current release baseline, subsystem architecture, modernization status, and quality gates.
+- Centralized coverage configuration in `scripts/coverage-config.mjs` defining global thresholds (85/85/80), incremental thresholds (95/95/85), and critical subsystem thresholds (90/90/85).
+- Created independent critical subsystem runner `scripts/run-critical-coverage.mjs` enforcing machine-checked coverage for `permissions`, `evidence`, and `recovery` subsystems.
+- Hardened `tests/orchestrator/RecoveryManager.test.ts` to reach 100% lines, 85% branches, and 100% functions on `RecoveryManager.ts`.
+- Created cross-platform script test runner `scripts/run-script-tests.mjs` discovering and running all `tests/scripts/*.test.mjs` files without shell globbing dependencies.
+- Updated `.github/workflows/ci.yml` matrix with explicit `include` testing exact Node `24.18.0` on Ubuntu, Windows, and macOS, plus forward Node `24` latest on Ubuntu.
+- Implemented relative Markdown documentation link checker in `scripts/check-doc-links.mjs` with code-fence exclusion and anchor normalization, repairing 22 broken links across `DECISIONS.md` and `docs/stage-02-cursor-plan.md`.
+- Added `DECISIONS.md` and `IMPLEMENTATION-STATUS.md` to `requiredDiskFiles` in `scripts/package-check.mjs`.
+- Added governance and link integrity regression test suites in `tests/scripts/governance.test.mjs` and `tests/scripts/doc-links.test.mjs`.
+- Reconciled documentation across `docs/testing.md`, `docs/development.md`, `docs/Functional-specification.md`, and recorded modernization baseline provenance under `[1.0.3]` in `CHANGELOG.md`.
 
 ## Stage 04 — Configuration Contract Fidelity
 

@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { GLOBAL_COVERAGE_THRESHOLDS, INCREMENTAL_COVERAGE_THRESHOLDS } from './coverage-config.mjs';
 
 function walk(dir, out = []) {
   if (!fs.existsSync(dir)) return out;
@@ -84,11 +85,13 @@ if (testFiles.length === 0) {
 
 const args = [];
 if (isCoverage) {
+  const thresholds =
+    includes.length > 0 ? INCREMENTAL_COVERAGE_THRESHOLDS : GLOBAL_COVERAGE_THRESHOLDS;
   args.push(
     '--experimental-test-coverage',
-    '--test-coverage-lines=95',
-    '--test-coverage-functions=95',
-    '--test-coverage-branches=85',
+    `--test-coverage-lines=${thresholds.lines}`,
+    `--test-coverage-functions=${thresholds.functions}`,
+    `--test-coverage-branches=${thresholds.branches}`,
     '--test-coverage-exclude=.test-dist/tests/**',
     '--test-coverage-exclude=**/node_modules/**',
     '--test-coverage-exclude=**/.local/**',

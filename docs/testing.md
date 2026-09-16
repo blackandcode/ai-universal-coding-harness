@@ -24,7 +24,19 @@ npm run check:changed
 
 A Git pre-push hook (`.githooks/pre-push` invoking `scripts/pre-push.mjs`) automatically executes full repository verification (`npm run verify`) prior to pushing to origin.
 
-If any check, lint error, type failure, coverage deficit, CLI smoke failure, or packaging invariant fails, **`git push` is immediately halted** with an exit status of 1.
+If any check, lint error, type failure, coverage deficit, CLI smoke failure, packaging invariant, or broken documentation link fails, **`git push` is immediately halted** with an exit status of 1.
+
+The authoritative verification chain runs 9 distinct quality gates in sequence:
+
+1. `npm run format:check` (Oxfmt formatting check)
+2. `npm run lint` (Oxlint and invariant rules)
+3. `npm run typecheck` (TypeScript source and test compilation check)
+4. `npm run test:coverage` (Global test suite coverage: lines >= 85%, funcs >= 85%, branches >= 80%)
+5. `npm run test:critical-coverage` (Independent critical subsystem gates: lines >= 90%, funcs >= 90%, branches >= 85%)
+6. `npm run test:scripts` (Cross-platform discovery and execution of all `tests/scripts/*.test.mjs`)
+7. `npm run test:cli` (Isolated CLI smoke tests)
+8. `node scripts/package-check.mjs` (Tarball inventory, TS7 consumer tests, OIDC publishing config, required disk files)
+9. `npm run docs:links` (Local Markdown relative link validator)
 
 ```bash
 npm run verify
@@ -61,15 +73,25 @@ Running `npm run test:coverage` (enforced automatically in `npm run verify`) exe
 
 ### Critical Module Invariant
 
-In addition to global repository thresholds, critical security, recovery, and evidence modules must independently maintain strict branch and line coverage:
+In addition to global repository thresholds, critical security, recovery, and evidence modules independently enforce strict branch, function, and line coverage gates via `npm run test:critical-coverage` (`scripts/run-critical-coverage.mjs`):
 
-- `src/permissions/CommandClassifier.ts` & `src/permissions/PermissionEngine.ts`
-- `src/quality/EvidenceVerifier.ts` & `src/quality/EvidenceService.ts`
-- `src/orchestrator/RecoveryManager.ts`
+- **Permissions & Security**: `src/permissions/CommandClassifier.ts` & `src/permissions/PermissionEngine.ts` (lines ≥ 90%, funcs ≥ 90%, branches ≥ 85%)
+- **Evidence & Quality**: `src/quality/EvidenceVerifier.ts` & `src/quality/EvidenceService.ts` (lines ≥ 90%, funcs ≥ 90%, branches ≥ 85%)
+- **Autonomous Recovery**: `src/orchestrator/RecoveryManager.ts` (lines ≥ 90%, funcs ≥ 90%, branches ≥ 85%)
+
+Any coverage drop below these thresholds in any critical subsystem immediately halts `npm run verify` even if the global suite meets 85/85/80.
+
+## Script Governance Tests
+
+All repository script and governance tests in `tests/scripts/*.test.mjs` (including versioning, changelog, ADR scaffolding, critical coverage gates, doc links, and governance invariants) are executed cross-platform via `npm run test:scripts` (`scripts/run-script-tests.mjs`) and enforced as part of `npm run verify`.
+
+## Documentation Link Integrity
+
+Relative links across repository documentation are verified via `npm run docs:links` (`scripts/check-doc-links.mjs`). Any missing target or broken relative reference halts the verification pipeline.
 
 ## Orchestrator Integration Suite
 
-The integration test suite (`src/orchestrator/orchestrator-integration.test.ts`) validates end-to-end stage flows in isolated temporary Git repositories using deterministic scripted fake harnesses:
+The integration test suite (`tests/orchestrator/orchestrator-integration.test.ts`) validates end-to-end stage flows in isolated temporary Git repositories using deterministic scripted fake harnesses:
 
 - **Happy Path Execution**: Verifies stage planning, executor implementation, quality gate passage, reviewer approval, and generation of a single stage-named Git commit with proper trailer metadata on a dedicated AI branch.
 - **Reviewer Rework Iterations**: Verifies that reviewer `REWORK` verdicts increment attempts, supply structured feedback to the executor, and achieve eventual approval.
@@ -92,4 +114,7 @@ All unit, integration, and smoke tests execute completely offline in temporary w
 
 ## CI Matrix
 
-CI runs on Linux (Ubuntu with Node 24.18.0), Windows, and macOS using Node 24 LTS.
+CI runs on an explicit platform matrix (`.github/workflows/ci.yml`):
+
+- Exact minimum runtime **Node 24.18.0** on Ubuntu (`ubuntu-latest`), Windows (`windows-latest`), and macOS (`macos-latest`).
+- Forward compatibility on **Node 24 latest** on Ubuntu (`ubuntu-latest`).
