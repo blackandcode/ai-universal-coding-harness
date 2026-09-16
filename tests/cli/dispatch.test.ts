@@ -16,6 +16,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { dispatchCliCommand } from '../../src/cli/dispatch.js';
 import { ProjectWorkspace } from '../../src/project/ProjectWorkspace.js';
+import { projectTrackedConfigPath } from '../../src/config/paths.js';
 import { RUNS_ROOT, LATEST_FILE } from '../../src/core/paths.js';
 import { VERSION } from '../../src/version.js';
 
@@ -224,26 +225,39 @@ test('dispatchCliCommand: status and tail commands', async () => {
 });
 
 test('dispatchCliCommand: init and config init commands', async () => {
-  const initLogs = await captureLog(async () => {
-    const code = await dispatchCliCommand({ kind: 'init', force: false });
-    assert.equal(code, 0);
-  });
-  assert.ok(initLogs.some((l) => l.includes('initialized')));
+  const trackedConfig = projectTrackedConfigPath();
+  const originalContent = fs.existsSync(trackedConfig)
+    ? fs.readFileSync(trackedConfig, 'utf8')
+    : null;
 
-  const configInitLogs = await captureLog(async () => {
-    const code = await dispatchCliCommand({
-      kind: 'config',
-      subCommand: 'init',
-      targetScope: 'project',
-      force: true
+  try {
+    const initLogs = await captureLog(async () => {
+      const code = await dispatchCliCommand({ kind: 'init', force: false });
+      assert.equal(code, 0);
     });
-    assert.equal(code, 0);
-  });
-  assert.ok(
-    configInitLogs.some(
-      (l) => l.includes('.ai-universal-coding-harness.jsonc') || l.includes('config')
-    )
-  );
+    assert.ok(initLogs.some((l) => l.includes('initialized')));
+
+    const configInitLogs = await captureLog(async () => {
+      const code = await dispatchCliCommand({
+        kind: 'config',
+        subCommand: 'init',
+        targetScope: 'project',
+        force: true
+      });
+      assert.equal(code, 0);
+    });
+    assert.ok(
+      configInitLogs.some(
+        (l) => l.includes('.ai-universal-coding-harness.jsonc') || l.includes('config')
+      )
+    );
+  } finally {
+    if (originalContent !== null) {
+      fs.writeFileSync(trackedConfig, originalContent, 'utf8');
+    } else if (fs.existsSync(trackedConfig)) {
+      fs.unlinkSync(trackedConfig);
+    }
+  }
 });
 
 test('dispatchCliCommand: recover command outputs recovery audit trail', async () => {

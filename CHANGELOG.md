@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed trailing commas in config template and isolated CLI init tests from mutating tracked configuration
+
 ## [2.1.1] - 2026-09-16
 
 ### Added
