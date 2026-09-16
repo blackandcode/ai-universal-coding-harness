@@ -913,8 +913,90 @@ test('AcpToolAccumulator and ObservationJournal: unit test methods and persisten
     assert.equal(journal.getObservations().length, 1);
     assert.ok(fs.existsSync(journalFile));
 
+    journal.recordEpochMarker({
+      record_type: 'quality_epoch_started',
+      quality_epoch_id: 'ep-test-1',
+      sequence: 2,
+      timestamp: new Date().toISOString()
+    });
+    assert.equal(journal.getEpochMarkers().length, 1);
+    assert.equal(journal.getEpochMarkers()[0].quality_epoch_id, 'ep-test-1');
+
     journal.clear();
     assert.equal(journal.getObservations().length, 0);
+    assert.equal(journal.getEpochMarkers().length, 0);
+  } finally {
+    safeRm(tmpDir);
+  }
+});
+
+test('ObservationJournal.loadJournal: parses valid observations, epoch markers, and skips corrupt JSON', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'load-journal-test-'));
+  const journalFile = path.join(tmpDir, 'journal.jsonl');
+
+  try {
+    const lines = [
+      '// non-json comment line',
+      '{ "invalid json ...',
+      JSON.stringify({
+        record_type: 'quality_epoch_started',
+        quality_epoch_id: 'epoch-load-1',
+        stage: 'stage-load',
+        attempt: 2,
+        run_id: 'run-load',
+        sequence: 1,
+        timestamp: new Date().toISOString()
+      }),
+      JSON.stringify({
+        observation_id: 'obs-1',
+        session_id: 's1',
+        tool_id: 't1',
+        tool_call_id: 'tc1',
+        sequence: 2,
+        timestamp: new Date().toISOString(),
+        source: 'acp',
+        command: 'npm test',
+        normalized_command: 'npm test',
+        command_confidence: 'high',
+        status: 'in_progress',
+        exit_code: null
+      }),
+      JSON.stringify({
+        observation_id: 'obs-1',
+        session_id: 's1',
+        tool_id: 't1',
+        tool_call_id: 'tc1',
+        sequence: 3,
+        timestamp: new Date().toISOString(),
+        source: 'acp',
+        command: 'npm test',
+        normalized_command: 'npm test',
+        command_confidence: 'high',
+        status: 'completed',
+        exit_code: 0
+      }),
+      'EPOCH {"record_type":"quality_epoch_started","quality_epoch_id":"epoch-load-2","sequence":4,"timestamp":"2026-09-16T12:00:00Z"}'
+    ];
+
+    fs.writeFileSync(journalFile, lines.join('\n') + '\n');
+
+    const result = ObservationJournal.loadJournal(journalFile);
+    assert.equal(result.markers.length, 2);
+    assert.equal(result.markers[0].quality_epoch_id, 'epoch-load-1');
+    assert.equal(result.markers[1].quality_epoch_id, 'epoch-load-2');
+
+    // Deduplication by session_id and tool_call_id
+    assert.equal(result.observations.length, 1);
+    assert.equal(result.observations[0].status, 'completed');
+    assert.equal(result.observations[0].exit_code, 0);
+    assert.equal(result.observations[0].quality_epoch_id, 'epoch-load-1');
+    assert.equal(result.observations[0].stage, 'stage-load');
+    assert.equal(result.observations[0].attempt, 2);
+    assert.equal(result.observations[0].run_id, 'run-load');
+
+    // Non-existent file returns empty arrays
+    const emptyResult = ObservationJournal.loadJournal(path.join(tmpDir, 'missing.jsonl'));
+    assert.deepEqual(emptyResult, { observations: [], markers: [] });
   } finally {
     safeRm(tmpDir);
   }

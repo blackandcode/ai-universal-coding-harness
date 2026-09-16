@@ -76,6 +76,60 @@ function createStageSource(targetDir: string, stageName = 'stage-01-core'): stri
   return stagesDir;
 }
 
+/**
+ * Helper to generate fully-scoped passing command observations for tests.
+ */
+function createPassingObservations(params: {
+  sessionId: string;
+  stage: string;
+  attempt: number;
+  runId?: string;
+  qualityEpoch?: string;
+  workspace?: string;
+  command?: string;
+}): CommandObservation[] {
+  return [
+    {
+      observation_id: `obs-q-${params.stage}-${params.attempt}`,
+      session_id: params.sessionId,
+      stage: params.stage,
+      attempt: params.attempt,
+      run_id: params.runId,
+      cwd: params.workspace,
+      tool_id: 'tool-quality',
+      tool_call_id: 'tool-quality',
+      sequence: 1,
+      timestamp: new Date().toISOString(),
+      source: 'acp',
+      command: params.command || 'npm test',
+      normalized_command: params.command || 'npm test',
+      command_confidence: 'high',
+      status: 'completed',
+      exit_code: 0,
+      quality_epoch_id: params.qualityEpoch
+    },
+    {
+      observation_id: `obs-d-${params.stage}-${params.attempt}`,
+      session_id: params.sessionId,
+      stage: params.stage,
+      attempt: params.attempt,
+      run_id: params.runId,
+      cwd: params.workspace,
+      tool_id: 'tool-diff',
+      tool_call_id: 'tool-diff',
+      sequence: 2,
+      timestamp: new Date().toISOString(),
+      source: 'acp',
+      command: 'git diff --check',
+      normalized_command: 'git diff --check',
+      command_confidence: 'high',
+      status: 'completed',
+      exit_code: 0,
+      quality_epoch_id: params.qualityEpoch
+    }
+  ];
+}
+
 test('orchestrator integration: successful stage produces approved commit on AI branch', async () => {
   const repoDir = createTestRepo();
   const stagesDir = createStageSource(repoDir, 'stage-01-feature');
@@ -114,6 +168,9 @@ test('orchestrator integration: successful stage produces approved commit on AI 
             observations.push({
               observation_id: `obs-quality-${currentAttempt}`,
               session_id: 'test-session-1',
+              stage: 'stage-01-feature',
+              attempt: currentAttempt,
+              run_id: opts.runId,
               tool_id: 'tool-quality',
               tool_call_id: 'tool-quality',
               sequence: 1,
@@ -129,6 +186,9 @@ test('orchestrator integration: successful stage produces approved commit on AI 
             observations.push({
               observation_id: `obs-diff-${currentAttempt}`,
               session_id: 'test-session-1',
+              stage: 'stage-01-feature',
+              attempt: currentAttempt,
+              run_id: opts.runId,
               tool_id: 'tool-diff',
               tool_call_id: 'tool-diff',
               sequence: 2,
@@ -259,36 +319,16 @@ test('orchestrator integration: reviewer rework triggers rerun and approval on a
               `Content attempt ${currentAttempt}\n`
             );
 
-            observations.push({
-              observation_id: `obs-q-${currentAttempt}`,
-              session_id: 'rework-session',
-              tool_id: 'tool-q',
-              tool_call_id: 'tool-q',
-              sequence: currentAttempt * 2 - 1,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'npm test',
-              normalized_command: 'npm test',
-              command_confidence: 'high',
-              status: 'completed',
-              exit_code: 0,
-              quality_epoch_id: qualityEpoch
-            });
-            observations.push({
-              observation_id: `obs-d-${currentAttempt}`,
-              session_id: 'rework-session',
-              tool_id: 'tool-d',
-              tool_call_id: 'tool-d',
-              sequence: currentAttempt * 2,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'git diff --check',
-              normalized_command: 'git diff --check',
-              command_confidence: 'high',
-              status: 'completed',
-              exit_code: 0,
-              quality_epoch_id: qualityEpoch
-            });
+            observations.push(
+              ...createPassingObservations({
+                sessionId: 'rework-session',
+                stage: 'stage-01-rework',
+                attempt: currentAttempt,
+                runId: opts.runId,
+                qualityEpoch,
+                workspace: opts.workspace
+              })
+            );
 
             const runtimeDir = path.join(
               repoDir,
@@ -447,7 +487,7 @@ test('orchestrator integration: resume flow reuses approved plan without plannin
     registry.registerExecutor('test-exec', () => ({
       info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
       preflight: async () => ({ ok: true, details: [] }),
-      createSession: async () => {
+      createSession: async (opts) => {
         let qualityEpoch = '';
         const observations: CommandObservation[] = [];
 
@@ -465,36 +505,16 @@ test('orchestrator integration: resume flow reuses approved plan without plannin
             }
 
             fs.writeFileSync(path.join(repoDir, 'resumed.txt'), 'Done\n');
-            observations.push({
-              observation_id: 'obs-q-resume',
-              session_id: 'session-resume-2',
-              tool_id: 'tool-q',
-              tool_call_id: 'tool-q',
-              sequence: 1,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'npm test',
-              normalized_command: 'npm test',
-              command_confidence: 'high',
-              status: 'completed',
-              exit_code: 0,
-              quality_epoch_id: qualityEpoch
-            });
-            observations.push({
-              observation_id: 'obs-d-resume',
-              session_id: 'session-resume-2',
-              tool_id: 'tool-d',
-              tool_call_id: 'tool-d',
-              sequence: 2,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'git diff --check',
-              normalized_command: 'git diff --check',
-              command_confidence: 'high',
-              status: 'completed',
-              exit_code: 0,
-              quality_epoch_id: qualityEpoch
-            });
+            observations.push(
+              ...createPassingObservations({
+                sessionId: 'session-resume-2',
+                stage: 'stage-01-resume',
+                attempt: 1,
+                runId: opts?.runId,
+                qualityEpoch,
+                workspace: opts?.workspace
+              })
+            );
 
             const runtimeDir = path.join(
               repoDir,
@@ -550,6 +570,7 @@ test('orchestrator integration: recovery selects REVIEW for valid evidence and Q
     // Write a modification
     fs.writeFileSync(path.join(repoDir, 'recovered.txt'), 'content\n');
     const patchFingerprint = git.patchFingerprint();
+    const testEpoch = 'epoch-recovery-integ-1';
 
     // 1. Valid corroborated evidence matching patch fingerprint
     const validEvidence: ExecutionEvidence = {
@@ -563,12 +584,14 @@ test('orchestrator integration: recovery selects REVIEW for valid evidence and Q
       quality_summary: 'Corroborated green',
       changed_files: ['recovered.txt'],
       unresolved: [],
-      patch_fingerprint: patchFingerprint
+      patch_fingerprint: patchFingerprint,
+      quality_epoch_id: testEpoch
     };
     const evidencePath = path.join(stageRunDir, 'evidence-attempt-1.json');
     fs.writeFileSync(evidencePath, JSON.stringify(validEvidence));
 
     const acp = [
+      `EPOCH {"record_type":"quality_epoch_started","quality_epoch_id":"${testEpoch}","stage":"${stageName}","attempt":1,"run_id":"${runId}","sequence":0,"timestamp":"${new Date().toISOString()}"}`,
       'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t1","title":"Run","status":"completed","rawInput":{"command":"npm test"},"rawOutput":{"exit_code":0}}}}',
       'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t2","title":"Run","status":"completed","rawInput":{"command":"git diff --check"},"rawOutput":{"exit_code":0}}}}'
     ];
@@ -670,36 +693,16 @@ test('orchestrator integration: permission volume resilience with 25+ requests',
             }
 
             fs.writeFileSync(path.join(repoDir, 'perm-done.txt'), 'Completed permissions\n');
-            observations.push({
-              observation_id: 'obs-q-perm',
-              session_id: 'perm-session',
-              tool_id: 'tool-q',
-              tool_call_id: 'tool-q',
-              sequence: 1,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'npm test',
-              normalized_command: 'npm test',
-              command_confidence: 'high',
-              status: 'completed',
-              exit_code: 0,
-              quality_epoch_id: qualityEpoch
-            });
-            observations.push({
-              observation_id: 'obs-d-perm',
-              session_id: 'perm-session',
-              tool_id: 'tool-d',
-              tool_call_id: 'tool-d',
-              sequence: 2,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'git diff --check',
-              normalized_command: 'git diff --check',
-              command_confidence: 'high',
-              status: 'completed',
-              exit_code: 0,
-              quality_epoch_id: qualityEpoch
-            });
+            observations.push(
+              ...createPassingObservations({
+                sessionId: 'perm-session',
+                stage: 'stage-01-perms',
+                attempt: 1,
+                runId: opts.runId,
+                qualityEpoch,
+                workspace: opts.workspace
+              })
+            );
 
             const runtimeDir = path.join(
               repoDir,
@@ -798,36 +801,16 @@ test('orchestrator integration: plan review budget exhaustion consolidates into 
               path.join(repoDir, 'budget-done.txt'),
               'Completed under consolidated plan\n'
             );
-            observations.push({
-              observation_id: 'obs-q-budget',
-              session_id: 'budget-session',
-              tool_id: 'tool-q',
-              tool_call_id: 'tool-q',
-              sequence: 1,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'npm test',
-              normalized_command: 'npm test',
-              command_confidence: 'high',
-              status: 'completed',
-              exit_code: 0,
-              quality_epoch_id: qualityEpoch
-            });
-            observations.push({
-              observation_id: 'obs-d-budget',
-              session_id: 'budget-session',
-              tool_id: 'tool-d',
-              tool_call_id: 'tool-d',
-              sequence: 2,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'git diff --check',
-              normalized_command: 'git diff --check',
-              command_confidence: 'high',
-              status: 'completed',
-              exit_code: 0,
-              quality_epoch_id: qualityEpoch
-            });
+            observations.push(
+              ...createPassingObservations({
+                sessionId: 'budget-session',
+                stage: 'stage-01-budget',
+                attempt: 1,
+                runId: opts.runId,
+                qualityEpoch,
+                workspace: opts.workspace
+              })
+            );
 
             const runtimeDir = path.join(
               repoDir,
@@ -917,6 +900,7 @@ test('orchestrator integration: handles executor question and reviewer context r
       info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
       preflight: async () => ({ ok: true, details: [] }),
       createSession: async (opts) => {
+        let qualityEpoch = '';
         const stageName = 'stage-01-question';
         const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', stageName);
         fs.mkdirSync(runtimeDir, { recursive: true });
@@ -924,6 +908,9 @@ test('orchestrator integration: handles executor question and reviewer context r
         const session: ExecutorSession = {
           id: 'test-session-question',
           setMode: async () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
+          },
           prompt: async (text) => {
             if (text.includes('Work in PLAN mode')) {
               await opts.callbacks.onPlan('1. Comprehensive plan with DB choice\n', {});
@@ -972,36 +959,15 @@ test('orchestrator integration: handles executor question and reviewer context r
             return { text: 'Implementation finished', result: {} };
           },
           stop: async () => {},
-          observedCommands: () => [
-            {
-              observation_id: 'obs-1',
-              session_id: 's1',
-              tool_id: 'bash',
-              tool_call_id: 'call-1',
-              sequence: 1,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'npm test',
-              normalized_command: 'npm test',
-              status: 'completed',
-              exit_code: 0,
-              command_confidence: 'high'
-            },
-            {
-              observation_id: 'obs-2',
-              session_id: 's1',
-              tool_id: 'bash',
-              tool_call_id: 'call-2',
-              sequence: 2,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'git diff --check',
-              normalized_command: 'git diff --check',
-              status: 'completed',
-              exit_code: 0,
-              command_confidence: 'high'
-            }
-          ]
+          observedCommands: () =>
+            createPassingObservations({
+              sessionId: 'test-session-question',
+              stage: stageName,
+              attempt: 1,
+              runId: opts.runId,
+              qualityEpoch,
+              workspace: opts.workspace
+            })
         };
         return session;
       }
@@ -1074,11 +1040,14 @@ test('orchestrator integration: reuses stored approved plan without replanning',
       info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
       preflight: async () => ({ ok: true, details: [] }),
       createSession: async (opts) => {
+        let qualityEpoch = '';
         const observations: CommandObservation[] = [];
         return {
           id: 'reuse-plan-session',
           setMode: async () => {},
-          setQualityEpoch: () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
+          },
           observedCommands: () => observations,
           prompt: async (promptText) => {
             if (promptText.includes('Work in PLAN mode')) {
@@ -1108,34 +1077,14 @@ test('orchestrator integration: reuses stored approved plan without replanning',
               })
             );
             observations.push(
-              {
-                observation_id: 'obs-q',
-                session_id: 'reuse-plan-session',
-                tool_id: 'tool-q',
-                tool_call_id: 'tool-q',
-                sequence: 1,
-                timestamp: new Date().toISOString(),
-                source: 'acp',
-                command: 'npm test',
-                normalized_command: 'npm test',
-                command_confidence: 'high',
-                status: 'completed',
-                exit_code: 0
-              },
-              {
-                observation_id: 'obs-d',
-                session_id: 'reuse-plan-session',
-                tool_id: 'tool-d',
-                tool_call_id: 'tool-d',
-                sequence: 2,
-                timestamp: new Date().toISOString(),
-                source: 'acp',
-                command: 'git diff --check',
-                normalized_command: 'git diff --check',
-                command_confidence: 'high',
-                status: 'completed',
-                exit_code: 0
-              }
+              ...createPassingObservations({
+                sessionId: 'reuse-plan-session',
+                stage: 'stage-01-reuse-plan',
+                attempt: 1,
+                runId: opts.runId,
+                qualityEpoch,
+                workspace: opts.workspace
+              })
             );
             fs.writeFileSync(path.join(repoDir, 'done.txt'), 'ok\n');
             return { text: 'done', result: {} };
@@ -1234,6 +1183,7 @@ test('orchestrator integration: reviewer fallback failover on usage limit enable
       info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
       preflight: async () => ({ ok: true, details: [] }),
       createSession: async (opts) => {
+        let qualityEpoch = '';
         const stageName = 'stage-01-failover';
         const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', stageName);
         fs.mkdirSync(runtimeDir, { recursive: true });
@@ -1241,6 +1191,9 @@ test('orchestrator integration: reviewer fallback failover on usage limit enable
         const session: ExecutorSession = {
           id: 'test-session-failover',
           setMode: async () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
+          },
           prompt: async (text) => {
             if (text.includes('Work in PLAN mode')) {
               await opts.callbacks.onPlan('1. Comprehensive plan with failover\n', {});
@@ -1271,36 +1224,15 @@ test('orchestrator integration: reviewer fallback failover on usage limit enable
             return { text: 'Implementation finished', result: {} };
           },
           stop: async () => {},
-          observedCommands: () => [
-            {
-              observation_id: 'obs-1',
-              session_id: 's1',
-              tool_id: 'bash',
-              tool_call_id: 'call-1',
-              sequence: 1,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'npm test',
-              normalized_command: 'npm test',
-              status: 'completed',
-              exit_code: 0,
-              command_confidence: 'high'
-            },
-            {
-              observation_id: 'obs-2',
-              session_id: 's1',
-              tool_id: 'bash',
-              tool_call_id: 'call-2',
-              sequence: 2,
-              timestamp: new Date().toISOString(),
-              source: 'acp',
-              command: 'git diff --check',
-              normalized_command: 'git diff --check',
-              status: 'completed',
-              exit_code: 0,
-              command_confidence: 'high'
-            }
-          ]
+          observedCommands: () =>
+            createPassingObservations({
+              sessionId: 'test-session-failover',
+              stage: stageName,
+              attempt: 1,
+              runId: opts.runId,
+              qualityEpoch,
+              workspace: opts.workspace
+            })
         };
         return session;
       }
@@ -1422,11 +1354,14 @@ test('orchestrator integration: non-green quality evidence skips reviewer and re
       info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
       preflight: async () => ({ ok: true, details: [] }),
       createSession: async (opts) => {
+        let qualityEpoch = '';
         const observations: CommandObservation[] = [];
         return {
           id: 'quality-retry-session',
           setMode: async () => {},
-          setQualityEpoch: () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
+          },
           observedCommands: () => observations,
           prompt: async (promptText) => {
             if (promptText.includes('Work in PLAN mode')) {
@@ -1454,36 +1389,59 @@ test('orchestrator integration: non-green quality evidence skips reviewer and re
               unresolved: []
             };
             fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
-            observations.push(
-              {
-                observation_id: `obs-q-${implPrompts}`,
-                session_id: 'quality-retry-session',
-                tool_id: 'tool-q',
-                tool_call_id: 'tool-q',
-                sequence: implPrompts * 2 - 1,
-                timestamp: new Date().toISOString(),
-                source: 'acp',
-                command: 'npm test',
-                normalized_command: 'npm test',
-                command_confidence: 'high',
-                status: 'completed',
-                exit_code: implPrompts === 1 ? 1 : 0
-              },
-              {
-                observation_id: `obs-d-${implPrompts}`,
-                session_id: 'quality-retry-session',
-                tool_id: 'tool-d',
-                tool_call_id: 'tool-d',
-                sequence: implPrompts * 2,
-                timestamp: new Date().toISOString(),
-                source: 'acp',
-                command: 'git diff --check',
-                normalized_command: 'git diff --check',
-                command_confidence: 'high',
-                status: 'completed',
-                exit_code: 0
-              }
-            );
+            if (implPrompts === 1) {
+              observations.push(
+                {
+                  observation_id: `obs-q-${implPrompts}`,
+                  session_id: 'quality-retry-session',
+                  stage: 'stage-01-quality-retry',
+                  attempt: 1,
+                  run_id: opts.runId,
+                  cwd: opts.workspace,
+                  tool_id: 'tool-q',
+                  tool_call_id: 'tool-q',
+                  sequence: implPrompts * 2 - 1,
+                  timestamp: new Date().toISOString(),
+                  source: 'acp',
+                  command: 'npm test',
+                  normalized_command: 'npm test',
+                  command_confidence: 'high',
+                  status: 'completed',
+                  exit_code: 1,
+                  quality_epoch_id: qualityEpoch
+                },
+                {
+                  observation_id: `obs-d-${implPrompts}`,
+                  session_id: 'quality-retry-session',
+                  stage: 'stage-01-quality-retry',
+                  attempt: 1,
+                  run_id: opts.runId,
+                  cwd: opts.workspace,
+                  tool_id: 'tool-d',
+                  tool_call_id: 'tool-d',
+                  sequence: implPrompts * 2,
+                  timestamp: new Date().toISOString(),
+                  source: 'acp',
+                  command: 'git diff --check',
+                  normalized_command: 'git diff --check',
+                  command_confidence: 'high',
+                  status: 'completed',
+                  exit_code: 0,
+                  quality_epoch_id: qualityEpoch
+                }
+              );
+            } else {
+              observations.push(
+                ...createPassingObservations({
+                  sessionId: 'quality-retry-session',
+                  stage: 'stage-01-quality-retry',
+                  attempt: 2,
+                  runId: opts.runId,
+                  qualityEpoch,
+                  workspace: opts.workspace
+                })
+              );
+            }
             if (implPrompts === 2) {
               fs.writeFileSync(path.join(repoDir, 'feature.txt'), 'implemented\n');
             }
@@ -1553,11 +1511,14 @@ test('orchestrator integration: bounded review diff truncates oversized patch te
       info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
       preflight: async () => ({ ok: true, details: [] }),
       createSession: async (opts) => {
+        let qualityEpoch = '';
         const observations: CommandObservation[] = [];
         return {
           id: 'big-diff-session',
           setMode: async () => {},
-          setQualityEpoch: () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
+          },
           observedCommands: () => observations,
           prompt: async (promptText) => {
             if (promptText.includes('Work in PLAN mode')) {
@@ -1586,34 +1547,14 @@ test('orchestrator integration: bounded review diff truncates oversized patch te
             fs.writeFileSync(path.join(repoDir, 'large.txt'), `${'x'.repeat(5000)}\n`);
             fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
             observations.push(
-              {
-                observation_id: 'obs-q-1',
-                session_id: 'big-diff-session',
-                tool_id: 'tool-q',
-                tool_call_id: 'tool-q',
-                sequence: 1,
-                timestamp: new Date().toISOString(),
-                source: 'acp',
-                command: 'npm test',
-                normalized_command: 'npm test',
-                command_confidence: 'high',
-                status: 'completed',
-                exit_code: 0
-              },
-              {
-                observation_id: 'obs-d-1',
-                session_id: 'big-diff-session',
-                tool_id: 'tool-d',
-                tool_call_id: 'tool-d',
-                sequence: 2,
-                timestamp: new Date().toISOString(),
-                source: 'acp',
-                command: 'git diff --check',
-                normalized_command: 'git diff --check',
-                command_confidence: 'high',
-                status: 'completed',
-                exit_code: 0
-              }
+              ...createPassingObservations({
+                sessionId: 'big-diff-session',
+                stage: 'stage-01-big-diff',
+                attempt: 1,
+                runId: opts.runId,
+                qualityEpoch,
+                workspace: opts.workspace
+              })
             );
             return { text: 'done', result: {} };
           },
@@ -1674,67 +1615,52 @@ test('orchestrator integration: accepts plan submitted only via prompt text fall
     registry.registerExecutor('test-exec', () => ({
       info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
       preflight: async () => ({ ok: true, details: [] }),
-      createSession: async (_opts) => ({
-        id: 'plan-text-session',
-        setMode: async () => {},
-        observedCommands: () => [
-          {
-            observation_id: 'obs-q',
-            session_id: 'plan-text-session',
-            tool_id: 'bash',
-            tool_call_id: 'q1',
-            sequence: 1,
-            timestamp: new Date().toISOString(),
-            source: 'acp',
-            command: 'npm test',
-            normalized_command: 'npm test',
-            command_confidence: 'high',
-            status: 'completed',
-            exit_code: 0
+      createSession: async (opts) => {
+        let qualityEpoch = '';
+        return {
+          id: 'plan-text-session',
+          setMode: async () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
           },
-          {
-            observation_id: 'obs-d',
-            session_id: 'plan-text-session',
-            tool_id: 'bash',
-            tool_call_id: 'd1',
-            sequence: 2,
-            timestamp: new Date().toISOString(),
-            source: 'acp',
-            command: 'git diff --check',
-            normalized_command: 'git diff --check',
-            command_confidence: 'high',
-            status: 'completed',
-            exit_code: 0
-          }
-        ],
-        prompt: async (promptText) => {
-          if (promptText.includes('Work in PLAN mode')) {
-            return {
-              text: '1. Implement frozen requirements for stage-01-plan-text with full tests.\n',
-              result: {}
+          observedCommands: () =>
+            createPassingObservations({
+              sessionId: 'plan-text-session',
+              stage: 'stage-01-plan-text',
+              attempt: 1,
+              runId: opts.runId,
+              qualityEpoch,
+              workspace: opts.workspace
+            }),
+          prompt: async (promptText) => {
+            if (promptText.includes('Work in PLAN mode')) {
+              return {
+                text: '1. Implement frozen requirements for stage-01-plan-text with full tests.\n',
+                result: {}
+              };
+            }
+            const stageName = 'stage-01-plan-text';
+            fs.writeFileSync(path.join(repoDir, 'plan-text-feature.txt'), 'ok\n');
+            const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', stageName);
+            fs.mkdirSync(runtimeDir, { recursive: true });
+            const evidence: ExecutionEvidence = {
+              stage: stageName,
+              attempt: 1,
+              status: 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: 'ok',
+              changed_files: ['plan-text-feature.txt'],
+              unresolved: []
             };
-          }
-          const stageName = 'stage-01-plan-text';
-          fs.writeFileSync(path.join(repoDir, 'plan-text-feature.txt'), 'ok\n');
-          const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', stageName);
-          fs.mkdirSync(runtimeDir, { recursive: true });
-          const evidence: ExecutionEvidence = {
-            stage: stageName,
-            attempt: 1,
-            status: 'PASS',
-            quality_command: 'npm test',
-            quality_exit_code: 0,
-            git_diff_check_exit_code: 0,
-            focused_tests: [],
-            quality_summary: 'ok',
-            changed_files: ['plan-text-feature.txt'],
-            unresolved: []
-          };
-          fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
-          return { text: 'done', result: {} };
-        },
-        stop: async () => {}
-      })
+            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+            return { text: 'done', result: {} };
+          },
+          stop: async () => {}
+        };
+      }
     }));
 
     registry.registerReviewer('test-rev', () => ({
@@ -1791,66 +1717,51 @@ test('orchestrator integration: exhausts maxExecutionAttempts when reviewer neve
     registry.registerExecutor('test-exec', () => ({
       info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
       preflight: async () => ({ ok: true, details: [] }),
-      createSession: async (opts) => ({
-        id: 'max-attempts-session',
-        setMode: async () => {},
-        observedCommands: () => [
-          {
-            observation_id: 'obs-q',
-            session_id: 'max-attempts-session',
-            tool_id: 'bash',
-            tool_call_id: 'q1',
-            sequence: 1,
-            timestamp: new Date().toISOString(),
-            source: 'acp',
-            command: 'npm test',
-            normalized_command: 'npm test',
-            command_confidence: 'high',
-            status: 'completed',
-            exit_code: 0
+      createSession: async (opts) => {
+        let qualityEpoch = '';
+        return {
+          id: 'max-attempts-session',
+          setMode: async () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
           },
-          {
-            observation_id: 'obs-d',
-            session_id: 'max-attempts-session',
-            tool_id: 'bash',
-            tool_call_id: 'd1',
-            sequence: 2,
-            timestamp: new Date().toISOString(),
-            source: 'acp',
-            command: 'git diff --check',
-            normalized_command: 'git diff --check',
-            command_confidence: 'high',
-            status: 'completed',
-            exit_code: 0
-          }
-        ],
-        prompt: async (promptText) => {
-          if (promptText.includes('Work in PLAN mode')) {
-            await opts.callbacks.onPlan('Complete plan for max attempts stage.', {});
-            return { text: 'plan', result: {} };
-          }
-          implAttempts++;
-          const stageName = 'stage-01-max-attempts';
-          fs.writeFileSync(path.join(repoDir, `attempt-${implAttempts}.txt`), 'x\n');
-          const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', stageName);
-          fs.mkdirSync(runtimeDir, { recursive: true });
-          const evidence: ExecutionEvidence = {
-            stage: stageName,
-            attempt: implAttempts,
-            status: 'PASS',
-            quality_command: 'npm test',
-            quality_exit_code: 0,
-            git_diff_check_exit_code: 0,
-            focused_tests: [],
-            quality_summary: 'ok',
-            changed_files: [`attempt-${implAttempts}.txt`],
-            unresolved: []
-          };
-          fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
-          return { text: 'impl', result: {} };
-        },
-        stop: async () => {}
-      })
+          observedCommands: () =>
+            createPassingObservations({
+              sessionId: 'max-attempts-session',
+              stage: 'stage-01-max-attempts',
+              attempt: implAttempts,
+              runId: opts.runId,
+              qualityEpoch,
+              workspace: opts.workspace
+            }),
+          prompt: async (promptText) => {
+            if (promptText.includes('Work in PLAN mode')) {
+              await opts.callbacks.onPlan('Complete plan for max attempts stage.', {});
+              return { text: 'plan', result: {} };
+            }
+            implAttempts++;
+            const stageName = 'stage-01-max-attempts';
+            fs.writeFileSync(path.join(repoDir, `attempt-${implAttempts}.txt`), 'x\n');
+            const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', stageName);
+            fs.mkdirSync(runtimeDir, { recursive: true });
+            const evidence: ExecutionEvidence = {
+              stage: stageName,
+              attempt: implAttempts,
+              status: 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: 'ok',
+              changed_files: [`attempt-${implAttempts}.txt`],
+              unresolved: []
+            };
+            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+            return { text: 'impl', result: {} };
+          },
+          stop: async () => {}
+        };
+      }
     }));
 
     registry.registerReviewer('test-rev', () => ({
@@ -1970,36 +1881,16 @@ test('orchestrator integration: retries implementation when execution evidence i
               fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), '{ invalid json');
             } else {
               // Attempt 2: valid evidence + observations
-              observations.push({
-                observation_id: `obs-quality-${currentAttempt}`,
-                session_id: 'test-session-retry',
-                tool_id: 'tool-quality',
-                tool_call_id: 'tool-quality',
-                sequence: 1,
-                timestamp: new Date().toISOString(),
-                source: 'acp',
-                command: 'npm test',
-                normalized_command: 'npm test',
-                command_confidence: 'high',
-                status: 'completed',
-                exit_code: 0,
-                quality_epoch_id: qualityEpoch
-              });
-              observations.push({
-                observation_id: `obs-diff-${currentAttempt}`,
-                session_id: 'test-session-retry',
-                tool_id: 'tool-diff',
-                tool_call_id: 'tool-diff',
-                sequence: 2,
-                timestamp: new Date().toISOString(),
-                source: 'acp',
-                command: 'git diff --check',
-                normalized_command: 'git diff --check',
-                command_confidence: 'high',
-                status: 'completed',
-                exit_code: 0,
-                quality_epoch_id: qualityEpoch
-              });
+              observations.push(
+                ...createPassingObservations({
+                  sessionId: 'test-session-retry',
+                  stage: 'stage-01-retry-evidence',
+                  attempt: currentAttempt,
+                  runId: opts.runId,
+                  qualityEpoch,
+                  workspace: opts.workspace
+                })
+              );
               const evidence: ExecutionEvidence = {
                 stage: 'stage-01-retry-evidence',
                 attempt: currentAttempt,
@@ -2114,36 +2005,16 @@ test('orchestrator integration: retries implementation when evidence corroborati
               fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
             } else {
               // Attempt 2: valid evidence + matching observations
-              observations.push({
-                observation_id: `obs-quality-${currentAttempt}`,
-                session_id: 'test-session-corrob',
-                tool_id: 'tool-quality',
-                tool_call_id: 'tool-quality',
-                sequence: 1,
-                timestamp: new Date().toISOString(),
-                source: 'acp',
-                command: 'npm test',
-                normalized_command: 'npm test',
-                command_confidence: 'high',
-                status: 'completed',
-                exit_code: 0,
-                quality_epoch_id: qualityEpoch
-              });
-              observations.push({
-                observation_id: `obs-diff-${currentAttempt}`,
-                session_id: 'test-session-corrob',
-                tool_id: 'tool-diff',
-                tool_call_id: 'tool-diff',
-                sequence: 2,
-                timestamp: new Date().toISOString(),
-                source: 'acp',
-                command: 'git diff --check',
-                normalized_command: 'git diff --check',
-                command_confidence: 'high',
-                status: 'completed',
-                exit_code: 0,
-                quality_epoch_id: qualityEpoch
-              });
+              observations.push(
+                ...createPassingObservations({
+                  sessionId: 'test-session-corrob',
+                  stage: 'stage-01-retry-corroboration',
+                  attempt: currentAttempt,
+                  runId: opts.runId,
+                  qualityEpoch,
+                  workspace: opts.workspace
+                })
+              );
               const evidence: ExecutionEvidence = {
                 stage: 'stage-01-retry-corroboration',
                 attempt: currentAttempt,
@@ -2210,6 +2081,7 @@ test('orchestrator integration: reuses corroborated evidence on resume without p
     const git = new GitRepository(repoDir);
     const store = new RunStateStore(path.join(repoDir, '.ai-orchestrator', 'runs'));
     let executorPromptCalls = 0;
+    const testEpoch = 'epoch-resumed-test';
 
     const registry = new HarnessRegistry();
     registry.registerExecutor('test-exec', () => ({
@@ -2218,7 +2090,15 @@ test('orchestrator integration: reuses corroborated evidence on resume without p
       createSession: async () => ({
         id: 'sess-resumed',
         setMode: async () => {},
-        observedCommands: () => [],
+        observedCommands: () =>
+          createPassingObservations({
+            sessionId: 'sess-resumed',
+            stage: 'stage-01-resumed-ev',
+            attempt: 1,
+            runId: state.run_id,
+            qualityEpoch: testEpoch,
+            workspace: repoDir
+          }),
         prompt: async () => {
           executorPromptCalls++;
           return { text: 'Done', result: {} };
@@ -2272,7 +2152,8 @@ test('orchestrator integration: reuses corroborated evidence on resume without p
       quality_summary: 'Corroborated green',
       changed_files: ['resumed.txt'],
       unresolved: [],
-      patch_fingerprint: patchFp
+      patch_fingerprint: patchFp,
+      quality_epoch_id: testEpoch
     };
     const evidencePath = path.join(stageRunDir, 'evidence-attempt-1.json');
     fs.writeFileSync(evidencePath, JSON.stringify(evidence));

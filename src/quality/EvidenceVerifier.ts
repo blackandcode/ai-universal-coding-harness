@@ -4,6 +4,11 @@
  * Implements authoritative validation of executor-produced evidence.json files,
  * corroborating claims against observed ACP command events, checking sequence ordering
  * against repository mutations, asserting patch fingerprints, and validating git diff hygiene.
+ *
+ * @remarks
+ * Invariant: Evidence verification requires exact identity binding. Unscoped observations
+ * or observations from mismatched runs, sessions, stages, attempts, or quality epochs
+ * are strictly ineligible to prove quality claims.
  */
 
 import fs from 'node:fs';
@@ -13,91 +18,144 @@ import type {
   CommandObservation,
   ObservedQuality,
   QualityEvidenceStatus,
-  FocusedTestResult
+  FocusedTestResult,
+  VerificationContext
 } from '../types.js';
-import { isRecord } from '../harness/cursor/types.js';
+
+export type { VerificationContext } from '../types.js';
 
 /**
- * Contextual metadata required to corroborate execution evidence against
- * active stage, attempt, sequence ordering, and git state.
+ * Canonical verification context with resolved camelCase property names.
  */
-export interface VerificationContext {
+export interface NormalizedVerificationContext {
+  /** Active run identifier. */
+  runId?: string;
+  /** Active executor session identifier. */
+  sessionId?: string;
+  /** Canonical stage name. */
   stage?: string;
+  /** 1-based attempt counter. */
   attempt?: number;
-  quality_epoch_id?: string;
-  expected_patch_fingerprint?: string;
-  last_mutation_sequence?: number;
-  orchestrator_diff_check_ok?: boolean;
+  /** Active quality epoch identifier. */
+  qualityEpochId?: string;
+  /** Authoritative expected Git patch SHA256 fingerprint. */
+  expectedPatchFingerprint?: string;
+  /** Sequence number of the last observed workspace file mutation. */
+  lastMutationSequence?: number;
+  /** Whether the orchestrator's authoritative git diff check passed. */
+  orchestratorDiffCheckOk?: boolean;
+  /** Target workspace root directory. */
   workspace?: string;
 }
 
 /**
- * Validates the schema and syntactic structure of an `evidence.json` file.
+ * Normalizes raw VerificationContext properties into canonical camelCase representations.
+ *
+ * @param ctx - Optional raw verification context with potential snake_case or camelCase aliases.
+ * @returns Canonicalized {@link NormalizedVerificationContext}.
+ */
+export function normalizeVerificationContext(
+  ctx?: VerificationContext
+): NormalizedVerificationContext {
+  if (!ctx) return {};
+  return {
+    runId: ctx.runId ?? ctx.run_id,
+    sessionId: ctx.sessionId ?? ctx.session_id,
+    stage: ctx.stage,
+    attempt: ctx.attempt,
+    qualityEpochId: ctx.qualityEpochId ?? ctx.quality_epoch_id,
+    expectedPatchFingerprint: ctx.expectedPatchFingerprint ?? ctx.expected_patch_fingerprint,
+    lastMutationSequence: ctx.lastMutationSequence ?? ctx.last_mutation_sequence,
+    orchestratorDiffCheckOk: ctx.orchestratorDiffCheckOk ?? ctx.orchestrator_diff_check_ok,
+    workspace: ctx.workspace
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Result structure returned by evidence schema validation functions.
+ */
+export interface EvidenceValidationResult {
+  /** True if validation succeeded without errors. */
+  ok: boolean;
+  /** Human-readable explanation if validation failed. */
+  reason: string;
+  /** Validated {@link ExecutionEvidence} domain object when successful. */
+  e?: ExecutionEvidence;
+}
+
+/**
+ * Result structure returned by observation eligibility evaluation.
+ */
+export interface ObservationEligibilityResult {
+  /** True if the observation satisfies all scoping and identity constraints. */
+  eligible: boolean;
+  /** Reasons why the observation was deemed ineligible, if any. */
+  reasons: string[];
+}
+
+/**
+ * Validates the schema and syntactic structure of raw untrusted executor evidence.
  *
  * @remarks
- * External disk file enters as untrusted JSON. Asserts stage name, attempt counter,
- * status enums (`PASS` | `FAIL`), and numeric exit codes before evidence can be corroborated.
+ * Asserts stage name, attempt number, status enum (`PASS` | `FAIL`), and numeric exit codes.
  *
- * @param file - Absolute filesystem path to `evidence.json`.
- * @param stage - Optional expected canonical stage name. If omitted, any string stage name is accepted.
+ * @param data - Untrusted value parsed from `evidence.json`.
+ * @param stage - Optional expected canonical stage name.
  * @param attempt - Optional expected attempt counter.
  * @returns Result object containing `ok` flag, diagnostic failure reason, and parsed {@link ExecutionEvidence}.
  */
-export function validateEvidence(
-  file: string,
+export function validateRawExecutionEvidence(
+  data: unknown,
   stage?: string,
   attempt?: number
-): { ok: boolean; reason: string; e?: ExecutionEvidence } {
-  if (!fs.existsSync(file)) return { ok: false, reason: 'evidence.json missing' };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return { ok: false, reason: 'evidence.json invalid JSON' };
-  }
-  if (!isRecord(parsed)) {
+): EvidenceValidationResult {
+  if (!isRecord(data)) {
     return { ok: false, reason: 'evidence.json missing/invalid required fields' };
   }
 
   const ok =
-    (!stage || parsed.stage === stage) &&
-    typeof parsed.stage === 'string' &&
+    (!stage || data.stage === stage) &&
+    typeof data.stage === 'string' &&
+    data.stage.trim() !== '' &&
     (attempt != null
-      ? Number(parsed.attempt) === attempt
-      : Number.isInteger(Number(parsed.attempt))) &&
-    typeof parsed.status === 'string' &&
-    ['PASS', 'FAIL'].includes(parsed.status) &&
-    Number.isInteger(Number(parsed.quality_exit_code)) &&
-    Number.isInteger(Number(parsed.git_diff_check_exit_code)) &&
-    Array.isArray(parsed.changed_files) &&
-    Array.isArray(parsed.unresolved);
+      ? Number(data.attempt) === attempt
+      : Number.isInteger(Number(data.attempt)) && Number(data.attempt) >= 1) &&
+    typeof data.status === 'string' &&
+    ['PASS', 'FAIL'].includes(data.status) &&
+    Number.isInteger(Number(data.quality_exit_code)) &&
+    Number.isInteger(Number(data.git_diff_check_exit_code)) &&
+    Array.isArray(data.changed_files) &&
+    Array.isArray(data.unresolved);
 
   if (!ok) {
     return { ok: false, reason: 'evidence.json missing/invalid required fields' };
   }
 
   const evidence: ExecutionEvidence = {
-    stage: String(parsed.stage),
-    attempt: Number(parsed.attempt),
-    status: parsed.status as QualityEvidenceStatus,
-    quality_command: typeof parsed.quality_command === 'string' ? parsed.quality_command : '',
-    quality_exit_code: Number(parsed.quality_exit_code),
-    git_diff_check_exit_code: Number(parsed.git_diff_check_exit_code),
-    focused_tests: Array.isArray(parsed.focused_tests)
-      ? (parsed.focused_tests as FocusedTestResult[])
+    stage: String(data.stage),
+    attempt: Number(data.attempt),
+    status: data.status as QualityEvidenceStatus,
+    quality_command: typeof data.quality_command === 'string' ? data.quality_command : '',
+    quality_exit_code: Number(data.quality_exit_code),
+    git_diff_check_exit_code: Number(data.git_diff_check_exit_code),
+    focused_tests: Array.isArray(data.focused_tests)
+      ? (data.focused_tests as FocusedTestResult[])
       : [],
-    quality_summary: typeof parsed.quality_summary === 'string' ? parsed.quality_summary : '',
-    changed_files: (parsed.changed_files as unknown[]).map(String),
-    unresolved: (parsed.unresolved as unknown[]).map(String),
-    observed_quality: isRecord(parsed.observed_quality)
-      ? (parsed.observed_quality as ObservedQuality)
-      : parsed.observed_quality === null
+    quality_summary: typeof data.quality_summary === 'string' ? data.quality_summary : '',
+    changed_files: (data.changed_files as unknown[]).map(String),
+    unresolved: (data.unresolved as unknown[]).map(String),
+    observed_quality: isRecord(data.observed_quality)
+      ? (data.observed_quality as ObservedQuality)
+      : data.observed_quality === null
         ? null
         : undefined,
     patch_fingerprint:
-      typeof parsed.patch_fingerprint === 'string' ? parsed.patch_fingerprint : undefined,
-    quality_epoch_id:
-      typeof parsed.quality_epoch_id === 'string' ? parsed.quality_epoch_id : undefined
+      typeof data.patch_fingerprint === 'string' ? data.patch_fingerprint : undefined,
+    quality_epoch_id: typeof data.quality_epoch_id === 'string' ? data.quality_epoch_id : undefined
   };
 
   return {
@@ -105,6 +163,114 @@ export function validateEvidence(
     reason: '',
     e: evidence
   };
+}
+
+/**
+ * Validates previously corroborated evidence loaded from disk for resume or recovery.
+ *
+ * @remarks
+ * Invariants for corroborated/reusable evidence:
+ * - Status must be strictly `'PASS'`.
+ * - Quality exit code and diff-check exit code must both be `0`.
+ * - `unresolved` items must be completely empty.
+ * - `patch_fingerprint` and `quality_epoch_id` must be present and non-empty.
+ * - Stage, attempt, and patch fingerprint must match expected values if supplied.
+ *
+ * @param data - Untrusted value parsed from saved corroborated evidence file.
+ * @param expected - Expected stage, attempt, and patch fingerprint constraints.
+ * @returns Result object containing `ok` flag, diagnostic failure reason, and parsed {@link ExecutionEvidence}.
+ */
+export function validateCorroboratedEvidence(
+  data: unknown,
+  expected?: {
+    stage?: string;
+    attempt?: number;
+    patchFingerprint?: string;
+    qualityEpochId?: string;
+  }
+): EvidenceValidationResult {
+  const rawValidation = validateRawExecutionEvidence(data, expected?.stage, expected?.attempt);
+  if (!rawValidation.ok || !rawValidation.e) {
+    return rawValidation;
+  }
+
+  const e = rawValidation.e;
+
+  if (e.status !== 'PASS') {
+    return {
+      ok: false,
+      reason: `Corroborated evidence status must be "PASS", found "${e.status}"`
+    };
+  }
+  if (e.quality_exit_code !== 0) {
+    return {
+      ok: false,
+      reason: `Corroborated evidence quality_exit_code must be 0, found ${e.quality_exit_code}`
+    };
+  }
+  if (e.git_diff_check_exit_code !== 0) {
+    return {
+      ok: false,
+      reason: `Corroborated evidence git_diff_check_exit_code must be 0, found ${e.git_diff_check_exit_code}`
+    };
+  }
+  if (e.unresolved.length > 0) {
+    return {
+      ok: false,
+      reason: `Corroborated evidence has ${e.unresolved.length} unresolved item(s)`
+    };
+  }
+  if (!e.patch_fingerprint) {
+    return { ok: false, reason: 'Corroborated evidence missing patch_fingerprint' };
+  }
+  if (expected?.patchFingerprint && e.patch_fingerprint !== expected.patchFingerprint) {
+    return {
+      ok: false,
+      reason: `Corroborated evidence patch fingerprint mismatch: expected "${expected.patchFingerprint}", found "${e.patch_fingerprint}"`
+    };
+  }
+  if (!e.quality_epoch_id) {
+    return { ok: false, reason: 'Corroborated evidence missing quality_epoch_id' };
+  }
+  if (expected?.qualityEpochId && e.quality_epoch_id !== expected.qualityEpochId) {
+    return {
+      ok: false,
+      reason: `Corroborated evidence quality epoch mismatch: expected "${expected.qualityEpochId}", found "${e.quality_epoch_id}"`
+    };
+  }
+
+  return {
+    ok: true,
+    reason: '',
+    e
+  };
+}
+
+/**
+ * Validates the schema and syntactic structure of an `evidence.json` file from disk.
+ *
+ * @remarks
+ * External disk file enters as untrusted JSON. Asserts stage name, attempt counter,
+ * status enums (`PASS` | `FAIL`), and numeric exit codes before evidence can be corroborated.
+ *
+ * @param file - Absolute filesystem path to `evidence.json`.
+ * @param stage - Optional expected canonical stage name.
+ * @param attempt - Optional expected attempt counter.
+ * @returns Result object containing `ok` flag, diagnostic failure reason, and parsed {@link ExecutionEvidence}.
+ */
+export function validateEvidence(
+  file: string,
+  stage?: string,
+  attempt?: number
+): EvidenceValidationResult {
+  if (!fs.existsSync(file)) return { ok: false, reason: 'evidence.json missing' };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return { ok: false, reason: 'evidence.json invalid JSON' };
+  }
+  return validateRawExecutionEvidence(parsed, stage, attempt);
 }
 
 /**
@@ -157,6 +323,113 @@ export function commandMatches(observedCmd: string, targetCmd: string): boolean 
 }
 
 /**
+ * Evaluates whether an observed command is eligible to satisfy quality verification claims.
+ *
+ * @remarks
+ * Invariants:
+ * - Broker executions (`source === 'broker'`) cannot prove quality claims.
+ * - When context requires `stage`, `attempt`, `quality_epoch_id`, `run_id`, or `session_id`,
+ *   the observation must match exactly. Missing scope is NEVER treated as matching.
+ *
+ * @param obs - Candidate command observation record.
+ * @param context - Authoritative verification context.
+ * @returns Eligibility result with boolean flag and diagnostic reasons if rejected.
+ */
+export function isObservationEligible(
+  obs:
+    | CommandObservation
+    | {
+        command: string;
+        exit_code?: number | null;
+        status?: string;
+        tool_id?: string;
+        source?: string;
+        sequence?: number;
+        stage?: string;
+        attempt?: number;
+        session_id?: string;
+        run_id?: string;
+        quality_epoch_id?: string;
+        cwd?: string;
+        workspace?: string;
+        [key: string]: unknown;
+      },
+  context?: VerificationContext
+): ObservationEligibilityResult {
+  const reasons: string[] = [];
+
+  // 1. Source check: broker commands cannot prove quality
+  if (obs.source === 'broker') {
+    reasons.push('Command source "broker" cannot prove quality checks');
+  }
+
+  if (context) {
+    const norm = normalizeVerificationContext(context);
+    const stage = norm.stage;
+    const attempt = norm.attempt;
+    const epochId = norm.qualityEpochId;
+    const runId = norm.runId;
+    const sessionId = norm.sessionId;
+
+    // Stage constraint: when context specifies stage, observation must match exactly
+    if (stage !== undefined) {
+      if (!obs.stage) {
+        reasons.push(`Observation lacks stage identity (expected "${stage}")`);
+      } else if (obs.stage !== stage) {
+        reasons.push(`Observation stage "${obs.stage}" does not match expected "${stage}"`);
+      }
+    }
+
+    // Attempt constraint: when context specifies attempt, observation must match exactly
+    if (attempt !== undefined) {
+      if (obs.attempt === undefined || obs.attempt === null) {
+        reasons.push(`Observation lacks attempt identity (expected attempt ${attempt})`);
+      } else if (obs.attempt !== attempt) {
+        reasons.push(
+          `Observation attempt ${obs.attempt} does not match expected attempt ${attempt}`
+        );
+      }
+    }
+
+    // Quality Epoch constraint: when context specifies quality_epoch_id, observation must match exactly
+    if (epochId !== undefined) {
+      if (!obs.quality_epoch_id) {
+        reasons.push(`Observation lacks quality_epoch_id (expected "${epochId}")`);
+      } else if (obs.quality_epoch_id !== epochId) {
+        reasons.push(
+          `Observation epoch "${obs.quality_epoch_id}" does not match expected "${epochId}"`
+        );
+      }
+    }
+
+    // Run ID constraint: when context specifies runId, observation must match exactly
+    if (runId !== undefined) {
+      if (!obs.run_id) {
+        reasons.push(`Observation lacks run_id (expected "${runId}")`);
+      } else if (obs.run_id !== runId) {
+        reasons.push(`Observation run_id "${obs.run_id}" does not match expected "${runId}"`);
+      }
+    }
+
+    // Session ID constraint: when context specifies sessionId, observation must match exactly
+    if (sessionId !== undefined) {
+      if (!obs.session_id) {
+        reasons.push(`Observation lacks session_id (expected "${sessionId}")`);
+      } else if (obs.session_id !== sessionId) {
+        reasons.push(
+          `Observation session_id "${obs.session_id}" does not match expected "${sessionId}"`
+        );
+      }
+    }
+  }
+
+  return {
+    eligible: reasons.length === 0,
+    reasons
+  };
+}
+
+/**
  * Verifies executor evidence against command observations collected for the current attempt.
  *
  * @remarks
@@ -186,6 +459,8 @@ export function verifyEvidenceAgainstObserved(
         stage?: string;
         attempt?: number;
         quality_epoch_id?: string;
+        session_id?: string;
+        run_id?: string;
         cwd?: string;
         workspace?: string;
       }
@@ -193,78 +468,111 @@ export function verifyEvidenceAgainstObserved(
   context?: VerificationContext
 ) {
   const issues: string[] = [];
+  const normCtx = normalizeVerificationContext(context);
 
-  // Filter commands by stage and attempt if scoped observations exist.
-  // Also enforce that autonomous permission broker executions ('broker') cannot prove quality checks.
-  let scopedCommands = commands.filter((c) => c.source !== 'broker');
+  // Filter commands through centralized eligibility logic
+  const eligibleCommands: typeof commands = [];
+  const rejectedMatches: Array<{ command: string; reasons: string[] }> = [];
 
-  if (context?.stage) {
-    scopedCommands = scopedCommands.filter((c) => !c.stage || c.stage === context.stage);
+  for (const c of commands) {
+    const el = isObservationEligible(c, context);
+    if (el.eligible) {
+      eligibleCommands.push(c);
+    } else {
+      if (
+        commandMatches(c.command, e.quality_command) ||
+        commandMatches(c.command, 'git diff --check')
+      ) {
+        rejectedMatches.push({ command: c.command, reasons: el.reasons });
+      }
+    }
   }
-  if (context?.attempt != null) {
-    // A command is only eligible if it belongs to the current attempt or has no attempt recorded.
-    // If commands belong to another attempt, they cannot validate the current attempt.
-    scopedCommands = scopedCommands.filter(
-      (c) => c.attempt == null || c.attempt === context.attempt
-    );
-  }
 
-  const q = [...scopedCommands].reverse().find((x) => commandMatches(x.command, e.quality_command));
-  const d = [...scopedCommands]
+  const q = [...eligibleCommands]
+    .reverse()
+    .find((x) => commandMatches(x.command, e.quality_command));
+  const d = [...eligibleCommands]
     .reverse()
     .find((x) => commandMatches(x.command, 'git diff --check'));
 
   if (!q) {
-    issues.push(`Quality command was not observed in Cursor ACP: ${e.quality_command}`);
+    let msg = `Quality command was not observed in Cursor ACP: ${e.quality_command}`;
+    const ineligMatch = rejectedMatches.find((r) => commandMatches(r.command, e.quality_command));
+    if (ineligMatch) {
+      msg += ` (ineligible: ${ineligMatch.reasons.join('; ')})`;
+    }
+    issues.push(msg);
   } else if (q.exit_code == null) {
     issues.push(`Observed quality command has no exit code: ${q.command}`);
   } else if (q.exit_code !== Number(e.quality_exit_code)) {
     issues.push(`Quality exit mismatch: evidence=${e.quality_exit_code}, ACP=${q.exit_code}`);
-  } else if (context?.workspace) {
-    const expectedWs = path.resolve(context.workspace);
-    const obsWs = ('workspace' in q && q.workspace) || ('cwd' in q && (q as { cwd?: string }).cwd);
+  } else if (normCtx.workspace) {
+    const expectedWs = path.resolve(normCtx.workspace);
+    const obsWs =
+      ('workspace' in q && typeof q.workspace === 'string' && q.workspace) ||
+      ('cwd' in q && (q as { cwd?: string }).cwd);
     if (obsWs && path.resolve(obsWs) !== expectedWs) {
       issues.push(
-        `Quality command executed in wrong directory: observed=${obsWs}, expected=${context.workspace}`
+        `Quality command executed in wrong directory: observed=${obsWs}, expected=${normCtx.workspace}`
       );
     }
   }
 
   if (!d) {
-    issues.push('git diff --check was not observed in Cursor ACP.');
+    let msg = 'git diff --check was not observed in Cursor ACP.';
+    const ineligDiffMatch = rejectedMatches.find((r) =>
+      commandMatches(r.command, 'git diff --check')
+    );
+    if (ineligDiffMatch) {
+      msg += ` (ineligible: ${ineligDiffMatch.reasons.join('; ')})`;
+    }
+    issues.push(msg);
   } else if (d.exit_code == null) {
     issues.push('Observed git diff --check has no exit code.');
   } else if (d.exit_code !== Number(e.git_diff_check_exit_code)) {
     issues.push(
       `git diff --check exit mismatch: evidence=${e.git_diff_check_exit_code}, ACP=${d.exit_code}`
     );
+  } else if (normCtx.workspace) {
+    const expectedWs = path.resolve(normCtx.workspace);
+    const obsWs =
+      ('workspace' in d && typeof d.workspace === 'string' && d.workspace) ||
+      ('cwd' in d && (d as { cwd?: string }).cwd);
+    if (obsWs && path.resolve(obsWs) !== expectedWs) {
+      issues.push(
+        `git diff --check executed in wrong directory: observed=${obsWs}, expected=${normCtx.workspace}`
+      );
+    }
   }
 
   // Sequence and mutation checks
-  if (context?.last_mutation_sequence != null) {
-    if (q && q.sequence != null && q.sequence <= context.last_mutation_sequence) {
+  const lastMutationSeq = normCtx.lastMutationSequence;
+  if (lastMutationSeq != null) {
+    if (q && q.sequence != null && q.sequence <= lastMutationSeq) {
       issues.push(
-        `Quality command ran before file edits were made (mutation sequence ${context.last_mutation_sequence} >= quality sequence ${q.sequence}). Rerun quality command.`
+        `Quality command ran before file edits were made (mutation sequence ${lastMutationSeq} >= quality sequence ${q.sequence}). Rerun quality command.`
       );
     }
-    if (d && d.sequence != null && d.sequence <= context.last_mutation_sequence) {
+    if (d && d.sequence != null && d.sequence <= lastMutationSeq) {
       issues.push(
-        `git diff --check ran before file edits were made (mutation sequence ${context.last_mutation_sequence} >= diff-check sequence ${d.sequence}). Rerun git diff --check.`
+        `git diff --check ran before file edits were made (mutation sequence ${lastMutationSeq} >= diff-check sequence ${d.sequence}). Rerun git diff --check.`
       );
     }
   }
 
   // Patch fingerprint check
-  if (e.patch_fingerprint && context?.expected_patch_fingerprint) {
-    if (e.patch_fingerprint !== context.expected_patch_fingerprint) {
+  const expectedFp = normCtx.expectedPatchFingerprint;
+  if (e.patch_fingerprint && expectedFp) {
+    if (e.patch_fingerprint !== expectedFp) {
       issues.push(
-        `Evidence patch fingerprint mismatch: evidence=${e.patch_fingerprint}, current=${context.expected_patch_fingerprint}`
+        `Evidence patch fingerprint mismatch: evidence=${e.patch_fingerprint}, current=${expectedFp}`
       );
     }
   }
 
   // Orchestrator authoritative diff check
-  if (context?.orchestrator_diff_check_ok === false) {
+  const diffCheckOk = normCtx.orchestratorDiffCheckOk;
+  if (diffCheckOk === false) {
     issues.push('Authoritative git diff check failed.');
   }
 

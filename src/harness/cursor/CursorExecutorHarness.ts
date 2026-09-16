@@ -15,13 +15,14 @@ import type {
   HarnessInfo,
   HarnessPreflightResult
 } from '../types.js';
-import type { CommandObservation, HarnessContext } from '../../types.js';
+import type { CommandObservation, HarnessContext, QualityEpochMarker } from '../../types.js';
 import { CONFIG, harnessNumber, harnessString } from '../../core/config.js';
 import { execSyncText, commandExists, runShellCommand } from '../../core/process.js';
 import { appendBounded, ensureDir, rotateFile } from '../../core/fs.js';
 import { iso } from '../../core/time.js';
 import type { PermissionRequest } from '../../permissions/PermissionEngine.js';
 import { VERSION } from '../../version.js';
+import { validateCommandObservation } from '../../state/RunStateStore.js';
 import { AcpToolAccumulator } from './AcpToolAccumulator.js';
 import { ObservationJournal } from './ObservationJournal.js';
 import { AcpEventNormalizer } from './AcpEventNormalizer.js';
@@ -250,8 +251,34 @@ export class CursorAcpSession implements ExecutorSession {
   }
 
   /** Tags subsequent command observations with a quality epoch id for evidence corroboration. */
-  setQualityEpoch(epochId: string): void {
+  setQualityEpoch(
+    epochId: string,
+    meta?: { stage?: string; attempt?: number; runId?: string }
+  ): void {
     this.qualityEpochId = epochId;
+    if (meta?.stage) this.o.stageName = meta.stage;
+    if (meta?.attempt != null) this.o.attempt = meta.attempt;
+    if (meta?.runId) this.o.runId = meta.runId;
+
+    const marker: QualityEpochMarker = {
+      record_type: 'quality_epoch_started',
+      run_id: this.o.runId,
+      stage: this.o.stageName,
+      attempt: this.o.attempt,
+      session_id: this.id || 'default',
+      quality_epoch_id: epochId,
+      sequence: this.accumulator.currentSequence(),
+      timestamp: iso()
+    };
+    this.journal.recordEpochMarker(marker);
+
+    try {
+      if (this.o.eventsFile) {
+        ensureDir(path.dirname(this.o.eventsFile));
+        fs.appendFileSync(this.o.eventsFile, `EPOCH ${JSON.stringify(marker)}\n`, 'utf8');
+      }
+    } catch {}
+
     this.normalizer = new AcpEventNormalizer({
       events: this.o.events,
       accumulator: this.accumulator,
@@ -685,7 +712,13 @@ export class CursorAcpSession implements ExecutorSession {
  */
 export function parseAcpEvents(
   eventsFilePath: string,
-  opts?: { runId?: string; stageName?: string; attempt?: number; workspace?: string }
+  opts?: {
+    runId?: string;
+    stageName?: string;
+    attempt?: number;
+    workspace?: string;
+    qualityEpochId?: string;
+  }
 ): CommandObservation[] {
   if (!fs.existsSync(eventsFilePath)) return [];
   const content = fs.readFileSync(eventsFilePath, 'utf8');
@@ -701,10 +734,54 @@ export function parseAcpEvents(
     stageName: opts?.stageName,
     attempt: opts?.attempt,
     workspace: opts?.workspace,
+    qualityEpochId: opts?.qualityEpochId,
     isReplay: true
   });
 
   for (const line of lines) {
+    if (line.startsWith('EPOCH ')) {
+      try {
+        const marker = JSON.parse(line.slice(6)) as QualityEpochMarker;
+        if (marker && marker.quality_epoch_id) {
+          journal.recordEpochMarker(marker, true);
+          normalizer.setQualityEpoch(marker.quality_epoch_id, {
+            stage: marker.stage ?? opts?.stageName,
+            attempt: marker.attempt ?? opts?.attempt,
+            runId: marker.run_id ?? opts?.runId
+          });
+        }
+      } catch {}
+      continue;
+    }
+
+    if (line.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(line);
+        if (parsed?.record_type === 'quality_epoch_started' && parsed.quality_epoch_id) {
+          const marker = parsed as QualityEpochMarker;
+          journal.recordEpochMarker(marker, true);
+          normalizer.setQualityEpoch(marker.quality_epoch_id, {
+            stage: marker.stage ?? opts?.stageName,
+            attempt: marker.attempt ?? opts?.attempt,
+            runId: marker.run_id ?? opts?.runId
+          });
+          continue;
+        }
+
+        if (parsed?.observation_id && parsed?.command) {
+          try {
+            const obs = validateCommandObservation(parsed);
+            if (!obs.stage && opts?.stageName) obs.stage = opts.stageName;
+            if (obs.attempt == null && opts?.attempt != null) obs.attempt = opts.attempt;
+            if (!obs.run_id && opts?.runId) obs.run_id = opts.runId;
+            if (!obs.cwd && opts?.workspace) obs.cwd = opts.workspace;
+            journal.record(obs, true);
+          } catch {}
+          continue;
+        }
+      } catch {}
+    }
+
     if (!line.startsWith('SERVER ')) continue;
     accumulator.stepSequence();
     void normalizer.handleMessage(line.slice(7));

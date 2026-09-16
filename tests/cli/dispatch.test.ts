@@ -257,6 +257,7 @@ test('dispatchCliCommand: status and tail commands', async () => {
   const runState = {
     version: 1,
     run_id: testRunId,
+    created_at: new Date().toISOString(),
     status: 'completed',
     workspace: process.cwd(),
     base_ref: 'HEAD',
@@ -322,6 +323,7 @@ test('dispatchCliCommand: tail invokes followInkUi when stdout is TTY', async (t
     JSON.stringify({
       version: 1,
       run_id: testRunId,
+      created_at: new Date().toISOString(),
       status: 'completed',
       workspace: process.cwd(),
       base_ref: 'HEAD',
@@ -434,6 +436,7 @@ test('dispatchCliCommand: recover command outputs recovery audit trail', async (
   const runState = {
     version: 1,
     run_id: testRunId,
+    created_at: new Date().toISOString(),
     status: 'failed',
     workspace: process.cwd(),
     base_ref: 'HEAD',
@@ -862,6 +865,7 @@ test('dispatchCliCommand: run and resume execute full lifecycle', async () => {
       JSON.stringify({
         version: 1,
         run_id: nonExistentFileRunId,
+        created_at: new Date().toISOString(),
         status: 'completed',
         branch: 'ai-harness/test-tail',
         workspace: process.cwd(),

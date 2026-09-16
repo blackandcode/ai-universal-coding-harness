@@ -36,6 +36,8 @@ export {
   type ObservedQuality,
   type CommandObservation,
   type GitDiffCheckResult,
+  type QualityEpochMarker,
+  type VerificationContext,
   type ExecutionEvidence,
   type PlanReviewVerdict,
   type PermissionVerdict,
@@ -155,7 +157,10 @@ export {
 export {
   RunStateStore,
   validateRunState,
-  validateStageRuntimeState
+  validateStageRuntimeState,
+  validateStageManifest,
+  validateSelectedStage,
+  validateCommandObservation
 } from './state/RunStateStore.js';
 export { RunLock, type LockPayload } from './state/RunLock.js';
 
@@ -188,9 +193,13 @@ export { EvidenceService, type CorroborationResult } from './quality/EvidenceSer
 export {
   verifyEvidenceAgainstObserved,
   validateEvidence,
+  validateRawExecutionEvidence,
+  validateCorroboratedEvidence,
+  isObservationEligible,
   normalizeCommand,
   commandMatches,
-  type VerificationContext
+  normalizeVerificationContext,
+  type NormalizedVerificationContext
 } from './quality/EvidenceVerifier.js';
 export { AcpToolAccumulator } from './harness/cursor/AcpToolAccumulator.js';
 export {

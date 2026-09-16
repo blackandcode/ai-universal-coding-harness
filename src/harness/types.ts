@@ -266,8 +266,12 @@ export interface ExecutorSession {
    * Sets the active quality epoch identifier to isolate quality commands from earlier implementation steps.
    *
    * @param epochId - Epoch identifier string.
+   * @param meta - Optional scope metadata (stage, attempt, runId) associated with the epoch.
    */
-  setQualityEpoch?(epochId: string): void;
+  setQualityEpoch?(
+    epochId: string,
+    meta?: { stage?: string; attempt?: number; runId?: string }
+  ): void;
 }
 
 /**
@@ -302,6 +306,9 @@ export interface ExecutorHarness {
     eventsFile: string;
     focusFile: string;
     resumeSessionId?: string;
+    stageName?: string;
+    attempt?: number;
+    runId?: string;
     callbacks: ExecutorSessionCallbacks;
   }): Promise<ExecutorSession>;
 }

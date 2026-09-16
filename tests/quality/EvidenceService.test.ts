@@ -82,6 +82,8 @@ test('EvidenceService: corroborate validates matching observations and patch fin
       command_confidence: 'high',
       status: 'completed',
       exit_code: 0,
+      stage: stageName,
+      attempt,
       quality_epoch_id: 'epoch-1'
     },
     {
@@ -97,6 +99,8 @@ test('EvidenceService: corroborate validates matching observations and patch fin
       command_confidence: 'high',
       status: 'completed',
       exit_code: 0,
+      stage: stageName,
+      attempt,
       quality_epoch_id: 'epoch-1'
     }
   ];
@@ -169,7 +173,9 @@ test('EvidenceService: checkReusableEvidence validates cached evidence validity'
       focused_tests: [],
       quality_summary: 'OK',
       changed_files: [],
-      unresolved: []
+      unresolved: [],
+      patch_fingerprint: 'fp-match-123',
+      quality_epoch_id: 'epoch-123'
     };
     fs.writeFileSync(evidenceFile, JSON.stringify(evidence));
 

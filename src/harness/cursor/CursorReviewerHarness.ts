@@ -207,7 +207,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
       `- Return ONLY a valid JSON object matching the JSON Schema provided.\n` +
       `- Do not include explanations, prose, or conversational filler outside the JSON.\n` +
       `- Compare decisions against ALL frozen stage inputs, not only the most recent reviewer feedback.\n` +
-      `- Prefer the smallest reversible decision that satisfies the frozen requirements.\n- Do not invent product requirements.\n\n` +
+      `- Prefer the optimal reversible decision that satisfies the frozen requirements.\n- Do not invent product requirements.\n\n` +
       `STAGE: ${stageName}\n\n` +
       `FROZEN STAGE INPUTS:\n${this.ctx.stageContext || ''}\n\n` +
       `RELEVANT SKILL DIGEST:\n${this.ctx.skillsText || ''}\n\n` +

@@ -13,6 +13,14 @@ All notable changes to this project are documented here. The project follows Sem
 - Added protocol test suites in `tests/harness/cursor/AcpEventDecoder.test.ts`, `tests/harness/cursor/CursorAcpTransport.test.ts`, `tests/harness/cursor/AcpLiveReplayEquivalence.test.ts`, and `tests/harness/codex/CodexMalformedEvents.test.ts`.
 - Added protocol aliases `AcpToolUpdate` and `PendingRpcRequest` in `src/harness/cursor/types.ts`.
 - Documented Decision 14 ("Protocol and Transport Boundary Separation") in `DECISIONS.md`.
+- Accepted ADR-0002 (`docs/adr/0002-evidence-state-and-recovery-trust-hardening.md`) codifying durable quality epoch markers, multi-dimensional execution identity, and corroboration invariants.
+- Added `QualityEpochMarker` interface and enhanced `VerificationContext` in `src/types.ts` with `runId`, `sessionId`, `qualityEpochId`, and patch fingerprint constraints.
+- Added `validateCorroboratedEvidence` and centralized `isObservationEligible` in `src/quality/EvidenceVerifier.ts` to strictly validate reusable evidence and command scope.
+- Added deep runtime schema validators (`validateStageManifest`, `validateSelectedStage`, `validateCommandObservation`) in `src/state/RunStateStore.ts`.
+- Added exhaustive regression test suite `tests/quality/stage-02-hardening.test.ts` covering all 17 positive and negative verification scenarios.
+- Added `ObservationJournal.loadJournal()` in `src/harness/cursor/ObservationJournal.ts` with schema validation via `validateCommandObservation()` and automatic epoch boundary assignment.
+- Added `normalizeVerificationContext()` in `src/quality/EvidenceVerifier.ts` to canonicalize camelCase and snake_case verification context aliases.
+- Documented Decision 15 ("Durable Quality Epoch Markers and Evidence Corroboration Trust Hardening") in `DECISIONS.md`.
 
 ### Changed
 
@@ -22,6 +30,14 @@ All notable changes to this project are documented here. The project follows Sem
 - Replaced unvalidated `JSON.parse` assertions with runtime guards (`isRecord` and `validateEvidence`) across `src/quality/EvidenceService.ts`, `src/project/ProjectWorkspace.ts`, and `src/harness/ReviewerErrorClassifier.ts`.
 - Eliminated redundant type cast in `AcpEventDecoder.decodeSessionUpdate` via `isDecodedSessionUpdate` type predicate.
 - Tightened adapter and orchestrator typing across `src/orchestrator/services/ReviewerRouter.ts`, `src/orchestrator/services/ReviewPayloadBuilder.ts`, `src/harness/cursor/CursorReviewerHarness.ts`, `src/harness/codex/CodexReviewerHarness.ts`, `src/quality/EvidenceVerifier.ts`, and `src/orchestrator/RecoveryManager.ts` to eliminate broad `Record<string, unknown>` and `any` assertions.
+- Refactored `Orchestrator` in `src/orchestrator/Orchestrator.ts` to eliminate corroboration bypass on resume (`!isResumed && !corroboration.ok`), ensuring all evidence undergoes strict verification against observed commands.
+- Refactored `RecoveryManager` in `src/orchestrator/RecoveryManager.ts` to require exact patch fingerprint matching and complete command corroboration before routing to `review`, using `ObservationJournal.loadJournal()` as an authoritative fallback when `executor-acp.jsonl` is missing.
+- Updated `EvidenceService.corroborate()` in `src/quality/EvidenceService.ts` to seal both `patch_fingerprint` and `quality_epoch_id` onto corroborated evidence records.
+- Updated `validateCorroboratedEvidence()` in `src/quality/EvidenceVerifier.ts` to support and assert `expected.qualityEpochId`.
+- Added workspace directory validation to `git diff --check` observation verification in `verifyEvidenceAgainstObserved()`.
+- Wired stage attempt into `executorHarness.createSession()` in `src/orchestrator/Orchestrator.ts`.
+- Enhanced `ObservationJournal` in `src/harness/cursor/ObservationJournal.ts` and `CursorExecutorHarness` in `src/harness/cursor/CursorExecutorHarness.ts` to persist `QualityEpochMarker` records and reconstruct epoch boundaries during ACP log replay.
+- Modified `RunStateStore.loadStage` in `src/state/RunStateStore.ts` to throw `RunStateError` on corrupted `stage-state.json` files while preserving pending defaults for missing files.
 
 ### Fixed
 
@@ -31,6 +47,10 @@ All notable changes to this project are documented here. The project follows Sem
 - Synchronized mock Cursor agent prompt completion with harness JSON-RPC replies in `tests/harness/cursor/CursorExecutorHarness.test.ts` to prevent race conditions during child process execution on Windows runners.
 - Ensured all `session.stop()` calls in `tests/harness/cursor/CursorExecutorHarness.test.ts` and `transport.stop()` calls in `tests/harness/cursor/CursorAcpTransport.test.ts` are guarded within `finally` blocks to prevent orphaned ACP subprocesses upon test failure.
 - Added `--test-timeout=60000` to `scripts/run-tests.mjs` as a deterministic test runner timeout safety net on CI.
+- Resolved false-positive evidence acceptance where out-of-scope, previous attempt, or broker commands could corroborate quality checks (Findings F-03, F-04).
+- Resolved recovery and resume vulnerabilities that allowed stale or uncorroborated evidence to bypass verification (Findings F-05, F-06).
+- Fixed recovery failure when reconstructing observations from `executor-observations.jsonl` by replacing ACP line filtering with structured journal ingestion.
+- Fixed patch fingerprint and quality epoch dropping in `EvidenceService.corroborate()` caused by casing mismatch on `VerificationContext`.
 
 ## [2.1.7] - 2026-09-16
 

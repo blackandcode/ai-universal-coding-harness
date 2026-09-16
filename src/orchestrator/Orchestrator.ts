@@ -492,6 +492,9 @@ export class Orchestrator {
       eventsFile: path.join(stageRunDir, 'executor-acp.jsonl'),
       focusFile: path.join(stageRunDir, 'executor-focus.log'),
       resumeSessionId: runtime0.executor_session_id || runtime0.cursor_session_id,
+      stageName: stage.name,
+      attempt: runtime0.attempt || 1,
+      runId: state.run_id,
       callbacks: {
         onPlan: (plan, _meta) => planCoord.submit(plan),
         onQuestion: (p) => this.questionDecision(reviewer, p, qcache, stage.name, state),
@@ -532,7 +535,8 @@ export class Orchestrator {
       let _finalEvidence: ExecutionEvidence | null = null;
       let pendingResumedEvidence = this.evidenceService.checkReusableEvidence(
         runtime0,
-        this.patchFingerprint()
+        this.patchFingerprint(),
+        stage.name
       );
       if (pendingResumedEvidence) {
         this.events.emit('log', {
@@ -554,7 +558,7 @@ export class Orchestrator {
         if (!ev) {
           this.evidenceService.clearRuntimeEvidence(stage.name);
           epochId = `${state.run_id}-${stage.name}-${attempt}-${Date.now()}`;
-          session.setQualityEpoch?.(epochId);
+          session.setQualityEpoch?.(epochId, { stage: stage.name, attempt, runId: state.run_id });
           await session.prompt(
             this.executionPrompt(stage.name, approved, carry, feedback, attempt, state.quality_cmd)
           );
@@ -583,21 +587,24 @@ export class Orchestrator {
           continue;
         }
         const activeEvidence: ExecutionEvidence = ev.e;
-        const isResumed = Boolean(ev.resumed);
         const diffCheck = this.git.diffCheck();
+        const activeEpochId = epochId || activeEvidence.quality_epoch_id || undefined;
         const corroboration = this.evidenceService.corroborate(
           activeEvidence,
           session.observedCommands(),
           {
+            runId: state.run_id,
+            sessionId: session.id,
             stage: stage.name,
             attempt,
-            quality_epoch_id: epochId || undefined,
-            expected_patch_fingerprint: this.patchFingerprint(),
-            last_mutation_sequence: session.lastMutationSeq?.(),
-            orchestrator_diff_check_ok: diffCheck.ok
+            qualityEpochId: activeEpochId,
+            expectedPatchFingerprint: this.patchFingerprint(),
+            lastMutationSequence: session.lastMutationSeq?.(),
+            orchestratorDiffCheckOk: diffCheck.ok,
+            workspace: this.workspace
           }
         );
-        if (!isResumed && !corroboration.ok) {
+        if (!corroboration.ok) {
           feedback = `Execution evidence could not be corroborated against executor ACP results:\n${corroboration.issues.map((x: string) => `- ${x}`).join('\n')}\nRerun the exact quality commands and regenerate evidence.json.`;
           this.events.emit('quality.result', { status: 'FAIL', summary: feedback });
           this.store.appendHuman(

@@ -36,7 +36,7 @@ export class CodexPromptBuilder {
       `You are the senior human-equivalent reviewer and decision maker in an autonomous software-development orchestration system.\n\n` +
       `STRICT ROLE BOUNDARY:\n- ${toolPolicy}\n- Everything needed is supplied below.\n- Return only the schema-constrained decision.\n` +
       `- Compare decisions against ALL frozen stage inputs, not only the most recent reviewer feedback.\n` +
-      `- Prefer the smallest reversible decision that satisfies the frozen requirements.\n- Do not invent product requirements.\n\n` +
+      `- Prefer the optimal reversible decision that satisfies the frozen requirements.\n- Do not invent product requirements.\n\n` +
       `STAGE: ${options.stageName || ''}\n\n` +
       `FROZEN STAGE INPUTS:\n${options.stageContext || ''}\n\n` +
       `RELEVANT SKILL DIGEST:\n${options.skillsText || ''}\n\n` +

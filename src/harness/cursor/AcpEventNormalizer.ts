@@ -209,4 +209,20 @@ export class AcpEventNormalizer {
       }
     }
   }
+
+  /**
+   * Sets or updates the active quality epoch and scope metadata for subsequent tool observations.
+   *
+   * @param epochId - Identifier of the active quality epoch.
+   * @param meta - Optional scope metadata (stage, attempt, runId) to attach.
+   */
+  setQualityEpoch(
+    epochId: string,
+    meta?: { stage?: string; attempt?: number; runId?: string }
+  ): void {
+    this.options.qualityEpochId = epochId;
+    if (meta?.stage) this.options.stageName = meta.stage;
+    if (meta?.attempt != null) this.options.attempt = meta.attempt;
+    if (meta?.runId) this.options.runId = meta.runId;
+  }
 }

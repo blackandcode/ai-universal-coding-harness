@@ -16,7 +16,9 @@ import path from 'node:path';
 import type { ExecutionEvidence, CommandObservation, StageRuntimeState } from '../types.js';
 import {
   validateEvidence,
+  validateCorroboratedEvidence,
   verifyEvidenceAgainstObserved,
+  normalizeVerificationContext,
   type VerificationContext
 } from './EvidenceVerifier.js';
 import { STAGE_RUNTIME_ROOT } from '../core/paths.js';
@@ -99,6 +101,7 @@ export class EvidenceService {
     observations: CommandObservation[],
     context: VerificationContext
   ): CorroborationResult {
+    const norm = normalizeVerificationContext(context);
     const r = verifyEvidenceAgainstObserved(evidence, observations, context);
     if (!r.ok) {
       return {
@@ -110,7 +113,8 @@ export class EvidenceService {
     const corroborated: ExecutionEvidence = {
       ...evidence,
       observed_quality: r.observed_quality,
-      patch_fingerprint: context.expected_patch_fingerprint
+      patch_fingerprint: norm.expectedPatchFingerprint || evidence.patch_fingerprint,
+      quality_epoch_id: norm.qualityEpochId || evidence.quality_epoch_id
     };
 
     return {
@@ -154,29 +158,43 @@ export class EvidenceService {
    * Reusability requires that the stage was in `quality` or `review` phase,
    * the saved evidence file exists and is parseable, and the recorded patch fingerprint
    * exactly matches the current authoritative patch fingerprint.
+   * Invariant: Reusable evidence must pass the same trust rules as fresh evidence (status PASS,
+   * zero exits, empty unresolved, matching patch fingerprint, and valid quality epoch).
    *
    * @param runtime - Persisted stage runtime state.
    * @param currentPatchFingerprint - Current authoritative patch hash.
+   * @param expectedStage - Optional expected canonical stage name.
    * @returns Reusable evidence object or null if invalid, stale, or patch has changed.
    */
   checkReusableEvidence(
     runtime: StageRuntimeState,
-    currentPatchFingerprint: string
+    currentPatchFingerprint: string,
+    expectedStage?: string
   ): { ok: boolean; e: ExecutionEvidence; resumed: boolean } | null {
     if (
       (runtime.phase === 'quality' || runtime.phase === 'review') &&
       runtime.evidence_file &&
-      runtime.patch_fingerprint === currentPatchFingerprint
+      runtime.patch_fingerprint &&
+      runtime.patch_fingerprint === currentPatchFingerprint &&
+      fs.existsSync(runtime.evidence_file)
     ) {
-      const validation = validateEvidence(runtime.evidence_file, undefined, runtime.attempt);
-      if (validation.ok && validation.e) {
-        return {
-          ok: true,
-          e: validation.e,
-          resumed: true
-        };
+      try {
+        const raw: unknown = JSON.parse(fs.readFileSync(runtime.evidence_file, 'utf8'));
+        const validation = validateCorroboratedEvidence(raw, {
+          stage: expectedStage,
+          attempt: runtime.attempt,
+          patchFingerprint: currentPatchFingerprint
+        });
+        if (validation.ok && validation.e) {
+          return {
+            ok: true,
+            e: validation.e,
+            resumed: true
+          };
+        }
+      } catch {
+        return null;
       }
-      return null;
     }
     return null;
   }

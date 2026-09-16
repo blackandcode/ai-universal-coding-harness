@@ -15,9 +15,18 @@ import { iso } from '../core/time.js';
 import { writeJson } from '../core/fs.js';
 import { RunStateStore } from '../state/RunStateStore.js';
 import { GitRepository } from '../git/GitRepository.js';
-import { verifyEvidenceAgainstObserved, validateEvidence } from '../quality/EvidenceVerifier.js';
+import {
+  verifyEvidenceAgainstObserved,
+  validateCorroboratedEvidence
+} from '../quality/EvidenceVerifier.js';
 import { parseAcpEvents } from '../harness/cursor/CursorExecutorHarness.js';
-import type { ExecutionEvidence, StagePhase } from '../types.js';
+import { ObservationJournal } from '../harness/cursor/ObservationJournal.js';
+import type {
+  CommandObservation,
+  ExecutionEvidence,
+  StagePhase,
+  StageRuntimeState
+} from '../types.js';
 import { errorMessage } from '../errors.js';
 
 /**
@@ -150,7 +159,20 @@ export class RecoveryManager {
     const stage = state.stages[stageIndex];
     const stageName = stage.name;
     const stageDir = this.store.stageDir(runId, stageName);
-    const stageState = this.store.loadStage(runId, stageName);
+    let stageState: StageRuntimeState;
+    try {
+      stageState = this.store.loadStage(runId, stageName);
+    } catch (e: unknown) {
+      return {
+        ok: false,
+        dryRun: !isApply,
+        runId,
+        stageName,
+        stageIndex,
+        details,
+        error: `Failed to load stage state for ${stageName}: ${errorMessage(e)}`
+      };
+    }
 
     details.push(`Target run: ${runId}`);
     details.push(`Target stage: ${stageName} (index ${stageIndex + 1}/${state.stages.length})`);
@@ -178,7 +200,8 @@ export class RecoveryManager {
 
     // Reconstruct ACP observations if acp log is present
     const acpLogPath = path.join(stageDir, 'executor-acp.jsonl');
-    let observations: ReturnType<typeof parseAcpEvents> = [];
+    const observationsFile = path.join(stageDir, 'executor-observations.jsonl');
+    let observations: CommandObservation[] = [];
     if (fs.existsSync(acpLogPath)) {
       observations = parseAcpEvents(acpLogPath, {
         runId,
@@ -187,6 +210,18 @@ export class RecoveryManager {
         workspace: this.root
       });
       details.push(`Extracted ${observations.length} command observation(s) from ACP log.`);
+    } else if (fs.existsSync(observationsFile)) {
+      const journalData = ObservationJournal.loadJournal(observationsFile);
+      observations = journalData.observations.map((obs) => {
+        if (!obs.run_id && runId) obs.run_id = runId;
+        if (!obs.stage && stageName) obs.stage = stageName;
+        if (obs.attempt == null && stageState.attempt != null) obs.attempt = stageState.attempt;
+        if (!obs.cwd && this.root) obs.cwd = this.root;
+        return obs;
+      });
+      details.push(
+        `Extracted ${observations.length} command observation(s) from observations file.`
+      );
     }
 
     // 3. Locate evidence.json
@@ -212,9 +247,19 @@ export class RecoveryManager {
 
     let evidence: ExecutionEvidence | null = null;
     if (fs.existsSync(evidencePath)) {
-      const validation = validateEvidence(evidencePath, stageName);
-      if (validation.ok && validation.e) {
-        evidence = validation.e;
+      try {
+        const raw = JSON.parse(fs.readFileSync(evidencePath, 'utf8'));
+        const validation = validateCorroboratedEvidence(raw, {
+          stage: stageName,
+          patchFingerprint: currentPatchFingerprint
+        });
+        if (validation.ok && validation.e) {
+          evidence = validation.e;
+        } else {
+          details.push(`Saved evidence at ${evidencePath} failed validation: ${validation.reason}`);
+        }
+      } catch (e: unknown) {
+        details.push(`Saved evidence at ${evidencePath} contains invalid JSON: ${errorMessage(e)}`);
       }
     }
 
@@ -222,26 +267,41 @@ export class RecoveryManager {
     let canResumeReview = false;
     let corroborationReport: ReturnType<typeof verifyEvidenceAgainstObserved> | null = null;
 
-    if (evidence && evidence.status === 'PASS') {
+    if (evidence) {
       const corroboration = verifyEvidenceAgainstObserved(evidence, observations, {
+        runId,
         stage: stageName,
         attempt: evidence.attempt,
-        expected_patch_fingerprint: currentPatchFingerprint,
-        orchestrator_diff_check_ok: diffCheck.ok
+        sessionId: stageState.executor_session_id || stageState.cursor_session_id,
+        qualityEpochId: evidence.quality_epoch_id,
+        expectedPatchFingerprint: currentPatchFingerprint,
+        orchestratorDiffCheckOk: diffCheck.ok,
+        workspace: this.root
       });
       corroborationReport = corroboration;
 
       const fingerprintMatch =
-        !evidence.patch_fingerprint || evidence.patch_fingerprint === currentPatchFingerprint;
+        Boolean(evidence.patch_fingerprint) &&
+        evidence.patch_fingerprint === currentPatchFingerprint;
 
       if (corroboration.ok && fingerprintMatch) {
         canResumeReview = true;
+      } else {
+        if (!fingerprintMatch) {
+          details.push(
+            `Patch fingerprint mismatch or missing: evidence=${evidence.patch_fingerprint ?? 'none'}, current=${currentPatchFingerprint}`
+          );
+        }
+        if (!corroboration.ok) {
+          details.push(
+            `Corroboration issues:\n${corroboration.issues.map((i) => `  - ${i}`).join('\n')}`
+          );
+        }
       }
     }
 
     const targetPhase: StagePhase = canResumeReview ? 'review' : 'quality';
     const recoveryAttempt = 1;
-    const observationsFile = path.join(stageDir, 'executor-observations.jsonl');
     const savedEvidencePath = path.join(stageDir, `evidence-attempt-${recoveryAttempt}.json`);
 
     details.push(

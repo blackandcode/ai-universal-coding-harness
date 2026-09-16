@@ -12,7 +12,9 @@ import {
   verifyEvidenceAgainstObserved,
   normalizeCommand,
   commandMatches,
-  validateEvidence
+  validateEvidence,
+  validateCorroboratedEvidence,
+  normalizeVerificationContext
 } from '../../src/quality/EvidenceVerifier.js';
 import type { ExecutionEvidence } from '../../src/types.js';
 
@@ -217,4 +219,98 @@ test('verifyEvidenceAgainstObserved covers edge cases: null exits, mismatch, dir
   );
   assert.equal(rWrongDir.ok, false);
   assert.ok(rWrongDir.issues.some((i) => i.includes('wrong directory')));
+});
+
+test('normalizeVerificationContext maps snake_case and camelCase aliases to canonical properties', () => {
+  // Empty or undefined context
+  assert.deepEqual(normalizeVerificationContext(), {});
+  assert.deepEqual(normalizeVerificationContext(undefined), {});
+
+  // CamelCase preferred over snake_case when both exist, fallback when only snake_case
+  const snake = normalizeVerificationContext({
+    run_id: 'run-1',
+    session_id: 'sess-1',
+    stage: 'stage-1',
+    attempt: 1,
+    quality_epoch_id: 'epoch-1',
+    expected_patch_fingerprint: 'fp-1',
+    last_mutation_sequence: 5,
+    orchestrator_diff_check_ok: true,
+    workspace: '/ws'
+  });
+  assert.equal(snake.runId, 'run-1');
+  assert.equal(snake.sessionId, 'sess-1');
+  assert.equal(snake.qualityEpochId, 'epoch-1');
+  assert.equal(snake.expectedPatchFingerprint, 'fp-1');
+  assert.equal(snake.lastMutationSequence, 5);
+  assert.equal(snake.orchestratorDiffCheckOk, true);
+  assert.equal(snake.workspace, '/ws');
+
+  const camel = normalizeVerificationContext({
+    runId: 'run-2',
+    sessionId: 'sess-2',
+    qualityEpochId: 'epoch-2',
+    expectedPatchFingerprint: 'fp-2',
+    lastMutationSequence: 10,
+    orchestratorDiffCheckOk: false
+  });
+  assert.equal(camel.runId, 'run-2');
+  assert.equal(camel.sessionId, 'sess-2');
+  assert.equal(camel.qualityEpochId, 'epoch-2');
+  assert.equal(camel.expectedPatchFingerprint, 'fp-2');
+  assert.equal(camel.lastMutationSequence, 10);
+  assert.equal(camel.orchestratorDiffCheckOk, false);
+});
+
+test('validateCorroboratedEvidence asserts matching expected.qualityEpochId', () => {
+  const baseCorrob: ExecutionEvidence = {
+    stage: 'stage-01',
+    attempt: 1,
+    status: 'PASS',
+    quality_command: 'npm test',
+    quality_exit_code: 0,
+    git_diff_check_exit_code: 0,
+    focused_tests: [],
+    quality_summary: 'ok',
+    changed_files: [],
+    unresolved: [],
+    patch_fingerprint: 'fp-abc',
+    quality_epoch_id: 'epoch-123'
+  };
+
+  // Matching qualityEpochId passes
+  const valid = validateCorroboratedEvidence(baseCorrob, { qualityEpochId: 'epoch-123' });
+  assert.equal(valid.ok, true);
+
+  // Mismatched qualityEpochId fails
+  const mismatch = validateCorroboratedEvidence(baseCorrob, { qualityEpochId: 'epoch-999' });
+  assert.equal(mismatch.ok, false);
+  assert.match(mismatch.reason, /Corroborated evidence quality epoch mismatch/);
+});
+
+test('git diff --check executed in wrong directory is rejected', () => {
+  const rWrongDiffDir = verifyEvidenceAgainstObserved(
+    evidence,
+    [
+      {
+        command: 'npm run check',
+        exit_code: 0,
+        status: 'completed',
+        tool_id: '1',
+        cwd: '/expected/path'
+      },
+      {
+        command: 'git diff --check',
+        exit_code: 0,
+        status: 'completed',
+        tool_id: '2',
+        cwd: '/wrong/path'
+      }
+    ],
+    { workspace: '/expected/path' }
+  );
+  assert.equal(rWrongDiffDir.ok, false);
+  assert.ok(
+    rWrongDiffDir.issues.some((i) => i.includes('git diff --check executed in wrong directory'))
+  );
 });

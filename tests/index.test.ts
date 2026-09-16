@@ -50,6 +50,7 @@ test('public API exports core classes and utilities', () => {
   assert.ok(PublicApi.CursorReviewerHarness);
   assert.ok(PublicApi.ReviewPayloadBuilder);
   assert.ok(PublicApi.ReviewerRouter);
+  assert.ok(PublicApi.normalizeVerificationContext);
 });
 
 test('public API exports UI classes and utilities', () => {

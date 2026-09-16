@@ -18,9 +18,20 @@ Delivered:
 
 ## Stage 02 — Evidence, State and Recovery Trust Hardening
 
-Status: Not started
+Status: Completed
 
 Primary findings: F-03, F-04, F-05, F-06
+
+Delivered:
+
+- Authoritative ADR-0002: Durable quality epoch markers and evidence corroboration invariants (`docs/adr/0002-evidence-state-and-recovery-trust-hardening.md`).
+- Enforced multi-dimensional execution identity (`run_id`, `session_id`, `stage`, `attempt`, `quality_epoch_id`) in `VerificationContext` and centralized observation eligibility via `isObservationEligible` in `src/quality/EvidenceVerifier.ts`.
+- Implemented `validateCorroboratedEvidence` enforcing strict invariants (`PASS` status, zero exit codes, empty `unresolved`, non-empty `patch_fingerprint` and `quality_epoch_id`) for resumed and recovered evidence.
+- Removed corroboration bypass on resume (`!isResumed && !corroboration.ok`) in `src/orchestrator/Orchestrator.ts`, ensuring all evidence is subject to mechanical verification against observed ACP commands.
+- Implemented durable `QualityEpochMarker` records and reconstructed epoch boundaries during ACP log replay in `src/harness/cursor/ObservationJournal.ts` and `src/harness/cursor/CursorExecutorHarness.ts`.
+- Deepened runtime state validation in `src/state/RunStateStore.ts` with `validateRunState`, `validateStageManifest`, `validateSelectedStage`, and `validateStageRuntimeState`, throwing `RunStateError` for corrupt `stage-state.json` while returning pending defaults for missing files.
+- Hardened `RecoveryManager` in `src/orchestrator/RecoveryManager.ts` to require exact patch fingerprint match and full command corroboration before routing to `review`, falling back to `quality` when evidence is stale or uncorroborated.
+- Added comprehensive regression test suite covering all 17 explicit negative and positive cases in `tests/quality/stage-02-hardening.test.ts`.
 
 ## Stage 03 — Quality Gates, CI and Governance Closure
 

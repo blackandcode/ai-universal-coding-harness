@@ -11,7 +11,10 @@ import path from 'node:path';
 import {
   RunStateStore,
   validateRunState,
-  validateStageRuntimeState
+  validateStageRuntimeState,
+  validateStageManifest,
+  validateSelectedStage,
+  validateCommandObservation
 } from '../../src/state/RunStateStore.js';
 import { RunStateError } from '../../src/errors.js';
 import type { RunState } from '../../src/types.js';
@@ -113,7 +116,7 @@ test('RunStateStore rejects invalid ids and defaults missing stage state', () =>
   fs.mkdirSync(store.stageDir(runId, stage), { recursive: true });
   fs.writeFileSync(store.stageStatePath(runId, stage), '{ not json');
   try {
-    assert.deepEqual(store.loadStage(runId, stage), { version: 1, phase: 'pending' });
+    assert.throws(() => store.loadStage(runId, stage), RunStateError);
   } finally {
     fs.rmSync(store.runDir(runId), { recursive: true, force: true });
     fs.rmSync(tmpRoot, { recursive: true, force: true });
@@ -133,4 +136,169 @@ test('RunStateStore throws RunStateError on missing or corrupted run file', () =
   } finally {
     fs.rmSync(corruptDir, { recursive: true, force: true });
   }
+});
+
+test('validateStageManifest asserts all manifest fields and sha256 map', () => {
+  const validManifest = {
+    name: 'stage-01',
+    selector: '01',
+    source: '/path/to/stages',
+    relative_path: 'stage-01',
+    sha256: { 'file.txt': 'abc123' }
+  };
+  assert.equal(validateStageManifest(validManifest).name, 'stage-01');
+
+  assert.throws(() => validateStageManifest(null), RunStateError);
+  assert.throws(() => validateStageManifest({ ...validManifest, name: '' }), RunStateError);
+  assert.throws(() => validateStageManifest({ ...validManifest, selector: '' }), RunStateError);
+  assert.throws(() => validateStageManifest({ ...validManifest, source: '' }), RunStateError);
+  assert.throws(
+    () => validateStageManifest({ ...validManifest, relative_path: 123 }),
+    RunStateError
+  );
+  assert.throws(() => validateStageManifest({ ...validManifest, sha256: null }), RunStateError);
+  assert.throws(
+    () => validateStageManifest({ ...validManifest, sha256: { 'file.txt': 123 } }),
+    RunStateError
+  );
+});
+
+test('validateSelectedStage asserts stage name, selector, status, and manifest', () => {
+  const validStage = {
+    name: 'stage-01',
+    selector: '01',
+    status: 'pending',
+    manifest: {
+      name: 'stage-01',
+      selector: '01',
+      source: '/path/to/stages',
+      relative_path: 'stage-01',
+      sha256: {}
+    }
+  };
+  assert.equal(validateSelectedStage(validStage).name, 'stage-01');
+
+  assert.throws(() => validateSelectedStage(null), RunStateError);
+  assert.throws(() => validateSelectedStage({ ...validStage, name: '' }), RunStateError);
+  assert.throws(() => validateSelectedStage({ ...validStage, selector: '' }), RunStateError);
+  assert.throws(() => validateSelectedStage({ ...validStage, status: 'unknown' }), RunStateError);
+  assert.throws(() => validateSelectedStage({ ...validStage, manifest: null }), RunStateError);
+});
+
+test('validateCommandObservation asserts required observation fields and enums', () => {
+  const validObs = {
+    observation_id: 'obs-1',
+    session_id: 'sess-1',
+    tool_id: 'bash',
+    tool_call_id: 'tc-1',
+    sequence: 1,
+    timestamp: new Date().toISOString(),
+    source: 'acp',
+    command: 'npm test',
+    normalized_command: 'npm test',
+    command_confidence: 'high',
+    status: 'completed',
+    exit_code: 0,
+    stage: 'stage-01',
+    attempt: 1,
+    run_id: 'run-1',
+    quality_epoch_id: 'ep-1',
+    cwd: '/path'
+  };
+  assert.equal(validateCommandObservation(validObs).command, 'npm test');
+
+  assert.throws(() => validateCommandObservation(null), RunStateError);
+  assert.throws(
+    () => validateCommandObservation({ ...validObs, observation_id: '' }),
+    RunStateError
+  );
+  assert.throws(() => validateCommandObservation({ ...validObs, session_id: '' }), RunStateError);
+  assert.throws(() => validateCommandObservation({ ...validObs, tool_id: '' }), RunStateError);
+  assert.throws(() => validateCommandObservation({ ...validObs, tool_call_id: '' }), RunStateError);
+  assert.throws(
+    () => validateCommandObservation({ ...validObs, sequence: 'not a number' }),
+    RunStateError
+  );
+  assert.throws(() => validateCommandObservation({ ...validObs, timestamp: 123 }), RunStateError);
+  assert.throws(
+    () => validateCommandObservation({ ...validObs, source: 'unknown' }),
+    RunStateError
+  );
+  assert.throws(() => validateCommandObservation({ ...validObs, command: 123 }), RunStateError);
+  assert.throws(
+    () => validateCommandObservation({ ...validObs, normalized_command: 123 }),
+    RunStateError
+  );
+  assert.throws(
+    () => validateCommandObservation({ ...validObs, command_confidence: 'unknown' }),
+    RunStateError
+  );
+  assert.throws(
+    () => validateCommandObservation({ ...validObs, status: 'unknown' }),
+    RunStateError
+  );
+  assert.throws(() => validateCommandObservation({ ...validObs, exit_code: '0' }), RunStateError);
+});
+
+test('validateStageRuntimeState validates optional properties when present', () => {
+  const fullRuntime = {
+    version: 1,
+    phase: 'quality',
+    attempt: 2,
+    plan_status: 'APPROVE',
+    plan_sha256: 'sha-plan',
+    spec_sha256: 'sha-spec',
+    reviewer_carryover: 'carryover text',
+    executor_session_id: 'sess-exec',
+    cursor_session_id: 'sess-cursor',
+    evidence_file: '/path/evidence.json',
+    patch_fingerprint: 'sha-patch',
+    reviewer_feedback: 'feedback',
+    commit_sha: 'commit-123',
+    updated_at: '2026-09-16T12:00:00Z'
+  };
+  const validated = validateStageRuntimeState(fullRuntime);
+  assert.equal(validated.phase, 'quality');
+  assert.equal(validated.attempt, 2);
+  assert.equal(validated.plan_status, 'APPROVE');
+  assert.equal(validated.plan_sha256, 'sha-plan');
+  assert.equal(validated.spec_sha256, 'sha-spec');
+  assert.equal(validated.reviewer_carryover, 'carryover text');
+  assert.equal(validated.executor_session_id, 'sess-exec');
+  assert.equal(validated.cursor_session_id, 'sess-cursor');
+  assert.equal(validated.evidence_file, '/path/evidence.json');
+  assert.equal(validated.patch_fingerprint, 'sha-patch');
+  assert.equal(validated.reviewer_feedback, 'feedback');
+  assert.equal(validated.commit_sha, 'commit-123');
+  assert.equal(validated.updated_at, '2026-09-16T12:00:00Z');
+});
+
+test('validateRunState validates all optional properties and stash handling', () => {
+  const fullRun = {
+    ...createValidRunState(),
+    branch_created_at: '2026-09-16T10:00:00Z',
+    feature: 'feature-name',
+    executor_label: 'Cursor Agent',
+    reviewer_label: 'Codex Agent',
+    current_stage_index: 0,
+    current_phase: 'implementation',
+    pre_run_stash: { label: 'stash-1', commit: 'abc123' },
+    error: 'some error',
+    blocked_stage: 'stage-01',
+    completed_at: '2026-09-16T11:00:00Z',
+    interrupted_at: '2026-09-16T10:30:00Z',
+    updated_at: '2026-09-16T10:35:00Z'
+  };
+  const validated = validateRunState(fullRun);
+  assert.equal(validated.feature, 'feature-name');
+  assert.equal(validated.executor_label, 'Cursor Agent');
+  assert.equal(validated.reviewer_label, 'Codex Agent');
+  assert.equal(validated.current_phase, 'implementation');
+  assert.deepEqual(validated.pre_run_stash, { label: 'stash-1', commit: 'abc123' });
+  assert.equal(validated.error, 'some error');
+  assert.equal(validated.blocked_stage, 'stage-01');
+
+  // Stash null
+  const runWithNullStash = { ...fullRun, pre_run_stash: null };
+  assert.equal(validateRunState(runWithNullStash).pre_run_stash, null);
 });

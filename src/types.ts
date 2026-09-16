@@ -330,6 +330,75 @@ export interface GitDiffCheckResult {
 }
 
 /**
+ * Authoritative record marking the start of a quality verification epoch.
+ *
+ * @remarks
+ * Invariant: Quality verification is partitioned into deterministic quality epochs.
+ * Persisted to observation journals and ACP event logs so that historical replay
+ * and crash recovery can reconstruct quality epoch boundaries.
+ */
+export interface QualityEpochMarker {
+  /** Discriminator marking this record as a quality epoch start event. */
+  record_type: 'quality_epoch_started';
+  /** Optional run identifier associated with the epoch. */
+  run_id?: string;
+  /** Canonical name of the stage being verified. */
+  stage?: string;
+  /** 1-based attempt counter for the stage. */
+  attempt?: number;
+  /** Executor session ID active when the epoch started. */
+  session_id?: string;
+  /** Authoritative unique identifier of the quality epoch. */
+  quality_epoch_id: string;
+  /** Monotonic sequence counter at epoch start. */
+  sequence: number;
+  /** ISO 8601 timestamp when the epoch was initiated. */
+  timestamp: string;
+}
+
+/**
+ * Contextual metadata required to corroborate execution evidence against
+ * active run, session, stage, attempt, sequence ordering, quality epoch, and git state.
+ *
+ * @remarks
+ * Invariant: Evidence verification requires exact identity binding. Unscoped observations
+ * or observations from mismatched runs, sessions, stages, attempts, or quality epochs
+ * are strictly ineligible to prove quality claims.
+ */
+export interface VerificationContext {
+  /** Authoritative run identifier (camelCase). */
+  runId?: string;
+  /** Authoritative run identifier (snake_case). */
+  run_id?: string;
+  /** Active executor session identifier (camelCase). */
+  sessionId?: string;
+  /** Active executor session identifier (snake_case). */
+  session_id?: string;
+  /** Expected stage name. */
+  stage?: string;
+  /** 1-based attempt counter for the current stage attempt. */
+  attempt?: number;
+  /** Unique identifier of the active quality epoch (camelCase). */
+  qualityEpochId?: string;
+  /** Unique identifier of the active quality epoch (snake_case). */
+  quality_epoch_id?: string;
+  /** Authoritative patch fingerprint calculated from repository diff (camelCase). */
+  expectedPatchFingerprint?: string;
+  /** Authoritative patch fingerprint calculated from repository diff (snake_case). */
+  expected_patch_fingerprint?: string;
+  /** Sequence number of the last detected repository mutation (camelCase). */
+  lastMutationSequence?: number;
+  /** Sequence number of the last detected repository mutation (snake_case). */
+  last_mutation_sequence?: number;
+  /** Outcome of authoritative Git diff hygiene check (camelCase). */
+  orchestratorDiffCheckOk?: boolean;
+  /** Outcome of authoritative Git diff hygiene check (snake_case). */
+  orchestrator_diff_check_ok?: boolean;
+  /** Target workspace root directory path. */
+  workspace?: string;
+}
+
+/**
  * Authoritative quality evidence produced by the executor agent after implementation.
  *
  * @remarks

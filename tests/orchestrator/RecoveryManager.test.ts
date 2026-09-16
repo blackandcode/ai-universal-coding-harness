@@ -20,13 +20,16 @@ test('RecoveryManager resets recovered stage to attempt 1 with corroborated evid
     execSync('git init -b main', { cwd: tmpDir });
     execSync('git config user.name "Test"', { cwd: tmpDir });
     execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, '.gitignore'), '.ai-orchestrator/\n');
     fs.writeFileSync(path.join(tmpDir, 'readme.md'), '# Test\n');
-    execSync('git add readme.md && git commit -m "initial"', { cwd: tmpDir });
+    execSync('git add .gitignore readme.md && git commit -m "initial"', { cwd: tmpDir });
 
     const git = new GitRepository(tmpDir);
     const store = new RunStateStore();
     const runId = 'test-recovery-run-1';
     const stageName = 'stage-01-feature';
+    const patchFp = git.patchFingerprint();
+    const testEpoch = 'epoch-rm-1';
 
     const stageDir = store.stageDir(runId, stageName);
     fs.mkdirSync(stageDir, { recursive: true });
@@ -85,12 +88,15 @@ test('RecoveryManager resets recovered stage to attempt 1 with corroborated evid
       focused_tests: [],
       quality_summary: 'All checks passed',
       changed_files: [],
-      unresolved: []
+      unresolved: [],
+      patch_fingerprint: patchFp,
+      quality_epoch_id: testEpoch
     };
     fs.writeFileSync(path.join(stageDir, 'evidence.json'), JSON.stringify(evidence, null, 2));
 
     // Write ACP log with passing checks
     const acpLines = [
+      `EPOCH {"record_type":"quality_epoch_started","quality_epoch_id":"${testEpoch}","stage":"${stageName}","attempt":3,"run_id":"${runId}","sequence":0,"timestamp":"${new Date().toISOString()}"}`,
       'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t1","title":"Run","status":"completed","rawInput":{"command":"npm run check"},"rawOutput":{"exit_code":0}}}}',
       'SERVER {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"t2","title":"Run","status":"completed","rawInput":{"command":"git diff --check"},"rawOutput":{"exit_code":0}}}}'
     ];
@@ -249,6 +255,36 @@ test('RecoveryManager error cases: missing run, invalid stage, and corrupted run
     const discoveredRes = await rm.recover({ runId: emptyRunId, apply: false });
     assert.equal(discoveredRes.ok, true);
     assert.equal(discoveredRes.resumePhase, 'quality');
+
+    // 6. Stage determination edge cases
+    // a. Failed load
+    const failLoadRes = await rm.recover({ runId: 'non-existent-run-xyz', apply: false });
+    assert.equal(failLoadRes.ok, false);
+    assert.ok(failLoadRes.error?.includes('Failed to load run'));
+
+    // b. Stage index determination when opts.stageName is omitted
+    const state = store.load(emptyRunId);
+    state.stages[0].status = 'failed';
+    store.save(state);
+    const inferredFailedRes = await rm.recover({ runId: emptyRunId, apply: false });
+    assert.equal(inferredFailedRes.ok, true);
+    assert.equal(inferredFailedRes.stageIndex, 0);
+
+    // c. Stage index determination via current_stage_index
+    state.stages[0].status = 'pending';
+    state.current_stage_index = 0;
+    store.save(state);
+    const inferredCurrentRes = await rm.recover({ runId: emptyRunId, apply: false });
+    assert.equal(inferredCurrentRes.ok, true);
+    assert.equal(inferredCurrentRes.stageIndex, 0);
+
+    // d. No stage found
+    state.stages = [];
+    state.current_stage_index = undefined;
+    store.save(state);
+    const noStageRes = await rm.recover({ runId: emptyRunId, apply: false });
+    assert.equal(noStageRes.ok, false);
+    assert.ok(noStageRes.error?.includes('Could not determine stage to recover'));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
