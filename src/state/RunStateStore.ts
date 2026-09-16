@@ -40,6 +40,11 @@ const VALID_STAGE_PHASES = new Set<string>([
   'completed'
 ]);
 
+/**
+ * Validates minimal structural invariants for a persisted {@link RunState} record.
+ *
+ * @throws {@link RunStateError} when required fields or status enums are invalid.
+ */
 export function validateRunState(data: unknown): RunState {
   if (typeof data !== 'object' || data === null) {
     throw new RunStateError('Run state must be a non-null object');
@@ -63,6 +68,11 @@ export function validateRunState(data: unknown): RunState {
   return s as unknown as RunState;
 }
 
+/**
+ * Validates stage runtime phase metadata loaded from disk.
+ *
+ * @throws {@link RunStateError} when `phase` is missing or not a known value.
+ */
 export function validateStageRuntimeState(data: unknown): StageRuntimeState {
   if (typeof data !== 'object' || data === null) {
     throw new RunStateError('Stage runtime state must be a non-null object');
@@ -74,19 +84,28 @@ export function validateStageRuntimeState(data: unknown): StageRuntimeState {
   return s as unknown as StageRuntimeState;
 }
 
+/**
+ * Filesystem-backed store for run and per-stage machine state plus human Markdown artifacts.
+ */
 export class RunStateStore {
+  /**
+   * @param runsRoot - Directory containing one folder per `run_id` (defaults to project runs root).
+   */
   constructor(private runsRoot = RUNS_ROOT) {
     ensureDir(this.runsRoot);
   }
 
+  /** Absolute path to a run's artifact directory. */
   runDir(id: string): string {
     return path.join(this.runsRoot, safeRunId(id));
   }
 
+  /** Path to the canonical `run.json` machine state file. */
   runStatePath(id: string): string {
     return path.join(this.runDir(id), 'run.json');
   }
 
+  /** Path to per-stage artifacts (`PLAN.md`, `stage-state.json`, reviews, etc.). */
   stageDir(id: string, stage: string): string {
     if (!/^[A-Za-z0-9._-]+$/.test(stage)) {
       throw new RunStateError(`Invalid stage name: ${stage}`);
@@ -94,15 +113,18 @@ export class RunStateStore {
     return path.join(this.runDir(id), 'stages', stage);
   }
 
+  /** Path to `stage-state.json` for a single stage within a run. */
   stageStatePath(id: string, stage: string): string {
     return path.join(this.stageDir(id, stage), 'stage-state.json');
   }
 
+  /** Most recently saved run id from `latest` pointer file, or empty when none exist. */
   latestId(): string {
     const latestPath = path.join(this.runsRoot, 'latest');
     return fs.existsSync(latestPath) ? fs.readFileSync(latestPath, 'utf8').trim() : '';
   }
 
+  /** Persists run state, updates the latest pointer, and refreshes `RUN.md`. */
   save(state: RunState): void {
     state.updated_at = iso();
     writeJson(this.runStatePath(state.run_id), state);
@@ -110,6 +132,7 @@ export class RunStateStore {
     this.writeRunMarkdown(state);
   }
 
+  /** Loads and validates `run.json` for the given run id. */
   load(id: string): RunState {
     const p = this.runStatePath(id);
     if (!fs.existsSync(p)) {
@@ -124,12 +147,14 @@ export class RunStateStore {
     return validateRunState(raw);
   }
 
+  /** Loads the run referenced by the `latest` pointer. */
   loadLatest(): RunState {
     const id = this.latestId();
     if (!id) throw new RunStateError('No previous run found.');
     return this.load(id);
   }
 
+  /** Loads stage runtime state, defaulting to `{ phase: 'pending' }` when missing or corrupt. */
   loadStage(id: string, stage: string): StageRuntimeState {
     const p = this.stageStatePath(id, stage);
     if (!fs.existsSync(p)) return { version: 1, phase: 'pending' };
@@ -141,6 +166,7 @@ export class RunStateStore {
     }
   }
 
+  /** Merges a partial patch into stage runtime state and writes `stage-state.json`. */
   saveStage(id: string, stage: string, patch: Partial<StageRuntimeState>): StageRuntimeState {
     const next: StageRuntimeState = {
       ...this.loadStage(id, stage),
@@ -151,6 +177,10 @@ export class RunStateStore {
     return next;
   }
 
+  /**
+   * Appends a dated Markdown section to a stage artifact (for example `DECISIONS.md`).
+   * Creates the file with a title heading when it does not yet exist.
+   */
   appendHuman(runId: string, stage: string, file: string, heading: string, body = ''): void {
     if (!/^[A-Za-z0-9._-]+$/.test(file)) {
       throw new RunStateError(`Invalid run artifact name: ${file}`);
@@ -161,6 +191,7 @@ export class RunStateStore {
     appendText(p, `## ${heading}\n\n${body}\n\n`);
   }
 
+  /** Regenerates human-readable `RUN.md` summary alongside machine `run.json`. */
   private writeRunMarkdown(state: RunState): void {
     const lines = [
       `# AI Universal Coding Harness Run ${state.run_id}`,

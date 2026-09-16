@@ -15,6 +15,9 @@ import type {
 import type { CommandObservation } from '../../types.js';
 import { iso } from '../../core/time.js';
 
+/**
+ * Accumulates streaming ACP tool call state and emits command observations for corroboration.
+ */
 export class AcpToolAccumulator {
   private tools = new Map<string, AccumulatedToolState>();
   private sequence = 0;

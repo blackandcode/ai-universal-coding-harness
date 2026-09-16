@@ -10,7 +10,9 @@ ai-harness doctor
 ai-harness preflight --stage-source <dir|zip> --stage 06
 ```
 
-`init` requires a Git repository and creates `.ai-orchestrator/`.
+`init` requires a Git repository and creates `.ai-orchestrator/` with a commented local config template (all options documented inline).
+
+`preflight` validates executor and reviewer readiness for the selected stages. With the default reviewer router, preflight reports composite diagnostics for **primary**, **fallback** (when enabled), **largeDiff**, and **permission** roles.
 
 ## Stage discovery and validation
 

@@ -38,6 +38,11 @@ export interface RecoveryResult {
 }
 
 export class RecoveryManager {
+  /**
+   * @param root - Target repository workspace.
+   * @param store - Run state reader/writer (injectable for tests).
+   * @param git - Git wrapper aligned with `root` (defaults to {@link ROOT}).
+   */
   constructor(
     private root = ROOT,
     private store = new RunStateStore(),

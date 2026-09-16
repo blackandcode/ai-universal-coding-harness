@@ -28,6 +28,9 @@ import { AcpToolAccumulator } from './AcpToolAccumulator.js';
 import { ObservationJournal } from './ObservationJournal.js';
 import { AcpEventNormalizer } from './AcpEventNormalizer.js';
 
+/**
+ * Cursor CLI adapter implementing {@link ExecutorHarness} and spawning {@link CursorAcpSession} instances.
+ */
 export class CursorExecutorHarness implements ExecutorHarness {
   static defaults = {
     binary: 'agent',
@@ -49,11 +52,15 @@ export class CursorExecutorHarness implements ExecutorHarness {
     role: 'executor',
     model: this.model
   };
+
+  /** @param ctx - Harness context (events bus, optional binary/model overrides). */
   constructor(private ctx: any) {
     this.binary = ctx?.executorBinary || this.binary;
     this.model = ctx?.executorModel || this.model;
     this.info = { ...this.info, model: this.model, label: `${this.model} ${this.thinking}` };
   }
+
+  /** Verifies the Cursor agent binary exists and advertises the configured model. */
   async preflight(): Promise<HarnessPreflightResult> {
     if (!commandExists(this.binary)) return { ok: false, details: [`${this.binary} not found`] };
     const models = execSyncText(this.binary, ['models']);
@@ -62,6 +69,8 @@ export class CursorExecutorHarness implements ExecutorHarness {
       return { ok: false, details: [...details, `Model ${this.model} not available`] };
     return { ok: true, details };
   }
+
+  /** Creates, starts, and returns a live ACP session bound to the target workspace. */
   async createSession(opts: any) {
     const s = new CursorAcpSession({
       ...opts,
@@ -76,6 +85,9 @@ export class CursorExecutorHarness implements ExecutorHarness {
   }
 }
 
+/**
+ * Long-lived Cursor ACP subprocess session: JSON-RPC over stdio, tool accumulation, and orchestrator callbacks.
+ */
 export class CursorAcpSession implements ExecutorSession {
   id = '';
   private child: any;
@@ -91,6 +103,7 @@ export class CursorAcpSession implements ExecutorSession {
   private journal: ObservationJournal;
   private normalizer: AcpEventNormalizer;
 
+  /** Wires ACP normalizer, observation journal, and optional session resume metadata. */
   constructor(
     private o: {
       workspace: string;
@@ -137,12 +150,17 @@ export class CursorAcpSession implements ExecutorSession {
     if (!fs.existsSync(o.focusFile)) fs.writeFileSync(o.focusFile, '');
   }
 
+  /** Monotonic ACP event sequence from the tool accumulator (for corroboration). */
   currentSequence(): number {
     return this.accumulator.currentSequence();
   }
+
+  /** Last workspace mutation sequence observed in the session (evidence epoch boundary). */
   lastMutationSeq(): number {
     return this.accumulator.lastMutationSeq();
   }
+
+  /** Tags subsequent command observations with a quality epoch id for evidence corroboration. */
   setQualityEpoch(epochId: string): void {
     this.qualityEpochId = epochId;
     this.normalizer = new AcpEventNormalizer({
@@ -164,10 +182,13 @@ export class CursorAcpSession implements ExecutorSession {
       onPermissionRequest: (m) => this.handlePermission(m)
     });
   }
+
+  /** Command observations recorded for the active implementation attempt. */
   observedCommands(): CommandObservation[] {
     return this.journal.getObservations();
   }
 
+  /** Replays prior ACP JSONL into the journal when resuming an executor session. */
   private replayHistoricalEvents() {
     if (!fs.existsSync(this.o.eventsFile)) return;
     try {
@@ -192,14 +213,17 @@ export class CursorAcpSession implements ExecutorSession {
     }
   }
 
+  /** Writes a JSON-RPC line to the ACP subprocess and mirrors it in the events log. */
   private raw(obj: any) {
     const line = JSON.stringify(obj);
     this.child?.stdin?.write(line + '\n');
     fs.appendFileSync(this.o.eventsFile, `CLIENT ${line}\n`);
   }
+  /** Sends a JSON-RPC response for a server-initiated request id. */
   private respond(id: any, result: any) {
     this.raw({ jsonrpc: '2.0', id, result });
   }
+  /** Issues a JSON-RPC request and resolves when the matching response arrives or times out. */
   private request(
     method: string,
     params: any,
@@ -216,6 +240,8 @@ export class CursorAcpSession implements ExecutorSession {
       this.raw({ jsonrpc: '2.0', id, method, params });
     });
   }
+
+  /** Spawns the Cursor ACP subprocess, negotiates protocol, and creates or resumes a session. */
   async start() {
     this.child = spawn(this.o.binary, ['--model', this.o.model, 'acp'], {
       cwd: this.o.workspace,
@@ -320,6 +346,8 @@ export class CursorAcpSession implements ExecutorSession {
     }
     this.replayHistoricalEvents();
   }
+
+  /** Switches Cursor session mode (`plan`, `agent`, or `ask`) when supported by the agent. */
   async setMode(mode: 'plan' | 'agent' | 'ask') {
     try {
       await this.request('session/set_mode', { sessionId: this.id, modeId: mode }, 60_000);
@@ -331,6 +359,10 @@ export class CursorAcpSession implements ExecutorSession {
     }
     this.o.events.emit('executor.mode', { mode });
   }
+
+  /**
+   * Sends a user prompt turn and drains any broker-injected external command results (up to five rounds).
+   */
   async prompt(text: string) {
     this.agentText = '';
     let r = await this.request('session/prompt', {
@@ -354,12 +386,16 @@ export class CursorAcpSession implements ExecutorSession {
     }
     return { result: r, text: combined };
   }
+
+  /** Requests cancellation of the in-flight ACP prompt without tearing down the subprocess. */
   async cancel() {
     if (this.child && this.id)
       try {
         this.raw({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: this.id } });
       } catch {}
   }
+
+  /** Cancels, closes streams, and terminates the ACP child process. */
   async stop() {
     try {
       await this.cancel();
@@ -378,6 +414,8 @@ export class CursorAcpSession implements ExecutorSession {
     } catch {}
     this.pending.clear();
   }
+
+  /** Parses one ACP stdout line, completes pending RPCs, and delegates events to the normalizer. */
   private async handleLine(line: string) {
     this.accumulator.stepSequence();
     fs.appendFileSync(this.o.eventsFile, `SERVER ${line}\n`);
@@ -404,12 +442,16 @@ export class CursorAcpSession implements ExecutorSession {
 
     if (m.id != null) this.respond(m.id, { outcome: { outcome: 'cancelled' } });
   }
+
+  /** Appends streamed focus text to the focus log and emits a debounced UI delta event. */
   private appendFocus(text: string) {
     if (!text) return;
     rotateFile(this.o.focusFile, CONFIG.focusLogMaxBytes);
     fs.appendFileSync(this.o.focusFile, text);
     this.o.events.emit('executor.focus.delta', { text, focus_file: this.o.focusFile });
   }
+
+  /** Bridges ACP plan submissions to orchestrator {@link PlanCoordinator} via callbacks. */
   private async handlePlan(m: any) {
     const p = m.params || {};
     const plan = String(p.plan || '').trim();
@@ -451,6 +493,8 @@ export class CursorAcpSession implements ExecutorSession {
       });
     }
   }
+
+  /** Forwards executor multiple-choice questions to the reviewer decision callback. */
   private async handleQuestion(m: any) {
     const p = m.params || {};
     this.o.events.emit('executor.question', {
@@ -473,6 +517,8 @@ export class CursorAcpSession implements ExecutorSession {
       });
     }
   }
+
+  /** Maps an ACP permission tool call payload into a {@link PermissionRequest}. */
   private permissionRequest(p: any): PermissionRequest {
     const tc = p.toolCall || p.tool_call || {};
     const raw = tc.rawInput || tc.raw_input || p.rawInput || {};
@@ -487,6 +533,8 @@ export class CursorAcpSession implements ExecutorSession {
       raw: p
     };
   }
+
+  /** Selects an allow/deny ACP permission option id when the agent exposes standard option kinds. */
   private pickOption(p: any, allow: boolean) {
     const opts = p.options || [];
     const words = allow
@@ -498,6 +546,11 @@ export class CursorAcpSession implements ExecutorSession {
     }
     return null;
   }
+
+  /**
+   * Resolves permission prompts via orchestrator policy; may broker approved shell commands
+   * when ACP exposes no direct allow option.
+   */
   private async handlePermission(m: any) {
     const p = m.params || {};
     const req = this.permissionRequest(p);
@@ -571,6 +624,10 @@ export class CursorAcpSession implements ExecutorSession {
   }
 }
 
+/**
+ * Replays `SERVER` lines from an ACP JSONL log into {@link CommandObservation} records.
+ * Used when resuming sessions to rebuild the observation journal from historical events.
+ */
 export function parseAcpEvents(
   eventsFilePath: string,
   opts?: { runId?: string; stageName?: string; attempt?: number; workspace?: string }

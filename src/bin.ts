@@ -6,6 +6,7 @@
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+/** Reads a CLI flag value from argv (`--flag value` or `--flag=value`). */
 function optionValue(argv: string[], names: string[]) {
   for (let i = 0; i < argv.length; i++) {
     if (names.includes(argv[i]) && argv[i + 1]) return argv[i + 1];
@@ -15,6 +16,7 @@ function optionValue(argv: string[], names: string[]) {
   return '';
 }
 
+/** Returns the Git top-level directory for `cwd`, or empty when not inside a repository. */
 function gitRoot(cwd: string) {
   const r = spawnSync('git', ['rev-parse', '--show-toplevel'], {
     cwd,

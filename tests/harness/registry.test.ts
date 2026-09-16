@@ -85,6 +85,10 @@ test('HarnessRegistry: registers custom harness and dynamically loads modules', 
 
     // loadConfigured with empty array
     await r.loadConfigured([]);
+
+    const badMod = path.join(tmpDir, 'bad-plugin.mjs');
+    fs.writeFileSync(badMod, `export const notAFunction = true;`);
+    await assert.rejects(() => r.loadModule(badMod), /must export registerHarnesses/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

@@ -117,6 +117,17 @@ test('runProcess: rejects immediately when signal is already aborted', async () 
   );
 });
 
+test('runProcess: captures stderr-only output when stdout is empty', async () => {
+  const stderrLines: string[] = [];
+  const res = await runProcess(process.execPath, ['-e', 'console.error("stderr-only-line");'], {
+    onStderrLine: (l) => stderrLines.push(l)
+  });
+  assert.equal(res.exitCode, 0);
+  assert.equal(res.stdout.trim(), '');
+  assert.ok(res.stderr.includes('stderr-only-line'));
+  assert.deepEqual(stderrLines, ['stderr-only-line']);
+});
+
 test('runShellCommand: handles timeout and pre-aborted signal', async () => {
   const controller = new AbortController();
   controller.abort('pre-aborted-shell');

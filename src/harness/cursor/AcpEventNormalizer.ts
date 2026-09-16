@@ -8,6 +8,7 @@
 import type { AcpToolAccumulator } from './AcpToolAccumulator.js';
 import type { ObservationJournal } from './ObservationJournal.js';
 
+/** Callbacks and context wired into ACP message normalization. */
 export interface AcpEventNormalizerOptions {
   events: any;
   accumulator: AcpToolAccumulator;
@@ -25,7 +26,13 @@ export interface AcpEventNormalizerOptions {
   onPermissionRequest?: (payload: any) => Promise<void>;
 }
 
+/**
+ * Maps Cursor ACP JSON-RPC notifications into semantic executor UI events and observations.
+ */
 export class AcpEventNormalizer {
+  /**
+   * @param options - Event bus, tool accumulator, journal, and interactive request handlers.
+   */
   constructor(private options: AcpEventNormalizerOptions) {}
 
   /**
@@ -78,7 +85,9 @@ export class AcpEventNormalizer {
   }
 
   /**
-   * Dispatches updates within a session/update notification.
+   * Dispatches updates within a `session/update` notification.
+   *
+   * @param u - Session update payload (`sessionUpdate` / tool call fields).
    */
   private handleSessionUpdate(u: any): void {
     if (!u) return;

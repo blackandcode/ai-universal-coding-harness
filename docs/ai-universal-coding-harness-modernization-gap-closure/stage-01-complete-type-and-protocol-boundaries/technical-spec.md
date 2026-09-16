@@ -74,6 +74,8 @@ Use the actual spawn shape rather than optional-property guessing.
 
 If a reviewer role needs `thinking`, `timeoutMinutes`, or `timeoutSeconds`, add these to an explicit role context/type rather than casting the context to records repeatedly.
 
+**Stage 04 boundary:** fields on role context here are **type surface only**. Runtime precedence (`reviewer.<role>` over `harnesses.<adapter>`) and Codex field application (`verbosity`, `contextMode`, etc.) are **Stage 04 (F-13)**.
+
 ### Review inputs
 
 Use the existing:

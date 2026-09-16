@@ -93,6 +93,37 @@ test('readRecentEvents bounds by maxBytes and maxCount', () => {
   }
 });
 
+test('readRecentEvents keeps byte window when no newline exists inside slice', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'event-file-window-'));
+  const filePath = path.join(tmpDir, 'window.jsonl');
+  fs.writeFileSync(filePath, `${'n'.repeat(800)}`);
+
+  try {
+    const events = readRecentEvents(filePath, 120, 10);
+    assert.deepEqual(events, []);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('readRecentEvents keeps trailing slice when no leading newline exists in window', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'event-file-slice-'));
+  const filePath = path.join(tmpDir, 'slice.jsonl');
+  const payload = JSON.stringify({
+    ts: '2026-09-16T00:00:00Z',
+    type: 'log',
+    payload: { message: 'x'.repeat(800) }
+  });
+  fs.writeFileSync(filePath, `${payload}\n${payload}\n`);
+
+  try {
+    const events = readRecentEvents(filePath, 900, 5);
+    assert.ok(events.length >= 1);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('followEventFile tails newly appended lines and buffers partial lines across ticks', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'event-file-test-'));
   const filePath = path.join(tmpDir, 'tail.jsonl');

@@ -5,9 +5,14 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runCli } from '../../src/cli-main.js';
+
+async function loadRunCli() {
+  const mod = await import('../../src/cli-main.js');
+  return mod.runCli;
+}
 
 test('runCli: executes valid commands successfully', async () => {
+  const runCli = await loadRunCli();
   const origLog = console.log;
   console.log = () => {};
   try {
@@ -22,6 +27,7 @@ test('runCli: executes valid commands successfully', async () => {
 });
 
 test('runCli: uses default argv parameter when none provided', async () => {
+  const runCli = await loadRunCli();
   const origLog = console.log;
   const origArgv = process.argv;
   console.log = () => {};
@@ -36,6 +42,7 @@ test('runCli: uses default argv parameter when none provided', async () => {
 });
 
 test('runCli: catches parsing and execution errors and logs to stderr', async () => {
+  const runCli = await loadRunCli();
   const origError = console.error;
   const errorLogs: string[] = [];
   console.error = (...args: unknown[]) => {

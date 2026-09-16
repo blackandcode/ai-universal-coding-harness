@@ -7,6 +7,9 @@
 
 import type { PromptBuilderOptions } from './types.js';
 
+/**
+ * Builds Markdown reviewer prompts with role boundaries and frozen stage context.
+ */
 export class CodexPromptBuilder {
   /**
    * Builds the complete prompt text for a reviewer decision.

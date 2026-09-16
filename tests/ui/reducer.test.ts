@@ -311,6 +311,16 @@ test('uiReducer handles quality results, review verdicts, and commit events', ()
   assert.deepEqual(state.changedFiles, ['src/foo.ts']);
   assert.equal(state.messages.at(-1)?.kind, 'success');
 
+  state = uiReducer(state, {
+    ts: '2026-09-16T00:01:30.000Z',
+    type: 'quality.result',
+    payload: { status: 'FAIL', summary: '', quality_summary: 'Tests failed' }
+  });
+  assert.equal(state.phase.QUALITY, 'active');
+  assert.equal(state.quality?.pass, false);
+  assert.equal(state.messages.at(-1)?.kind, 'error');
+  assert.ok(state.messages.at(-1)?.text.includes('Quality FAIL'));
+
   // Review started & approved
   state = uiReducer(state, {
     ts: '2026-09-16T00:02:00.000Z',

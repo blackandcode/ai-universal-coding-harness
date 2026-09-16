@@ -13,6 +13,7 @@ Implement **Stage 01: Complete Type and Protocol Boundaries** using the accompan
 7. Do not let ACP/Codex wire objects leak into Orchestrator domain logic.
 8. Make `typescript/no-explicit-any` a hard production rule only after the migration is complete.
 9. Update `CHANGELOG.md`, `DECISIONS.md` when architecture changes materially, and `IMPLEMENTATION-STATUS.md`.
+10. Do not implement configuration contract fidelity (question budgets, reviewer role runtime overrides, config contract tests). See `stage-04-configuration-contract-fidelity/` if config behavior is in scope.
 
 ## Verification
 

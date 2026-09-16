@@ -50,6 +50,9 @@ export class ReviewerRouter implements ReviewerHarness {
 
   info: HarnessInfo;
 
+  /**
+   * @param options - Router tiers, registry, harness context, and optional telemetry bus.
+   */
   constructor(options: ReviewerRouterOptions) {
     this.config = options.config;
     this.registry = options.registry || new HarnessRegistry();

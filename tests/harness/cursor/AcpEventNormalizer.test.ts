@@ -166,5 +166,6 @@ test('AcpEventNormalizer: delegates plan, question, and permission requests', as
 
   // Unknown or null messages do not crash
   await normalizer.handleMessage(null);
+  await normalizer.handleMessage('not-an-object');
   await normalizer.handleMessage({ method: 'unknown/method' });
 });

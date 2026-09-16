@@ -61,7 +61,7 @@ stateDiagram-v2
   Plan --> Implementation: Approved plan (or consolidated fallback)
   Implementation --> Quality: Code edits completed
   Quality --> Implementation: Quality command failed
-  Quality --> Review: Mechanical corroboration green (exit 0 + patch match)
+  Quality --> Review: Mechanical corroboration green (exit 0 + patch match); phase persisted as review
   Review --> Implementation: Reviewer verdict REWORK
   Review --> Commit: Reviewer verdict APPROVE
   Commit --> Completed: AI branch commit created
@@ -102,6 +102,7 @@ flowchart TD
 
 - **Plan Reuse**: Approved plans can be reused only when plan and spec hashes strictly match. If stage specifications change, planning restarts from attempt 1.
 - **Evidence Reuse**: Corroborated evidence can be reused only when `patchFingerprint()` matches the repository working tree. If untracked files or code changes occurred, implementation or quality gates must rerun.
+- **Review Phase**: When `stage.json` records `phase: 'review'` and corroborated evidence still matches, resume can skip implementation and quality and continue final reviewer evaluation.
 - **Native Sessions**: Executor session identifiers and epochs are persisted so ACP adapters can resume harness-native conversations without losing context.
 
 ### Recovery rules
@@ -109,6 +110,18 @@ flowchart TD
 - **Dry-Run Default**: `ai-harness recover` without `--apply` displays an audit preview of planned state corrections without making filesystem or Git mutations.
 - **Timestamped Backups**: Applying recovery creates an isolated backup in `runs/<run-id>/backups/<timestamp>/` before mutating state.
 - **Observation Reconstruction**: If tool execution observations were dropped due to process interruption, the recovery engine reconstructs them deterministically from the raw ACP session stream.
+
+## Run status after reviewer failures
+
+When a run stops during review, the orchestrator classifies errors for resume:
+
+| Run status            | Typical reviewer cause                                            |
+| --------------------- | ----------------------------------------------------------------- |
+| `external_dependency` | Usage limits, rate limits, quota / credits                        |
+| `retryable_error`     | Subprocess crash, timeout, `turn_failed` without a usable verdict |
+| `failed`              | Unclassified or specification-level failures                      |
+
+Reviewer failover (when configured) may complete the review without changing run status. When failover is disabled or the error is not a configured trigger, check `review-attempt-*.json` under the stage run directory for `_orchestrator_meta` provenance.
 
 ## History cleanup
 

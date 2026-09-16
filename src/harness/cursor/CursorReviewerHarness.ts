@@ -80,6 +80,9 @@ export function extractJsonFromText<T>(text: string): T {
   throw new Error(`Reviewer output did not contain valid JSON: ${trimmed.slice(0, 300)}`);
 }
 
+/**
+ * Cursor agent CLI adapter implementing the reviewer harness contract.
+ */
 export class CursorReviewerHarness implements ReviewerHarness {
   static runner: typeof runProcess = runProcess;
 
@@ -109,6 +112,11 @@ export class CursorReviewerHarness implements ReviewerHarness {
     model: this.model
   };
 
+  /**
+   * Applies harness context overrides for binary, model, thinking, and timeout settings.
+   *
+   * @param ctx - Run-scoped harness context (run dir, stage text, events, reviewer overrides).
+   */
   constructor(private ctx: HarnessContext = {}) {
     this.binary = ctx.reviewerBinary || this.binary;
     this.model = ctx.reviewerModel || this.model;
@@ -140,6 +148,11 @@ export class CursorReviewerHarness implements ReviewerHarness {
 
   /**
    * Internal coordinator delegating prompt building, child process execution, and verdict validation.
+   *
+   * @param kind - Reviewer decision kind (plan, question, permission, final).
+   * @param payload - Structured input embedded in the reviewer prompt.
+   * @param schemaFile - JSON Schema filename under `schemas/`.
+   * @param extra - Additional reviewer instructions appended to the prompt.
    */
   private async decide<T>(
     kind: 'plan-review' | 'question' | 'permission' | 'final-review',
@@ -263,6 +276,9 @@ export class CursorReviewerHarness implements ReviewerHarness {
 
   /**
    * Reviews executor plan against frozen stage specifications and architecture invariants.
+   *
+   * @param input - Plan review payload from the orchestrator.
+   * @param opts - When `finalConsolidation` is set, accepts carryover findings instead of replan.
    */
   async reviewPlan(
     input: unknown,
@@ -276,6 +292,8 @@ export class CursorReviewerHarness implements ReviewerHarness {
 
   /**
    * Answers multiple-choice architectural or product questions submitted by the executor.
+   *
+   * @param input - Question payload including options and executor context.
    */
   async answerQuestions(input: unknown): Promise<QuestionVerdict> {
     return this.decide<QuestionVerdict>('question', input, 'question-verdict.schema.json');
@@ -283,6 +301,8 @@ export class CursorReviewerHarness implements ReviewerHarness {
 
   /**
    * Evaluates command permissions referred by the permission engine.
+   *
+   * @param input - Permission request describing the proposed operation.
    */
   async decidePermission(input: unknown): Promise<PermissionVerdict> {
     return this.decide<PermissionVerdict>('permission', input, 'permission-verdict.schema.json');
@@ -290,6 +310,8 @@ export class CursorReviewerHarness implements ReviewerHarness {
 
   /**
    * Performs final code review against the unified diff, test output, and corroborated evidence.
+   *
+   * @param input - Final review payload including diff, evidence, and plan carryover.
    */
   async reviewImplementation(input: unknown): Promise<FinalVerdict> {
     return this.decide<FinalVerdict>('final-review', input, 'final-verdict.schema.json');

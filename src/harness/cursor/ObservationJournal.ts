@@ -11,6 +11,9 @@ import path from 'node:path';
 import type { CommandObservation } from '../../types.js';
 import { ensureDir } from '../../core/fs.js';
 
+/**
+ * In-memory command observation cache with optional durable JSONL append.
+ */
 export class ObservationJournal {
   private observed: CommandObservation[] = [];
   private journalFile: string;

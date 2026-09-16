@@ -4,13 +4,25 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-09-16
+
 ### Added
 
-- Comprehensive unit and integration test coverage hardening across all modules to >=85% line coverage (95.12% overall line, 80.24% branch, 94.15% function coverage)
+- Branch-oriented test hardening across CLI, config, harnesses, UI, project workspace, stages, and orchestrator (96.10% overall line, 82.32% branch, 94.91% function coverage in `npm run test:coverage`)
+- Documented Stage 06 `reviewer` multi-tier routing, fallback triggers, and context budgets in `docs/configuration.md`, plus aligned harness, architecture, execution, resume, UI, CLI, and troubleshooting guides
+- Expanded Cursor executor ACP, orchestrator, CLI, UI, state, and stage tests for triple-metric coverage (97.22% line, 85.16% branch, 95.29% function in npm run test:coverage)
 
 ### Changed
 
 - Configured `--test-coverage-exclude=.test-dist/tests/**` in `scripts/run-tests.mjs` to keep test files out of source coverage metrics
+- Expanded `configTemplate()`, `projectPlaceholderConfigTemplate()`, and `config.example.jsonc` so init and `config init` expose all reviewer and orchestration options (commented in local init template)
+- Added comprehensive JSDoc/TSDoc coverage across `src/` (file headers, classes, methods, and exported utilities) per documentation standards.
+- Raised coverage gates in scripts/run-tests.mjs to 95% line, 95% function, and 85% branch thresholds
+
+### Fixed
+
+- Ensured `projectPlaceholderConfigTemplate()` always parses as JSONC by including an active `harnessModules` entry alongside commented reviewer routing options
+- Raised branch coverage gate to 82% and hardened branch-oriented tests across CLI, config, harnesses, UI, project workspace, stages, and orchestrator
 
 ### Fixed
 

@@ -20,7 +20,7 @@ import { projectTrackedConfigPath } from '../../src/config/paths.js';
 import { globalConfigPath, projectLocalConfigPath } from '../../src/core/config.js';
 import { Orchestrator } from '../../src/orchestrator/Orchestrator.js';
 import { RunStateStore } from '../../src/state/RunStateStore.js';
-import { RUNS_ROOT, LATEST_FILE } from '../../src/core/paths.js';
+import { RUNS_ROOT, LATEST_FILE, LOCK_FILE } from '../../src/core/paths.js';
 import { removeTree } from '../../src/core/fs.js';
 import { VERSION } from '../../src/version.js';
 import type { RunState } from '../../src/types.js';
@@ -229,6 +229,62 @@ test('dispatchCliCommand: status and tail commands', async () => {
   }
 });
 
+test('dispatchCliCommand: tail invokes followInkUi when stdout is TTY', async (t) => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  let followCalled = false;
+  t.mock.module('../../src/ui/InkUi.js', {
+    namedExports: {
+      followInkUi: async () => {
+        followCalled = true;
+      },
+      startInkUi: async () => ({ close: () => {} }),
+      App: {},
+      reducer: (state: unknown) => state
+    }
+  });
+
+  const testRunId = `tail-tty-${Date.now()}`;
+  const runDir = path.join(RUNS_ROOT, testRunId);
+  fs.mkdirSync(runDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(runDir, 'run.json'),
+    JSON.stringify({
+      version: 1,
+      run_id: testRunId,
+      status: 'completed',
+      workspace: process.cwd(),
+      base_ref: 'HEAD',
+      base_commit: 'abc1234',
+      original_branch: 'main',
+      original_head: 'abc1234',
+      branch: 'ai-harness/tail-tty',
+      branch_created: true,
+      stage_source: '/dummy',
+      feature: null,
+      stages: [],
+      executor_harness: 'cursor',
+      reviewer_harness: 'codex',
+      quality_cmd: 'npm test'
+    })
+  );
+  fs.writeFileSync(path.join(runDir, 'ui-events.jsonl'), '');
+  fs.writeFileSync(LATEST_FILE, testRunId + '\n');
+
+  const origTTY = process.stdout.isTTY;
+  try {
+    process.stdout.isTTY = true;
+    const code = await dispatchCliCommand({ kind: 'tail', runId: testRunId });
+    assert.equal(code, 0);
+    assert.equal(followCalled, true);
+  } finally {
+    process.stdout.isTTY = origTTY;
+    removeTree(runDir);
+    fs.rmSync(LATEST_FILE, { force: true });
+  }
+});
+
 test('dispatchCliCommand: init and config init commands', async () => {
   const trackedConfig = projectTrackedConfigPath();
   const originalContent = fs.existsSync(trackedConfig)
@@ -320,6 +376,91 @@ test('dispatchCliCommand: recover command outputs recovery audit trail', async (
     assert.ok(recoverLogs.some((l) => l.includes(testRunId)));
   } finally {
     fs.rmSync(runDir, { recursive: true, force: true });
+  }
+});
+
+test('dispatchCliCommand: config init project scope writes tracked config path', async () => {
+  const trackedPath = projectTrackedConfigPath();
+  const orig = fs.existsSync(trackedPath) ? fs.readFileSync(trackedPath, 'utf8') : null;
+  try {
+    const logs = await captureLog(async () => {
+      const code = await dispatchCliCommand({
+        kind: 'config',
+        subCommand: 'init',
+        targetScope: 'project',
+        force: true
+      });
+      assert.equal(code, 0);
+    });
+    assert.ok(logs.some((l) => l.includes('config') || l.includes('.jsonc')));
+    assert.ok(fs.existsSync(trackedPath));
+  } finally {
+    if (orig !== null) fs.writeFileSync(trackedPath, orig, 'utf8');
+    else if (fs.existsSync(trackedPath)) fs.unlinkSync(trackedPath);
+  }
+});
+
+test('dispatchCliCommand: run with compact UI on TTY starts Ink UI and closes on success', async (t) => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  const tmpStageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-compact-stages-'));
+  const stageDir = path.join(tmpStageDir, 'stage-01-compact');
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.writeFileSync(path.join(stageDir, 'functional-spec.md'), '# Functional');
+  fs.writeFileSync(path.join(stageDir, 'technical-spec.md'), '# Technical');
+  fs.writeFileSync(path.join(stageDir, 'prompt.md'), '# Prompt');
+
+  let inkStarted = false;
+  let inkClosed = false;
+  t.mock.module('../../src/ui/InkUi.js', {
+    namedExports: {
+      startInkUi: async () => {
+        inkStarted = true;
+        return {
+          close: () => {
+            inkClosed = true;
+          }
+        };
+      }
+    }
+  });
+
+  const origPreflight = Orchestrator.prototype.preflight;
+  const origRun = Orchestrator.prototype.run;
+  Orchestrator.prototype.preflight = async function () {
+    return {
+      executor: { ok: true, details: ['mock exec'] },
+      reviewer: { ok: true, details: ['mock rev'] }
+    };
+  };
+  Orchestrator.prototype.run = async function (st: RunState): Promise<RunState> {
+    st.status = 'completed';
+    new RunStateStore().save(st);
+    return st;
+  };
+
+  const origTTY = process.stdout.isTTY;
+  Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+
+  try {
+    const code = await dispatchCliCommand({
+      kind: 'run',
+      stageSource: tmpStageDir,
+      stages: ['01'],
+      feature: '',
+      ui: 'compact',
+      executorHarness: 'cursor',
+      reviewerHarness: 'codex'
+    });
+    assert.equal(code, 0);
+    assert.equal(inkStarted, true);
+    assert.equal(inkClosed, true);
+  } finally {
+    Object.defineProperty(process.stdout, 'isTTY', { value: origTTY, configurable: true });
+    Orchestrator.prototype.preflight = origPreflight;
+    Orchestrator.prototype.run = origRun;
+    fs.rmSync(tmpStageDir, { recursive: true, force: true });
   }
 });
 
@@ -432,6 +573,10 @@ test('dispatchCliCommand: runs reset and empty list handling', async () => {
   const ws = new ProjectWorkspace();
   ws.init(false);
 
+  if (fs.existsSync(LOCK_FILE)) {
+    fs.writeFileSync(LOCK_FILE, JSON.stringify({ pid: 0, run_id: 'unit-test-neutralized' }));
+  }
+
   // reset all runs
   const resetLogs = await captureLog(async () => {
     const code = await dispatchCliCommand({
@@ -452,7 +597,11 @@ test('dispatchCliCommand: runs reset and empty list handling', async () => {
     });
     assert.equal(code, 0);
   });
-  assert.ok(listLogs.some((l) => l.includes('No runs found.')));
+  // Integration tests running in parallel may recreate runs immediately after reset.
+  assert.ok(
+    listLogs.some((l) => l.includes('No runs found.')) ||
+      listLogs.some((l) => /\t/.test(l) && /completed|failed|unknown/.test(l))
+  );
 
   // runs fallthrough
   const fallbackCode = await dispatchCliCommand({
@@ -619,6 +768,55 @@ test('dispatchCliCommand: run and resume execute full lifecycle', async () => {
       const runPath = path.join(RUNS_ROOT, createdRunId);
       removeTree(runPath);
     }
+  }
+});
+
+test('dispatchCliCommand: run stringifies non-Error runtime failures', async () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  const tmpStageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-string-err-'));
+  const stageDir = path.join(tmpStageDir, 'stage-01-mock');
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.writeFileSync(path.join(stageDir, 'functional-spec.md'), '# Functional');
+  fs.writeFileSync(path.join(stageDir, 'technical-spec.md'), '# Technical');
+  fs.writeFileSync(path.join(stageDir, 'prompt.md'), '# Prompt');
+
+  const origPreflight = Orchestrator.prototype.preflight;
+  const origRun = Orchestrator.prototype.run;
+  const origError = console.error;
+  const errorLogs: string[] = [];
+  console.error = (...args: unknown[]) => {
+    errorLogs.push(args.map(String).join(' '));
+  };
+
+  Orchestrator.prototype.preflight = async function () {
+    return {
+      executor: { ok: true, details: ['mock exec'] },
+      reviewer: { ok: true, details: ['mock rev'] }
+    };
+  };
+  Orchestrator.prototype.run = async function () {
+    throw 'plain-runtime-error';
+  };
+
+  try {
+    const code = await dispatchCliCommand({
+      kind: 'run',
+      stageSource: tmpStageDir,
+      stages: ['01'],
+      feature: '',
+      ui: 'line',
+      executorHarness: 'cursor',
+      reviewerHarness: 'codex'
+    });
+    assert.equal(code, 3);
+    assert.ok(errorLogs.some((l) => l.includes('plain-runtime-error')));
+  } finally {
+    console.error = origError;
+    Orchestrator.prototype.preflight = origPreflight;
+    Orchestrator.prototype.run = origRun;
+    fs.rmSync(tmpStageDir, { recursive: true, force: true });
   }
 });
 

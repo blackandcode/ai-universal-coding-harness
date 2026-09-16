@@ -12,6 +12,7 @@ import {
   DEFAULT_CONFIG,
   CONFIG,
   CONFIG_SOURCES,
+  globalConfigDir,
   globalConfigPath,
   projectTrackedConfigPath,
   envLayer,
@@ -41,6 +42,36 @@ test('config paths include global and project layers', () => {
   assert.ok(path.isAbsolute(globalConfigPath()));
   assert.ok(projectTrackedConfigPath().endsWith('.ai-universal-coding-harness.jsonc'));
   assert.equal(CONFIG_SOURCES.project, projectTrackedConfigPath());
+});
+
+test('globalConfigDir honors AI_HARNESS_CONFIG_HOME, AI_STAGE_CONFIG_HOME, and XDG_CONFIG_HOME', () => {
+  const harnessHome = path.join(os.tmpdir(), 'harness-config-home-test');
+  const stageHome = path.join(os.tmpdir(), 'stage-config-home-test');
+  const xdgHome = path.join(os.tmpdir(), 'xdg-config-test');
+
+  const prevHarness = process.env.AI_HARNESS_CONFIG_HOME;
+  const prevStage = process.env.AI_STAGE_CONFIG_HOME;
+  const prevXdg = process.env.XDG_CONFIG_HOME;
+
+  try {
+    delete process.env.AI_HARNESS_CONFIG_HOME;
+    delete process.env.AI_STAGE_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = xdgHome;
+    assert.equal(globalConfigDir(), path.join(xdgHome, 'ai-universal-coding-harness'));
+
+    process.env.AI_STAGE_CONFIG_HOME = stageHome;
+    assert.equal(globalConfigDir(), path.resolve(stageHome));
+
+    process.env.AI_HARNESS_CONFIG_HOME = harnessHome;
+    assert.equal(globalConfigDir(), path.resolve(harnessHome));
+  } finally {
+    if (prevHarness === undefined) delete process.env.AI_HARNESS_CONFIG_HOME;
+    else process.env.AI_HARNESS_CONFIG_HOME = prevHarness;
+    if (prevStage === undefined) delete process.env.AI_STAGE_CONFIG_HOME;
+    else process.env.AI_STAGE_CONFIG_HOME = prevStage;
+    if (prevXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = prevXdg;
+  }
 });
 
 test('environment mapping layer maps AI_HARNESS_* and AI_STAGE_*', () => {
@@ -142,9 +173,43 @@ test('compatible config provides uppercase legacy aliases delegating to camelCas
 });
 
 test('configuration templates generate valid template strings', () => {
-  assert.ok(configTemplate().includes('executorHarness'));
-  assert.ok(projectPlaceholderConfigTemplate().includes('Local project overrides'));
+  const globalTpl = configTemplate();
+  const localTpl = projectPlaceholderConfigTemplate();
+
+  assert.ok(globalTpl.includes('executorHarness'));
+  assert.ok(globalTpl.includes('"reviewer"'));
+  assert.ok(globalTpl.includes('"largeDiff"'));
+  assert.ok(globalTpl.includes('usage_limit'));
+  assert.ok(globalTpl.includes('maxDiffChars'));
+  assert.ok(globalTpl.includes('composer-2.5-fast'));
+
+  assert.ok(localTpl.includes('Local project overrides'));
+  assert.ok(localTpl.includes('"reviewer"'));
+  assert.ok(localTpl.includes('largeDiff'));
+  assert.ok(localTpl.includes('thresholdChars'));
+  assert.ok(localTpl.includes('maxDiffChars'));
+  assert.ok(localTpl.includes('usage_limit'));
+
   assert.ok(projectPermissionsTemplate().includes('terminalAllowlist'));
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'config-tpl-'));
+  try {
+    const placeholderFile = path.join(tmpDir, 'placeholder.jsonc');
+    fs.writeFileSync(placeholderFile, localTpl);
+    readJsonc(placeholderFile);
+
+    const globalFile = path.join(tmpDir, 'global.jsonc');
+    fs.writeFileSync(globalFile, globalTpl);
+    const parsed = readJsonc(globalFile) as Record<string, unknown>;
+    assert.equal(parsed.executorHarness, 'cursor');
+    assert.ok(parsed.reviewer && typeof parsed.reviewer === 'object');
+    const reviewer = parsed.reviewer as Record<string, unknown>;
+    assert.ok(reviewer.fallback && typeof reviewer.fallback === 'object');
+    const fallback = reviewer.fallback as { triggers?: string[] };
+    assert.ok(Array.isArray(fallback.triggers) && fallback.triggers.includes('usage_limit'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('harness helper functions return typed fallbacks', () => {
@@ -212,4 +277,26 @@ test('reviewer configuration defaults and normalization in validateAndNormalizeC
   assert.deepEqual(custom.reviewer?.fallback.triggers, ['usage_limit', 'process_crash']);
   assert.equal(custom.reviewer?.largeDiff.thresholdChars, 1000);
   assert.equal(custom.reviewer?.permission.timeoutSeconds, 5);
+});
+
+test('validateAndNormalizeConfig uses default fallback triggers when all triggers are invalid', () => {
+  const normalized = validateAndNormalizeConfig(
+    {
+      reviewer: {
+        fallback: {
+          triggers: ['not-a-real-trigger', 'also-invalid']
+        }
+      }
+    },
+    DEFAULT_CONFIG
+  );
+  assert.deepEqual(normalized.reviewer?.fallback.triggers, [
+    'usage_limit',
+    'rate_limit',
+    'quota_exhausted',
+    'no_result',
+    'process_crash',
+    'timeout',
+    'turn_failed'
+  ]);
 });

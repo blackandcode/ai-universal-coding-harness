@@ -114,6 +114,7 @@ Missing `patch_fingerprint` must not count as a match when recovering directly t
 
 ## Non-goals
 
+- Orchestrator configuration keys, reviewer routing config, and question budgets (**Stage 04**, F-12–F-14).
 - Do not make the orchestrator run the project's quality command as a fallback.
 - Do not allow reviewer prose to replace mechanical proof.
 - Do not require real Cursor/Codex calls in tests.

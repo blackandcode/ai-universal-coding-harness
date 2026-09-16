@@ -37,6 +37,15 @@ const DEFAULT_FALLBACK_TRIGGERS: ReviewerFallbackTrigger[] = [
   'turn_failed'
 ];
 
+/**
+ * Validates merged configuration, clamps numeric bounds, and normalizes nested reviewer settings.
+ *
+ * @param raw - Untrusted merged configuration object from layered sources.
+ * @param base - Default configuration used for fallbacks and reviewer defaults.
+ * @param projectRoot - Repository root for resolving relative permission file paths.
+ * @returns Normalized {@link OrchestratorConfig}.
+ * @throws ConfigError when the top-level layer is not an object.
+ */
 export function validateAndNormalizeConfig(
   raw: unknown,
   base: OrchestratorConfig,

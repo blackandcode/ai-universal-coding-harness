@@ -159,6 +159,21 @@ test('StageSource: handles missing stage and ambiguous selectors', () => {
   }
 });
 
+test('StageSource constructor rejects missing paths and unsupported file types', () => {
+  assert.throws(
+    () => new StageSource(path.join(os.tmpdir(), 'no-such-stage-root-xyz')),
+    StageSourceError
+  );
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stage-bad-ext-'));
+  const badFile = path.join(tmpDir, 'stages.txt');
+  fs.writeFileSync(badFile, 'not a zip');
+  try {
+    assert.throws(() => new StageSource(badFile), /directory or \.zip/i);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('StageSource: validateDir flags invalid stage structures and corrupted files', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stage-val-'));
   try {

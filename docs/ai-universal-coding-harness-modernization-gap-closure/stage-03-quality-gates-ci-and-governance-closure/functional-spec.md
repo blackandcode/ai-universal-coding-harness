@@ -76,6 +76,8 @@ Update documentation that currently overstates or misstates:
 - modernization baseline provenance (`1.0.2` vs intended `v1.0.3`);
 - current source version versus historical baseline.
 
+**Out of scope for F-11:** user-facing **configuration contract** accuracy (`config.example.jsonc`, `docs/configuration.md` precedence, config key → behavior tests) is **F-14 / Stage 04**. Stage 03 F-11 remains CI, coverage, matrix, governance, and product/architecture doc accuracy only.
+
 ## Non-goals
 
 - No new product workflow features.

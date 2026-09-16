@@ -8,9 +8,21 @@ import { execSyncText, type ProcessResult } from '../core/process.js';
 import type { GitDiffCheckResult } from '../types.js';
 import { GitLifecycleError } from '../errors.js';
 
+/**
+ * Thin synchronous wrapper around `git` CLI invocations for a single working tree root.
+ */
 export class GitRepository {
+  /**
+   * @param root - Absolute path to the Git working tree.
+   */
   constructor(public root: string) {}
 
+  /**
+   * Runs a git subcommand in `root`.
+   *
+   * @param args - Git argument list (without the `git` binary name).
+   * @param allowFail - When false, non-zero exit codes throw {@link GitLifecycleError}.
+   */
   run(args: string[], allowFail = false): ProcessResult {
     const r = execSyncText('git', args, { cwd: this.root });
     if (!allowFail && r.code !== 0) {
@@ -19,30 +31,41 @@ export class GitRepository {
     return r;
   }
 
+  /** Returns the current branch name, or an empty string when detached. */
   currentBranch(): string {
     return this.run(['branch', '--show-current'], true).stdout.trim();
   }
 
+  /** Returns the full SHA of `HEAD`. */
   head(): string {
     return this.run(['rev-parse', 'HEAD']).stdout.trim();
   }
 
+  /** True when the working tree or index has uncommitted changes. */
   isDirty(): boolean {
     return Boolean(this.run(['status', '--porcelain'], true).stdout.trim());
   }
 
+  /** True when a local branch ref exists for `name`. */
   branchExists(name: string): boolean {
     return this.run(['show-ref', '--verify', '--quiet', `refs/heads/${name}`], true).code === 0;
   }
 
+  /** Checks out an existing local branch. */
   switch(name: string): void {
     this.run(['switch', name]);
   }
 
+  /** Creates and checks out a new branch from `base`. */
   createBranch(name: string, base: string): void {
     this.run(['switch', '-c', name, base]);
   }
 
+  /**
+   * Stashes tracked and untracked changes with a message label.
+   *
+   * @returns New stash commit SHA when a stash entry was created, otherwise empty string.
+   */
   stash(label: string): string {
     const before = this.run(['rev-parse', 'refs/stash'], true).stdout.trim();
     this.run(['stash', 'push', '-u', '-m', label]);
@@ -50,6 +73,7 @@ export class GitRepository {
     return after && after !== before ? after : '';
   }
 
+  /** Finds a stash commit whose message contains `label`. */
   findStash(label: string): string {
     const out = this.run(['stash', 'list', '--format=%H%x09%gs'], true).stdout;
     for (const line of out.split(/\r?\n/)) {
@@ -59,20 +83,27 @@ export class GitRepository {
     return '';
   }
 
+  /** Returns `git diff --stat HEAD` output. */
   diffStat(): string {
     return this.run(['diff', '--stat', 'HEAD'], true).stdout;
   }
 
+  /** Returns porcelain short status for all paths including untracked. */
   statusShort(): string {
     return this.run(['status', '--short', '-uall'], true).stdout;
   }
 
+  /** Returns unified diff against `HEAD`, optionally limited to `paths`. */
   diff(paths?: string[]): string {
     const args = ['diff', 'HEAD'];
     if (paths?.length) args.push('--', ...paths);
     return this.run(args, true).stdout;
   }
 
+  /**
+   * Builds a reviewer-oriented diff: tracked changes plus synthetic diffs for untracked files.
+   * Untracked content is compared against `/dev/null` via `git diff --no-index`.
+   */
   reviewDiff(paths?: string[]): string {
     let out = this.diff(paths);
     const selected = paths ? new Set(paths) : null;
@@ -91,6 +122,7 @@ export class GitRepository {
     return out;
   }
 
+  /** Unique repository-relative paths with any pending changes. */
   changedFiles(): string[] {
     const names = new Set<string>();
     for (const line of this.run(['status', '--porcelain', '-uall'], true).stdout.split(/\r?\n/)) {
@@ -101,6 +133,11 @@ export class GitRepository {
     return [...names];
   }
 
+  /**
+   * Stages all changes and creates a commit (empty commits allowed).
+   *
+   * @returns New `HEAD` SHA after the commit.
+   */
   commit(subject: string, bodyLines: string[] = []): string {
     this.run(['add', '-A']);
     const args = ['commit', '--allow-empty', '-m', subject];
@@ -111,6 +148,7 @@ export class GitRepository {
     return this.head();
   }
 
+  /** Runs `git diff --check` against `baseRef` and surfaces whitespace/conflict marker issues. */
   diffCheck(baseRef = 'HEAD'): GitDiffCheckResult {
     const r = this.run(['diff', '--check', baseRef], true);
     const out = (r.stdout + (r.stderr ? '\n' + r.stderr : '')).trim();
@@ -122,6 +160,7 @@ export class GitRepository {
     };
   }
 
+  /** Stable SHA-256 fingerprint of short status plus full review diff for resume/skipping logic. */
   patchFingerprint(): string {
     const status = this.statusShort();
     const review = this.reviewDiff();

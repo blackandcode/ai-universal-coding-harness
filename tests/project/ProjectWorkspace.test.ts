@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ProjectWorkspace } from '../../src/project/ProjectWorkspace.js';
-import { LOCK_FILE, RUNS_ROOT } from '../../src/core/paths.js';
+import { LOCK_FILE, RUNS_ROOT, LOCAL_CONFIG_FILE, LATEST_FILE } from '../../src/core/paths.js';
 import { LockConflictError } from '../../src/errors.js';
 
 test('ProjectWorkspace checks git status and initialization', () => {
@@ -106,4 +106,97 @@ test('ProjectWorkspace: resetRuns resets run directories', () => {
   // Succeeds with force
   const result = ws.resetRuns(true);
   assert.ok(result.deleted);
+});
+
+test('ProjectWorkspace: requireInitialized throws when workspace files are missing', () => {
+  const ws = new ProjectWorkspace();
+  const hadConfig = fs.existsSync(LOCAL_CONFIG_FILE);
+  const configBackup = hadConfig ? fs.readFileSync(LOCAL_CONFIG_FILE, 'utf8') : null;
+  if (hadConfig) fs.unlinkSync(LOCAL_CONFIG_FILE);
+  try {
+    assert.throws(() => ws.requireInitialized(), /not initialized/i);
+  } finally {
+    if (configBackup !== null) fs.writeFileSync(LOCAL_CONFIG_FILE, configBackup, 'utf8');
+    else ws.init(false);
+  }
+});
+
+test('ProjectWorkspace: deleteRun validates run id and existence', () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  if (fs.existsSync(LOCK_FILE)) {
+    fs.writeFileSync(LOCK_FILE, JSON.stringify({ pid: 0, run_id: 'unit-test-neutralized' }));
+  }
+
+  assert.throws(() => ws.deleteRun('', true), /--run/);
+  assert.throws(() => ws.deleteRun('bad id!', true), /Invalid run id/);
+  assert.throws(() => ws.deleteRun('missing-run-xyz', true), /not found/i);
+});
+
+test('ProjectWorkspace: listRuns tolerates missing runs root and corrupt run.json', () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  const corruptId = `corrupt-${Date.now()}`;
+  const corruptDir = path.join(RUNS_ROOT, corruptId);
+  fs.mkdirSync(corruptDir, { recursive: true });
+  fs.writeFileSync(path.join(corruptDir, 'run.json'), 'not-json');
+
+  try {
+    const listed = ws.listRuns();
+    const corrupt = listed.find((r) => r.id === corruptId);
+    assert.ok(corrupt);
+    assert.equal(corrupt?.status, undefined);
+  } finally {
+    fs.rmSync(corruptDir, { recursive: true, force: true });
+  }
+
+  try {
+    fs.chmodSync(RUNS_ROOT, 0o755);
+    fs.rmSync(RUNS_ROOT, { recursive: true, force: true });
+  } catch {
+    // Another test may hold the runs directory read-only while integration runs execute.
+  }
+  assert.deepEqual(ws.listRuns(), []);
+  ws.init(false);
+});
+
+test('ProjectWorkspace: deleteRun rewrites latest pointer to next newest run', () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  // Neutralize a live lock from parallel orchestrator tests (pid 0 skips active-process check).
+  if (fs.existsSync(LOCK_FILE)) {
+    fs.writeFileSync(LOCK_FILE, JSON.stringify({ pid: 0, run_id: 'unit-test-neutralized' }));
+  }
+
+  const older = `older-${Date.now()}`;
+  const newer = `newer-${Date.now() + 1}`;
+  for (const id of [older, newer]) {
+    const dir = path.join(RUNS_ROOT, id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'run.json'),
+      JSON.stringify({ version: 1, run_id: id, status: 'completed' })
+    );
+  }
+  fs.writeFileSync(LATEST_FILE, `${newer}\n`);
+
+  try {
+    ws.deleteRun(newer, true);
+    assert.equal(fs.readFileSync(LATEST_FILE, 'utf8').trim(), older);
+  } finally {
+    for (const id of [older, newer]) {
+      fs.rmSync(path.join(RUNS_ROOT, id), { recursive: true, force: true });
+    }
+    fs.rmSync(LATEST_FILE, { force: true });
+  }
+});
+
+test('ProjectWorkspace: ensureGitExclude is idempotent', () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+  ws.ensureGitExclude();
+  ws.ensureGitExclude();
 });

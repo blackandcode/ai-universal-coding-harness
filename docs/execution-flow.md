@@ -36,7 +36,11 @@ flowchart TD
     Quality --> Evidence[Write evidence.json]
     Evidence --> Corroborate[Orchestrator cross-checks ACP/tool exit results]
     Corroborate -->|Mismatch/fail| Implement
-    Corroborate -->|Green| HumanReview[Reviewer final patch/evidence review]
+    Corroborate -->|Green| PersistReview[Persist phase review in stage state]
+    PersistReview --> BuildPayload[ReviewPayloadBuilder: diff_stat, metrics, bounded diff]
+    BuildPayload --> HumanReview[ReviewerRouter final patch/evidence review]
+    HumanReview -->|NEEDS_CONTEXT| ContextLoop[Rebuild payload with requested_paths prioritized]
+    ContextLoop --> HumanReview
     HumanReview -->|REWORK| Implement
     HumanReview -->|APPROVE| Commit[Commit exact stage folder name]
 ```
@@ -56,6 +60,26 @@ Permission decisions have no stage-ending quota. A denied operation means only:
 > that exact operation is not approved; choose another safe implementation path.
 
 It never means “block the whole stage.”
+
+Permission referrals use the dedicated `reviewer.permission` role (fast model, short timeout), not the primary Codex reviewer.
+
+## Final review payload and context bounding
+
+Before `reviewImplementation`, the orchestrator sets `phase: 'review'` so interrupted runs can resume at review without re-running quality when corroborated evidence still matches the patch fingerprint.
+
+`ReviewPayloadBuilder` assembles the reviewer input:
+
+- `diff_stat` and `changed_files` so every touched file remains visible even when the diff body is truncated
+- `diff_metrics` (`char_count`, `estimated_tokens`, `truncated`, `original_chars`, optional `prioritized_paths`)
+- Unified diff bounded by `maxDiffChars` from configuration
+
+If the reviewer returns `NEEDS_CONTEXT` with `requested_paths`, the orchestrator builds a follow-up payload that prioritizes those paths at the start of the diff budget, then calls `reviewImplementation` again.
+
+## Reviewer resilience during execution
+
+Plan review, questions, permissions, and final review go through `ReviewerRouter`. When the primary or large-diff reviewer hits a configured fallback trigger (for example usage limits or a crash without `result.json`), the router transparently retries with the fallback adapter when enabled. The terminal UI logs `reviewer.fallback`; persisted verdict JSON may record `_orchestrator_meta` with `executed_by`, `fallback_from`, and `trigger`.
+
+Unrecoverable failures are classified into run statuses such as `external_dependency` (quota / rate limits) or `retryable_error` (timeouts, process crashes) so `ai-harness resume` can continue after the underlying issue is resolved.
 
 ## Quality evidence corroboration and recovery
 
@@ -78,7 +102,7 @@ flowchart TD
   end
 
   subgraph ReviewerEvaluation [3. Reviewer Final Evaluation]
-    Corroborated --> RevPrompt[Reviewer receives corroborated evidence + git diff]
+    Corroborated --> RevPrompt[ReviewerRouter receives bounded payload + corroborated evidence]
     RevPrompt --> Verdict{Reviewer verdict}
     Verdict -->|APPROVE| CommitStage[Commit stage to dedicated AI branch]
     Verdict -->|REWORK| NextAttempt[Increment attempt & rerun executor with feedback]

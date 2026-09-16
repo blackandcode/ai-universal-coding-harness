@@ -6,7 +6,7 @@
 
 **One CLI for autonomous, staged software delivery across coding-agent harnesses.**
 
-AI Universal Coding Harness connects an **executor** that plans/codes/tests with a **reviewer** that makes human-like decisions from evidence. It ships with **Cursor + Gemini 3.8 Flash High** as the default executor and **Codex + GPT-6 Astra** as the default reviewer, while keeping the harness layer pluggable for future agents.
+AI Universal Coding Harness connects an **executor** that plans/codes/tests with a **reviewer** that makes human-like decisions from evidence. It ships with **Cursor + Gemini 3.8 Flash High** as the default executor and **Codex + GPT-6 Astra** as the primary reviewer, with automatic **ReviewerRouter** failover, large-diff routing, and fast permission review—while keeping the harness layer pluggable for future agents.
 
 ```text
 Stage specs → plan → implement → quality gate → review → one Git commit per stage
@@ -105,7 +105,8 @@ npm run check          # Alias for verify
 ## Why
 
 - Harness-neutral TypeScript architecture.
-- Autonomous permissions and question routing.
+- Autonomous permissions and question routing, including a dedicated fast permission reviewer role.
+- Multi-tier reviewer routing with configurable fallback triggers and diff context bounding.
 - Stable Ink terminal UI plus raw audit logs.
 - Human-readable plans, decisions, execution evidence, and reviews.
 - One dedicated AI branch per run.
@@ -130,7 +131,7 @@ Start with [docs/README.md](docs/README.md).
 
 ## Release
 
-Current version: **2.1.2**. See [CHANGELOG.md](CHANGELOG.md).
+Current version: **2.1.3**. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

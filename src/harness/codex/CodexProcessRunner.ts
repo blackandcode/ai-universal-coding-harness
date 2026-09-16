@@ -18,6 +18,9 @@ import { ProcessExecutionError } from '../../errors.js';
 import { parseCodexEventLine } from './CodexEventParser.js';
 import { CodexResultParser } from './CodexResultParser.js';
 
+/**
+ * Runs Codex CLI reviewer subprocesses in isolated sandboxes and persists decision artifacts.
+ */
 export class CodexProcessRunner {
   /**
    * Executes Codex CLI with structured JSON-RPC / schema-constrained arguments.

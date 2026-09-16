@@ -45,17 +45,23 @@ export interface RunSummary {
   branch?: string;
 }
 
+/**
+ * Manages `.ai-orchestrator/` initialization, Git exclude rules, and run history maintenance.
+ */
 export class ProjectWorkspace {
   readonly root = ROOT;
 
+  /** True when `ROOT` is inside a Git work tree. */
   isGitRepository(): boolean {
     return git(['rev-parse', '--is-inside-work-tree']).status === 0;
   }
 
+  /** True when local config and state root exist (post-`ai-harness init`). */
   isInitialized(): boolean {
     return fs.existsSync(LOCAL_CONFIG_FILE) && fs.existsSync(STATE_ROOT);
   }
 
+  /** Throws when the workspace has not been initialized for harness runs. */
   requireInitialized(): void {
     if (!this.isInitialized()) {
       throw new Error(
@@ -64,6 +70,11 @@ export class ProjectWorkspace {
     }
   }
 
+  /**
+   * Creates the local `.ai-orchestrator` tree, default config templates, and Git exclude entry.
+   *
+   * @param force - Overwrite README and placeholder config when true.
+   */
   init(force = false): WorkspaceInitResult {
     if (!this.isGitRepository()) {
       throw new Error(
@@ -98,6 +109,7 @@ export class ProjectWorkspace {
     };
   }
 
+  /** Ensures `.ai-orchestrator/` is listed in `.git/info/exclude` (never committed). */
   ensureGitExclude(): void {
     const gitDirRes = git(['rev-parse', '--git-dir']);
     if (gitDirRes.status !== 0) return;
@@ -115,6 +127,7 @@ export class ProjectWorkspace {
     }
   }
 
+  /** Lists run folders under `runs/`, newest ids first, with status from `run.json` when present. */
   listRuns(): RunSummary[] {
     if (!fs.existsSync(RUNS_ROOT)) return [];
     return fs
@@ -137,6 +150,10 @@ export class ProjectWorkspace {
       .sort((a, b) => b.id.localeCompare(a.id));
   }
 
+  /**
+   * Throws {@link LockConflictError} when a live orchestrator lock file references a running PID.
+   * Stale locks from dead processes are ignored.
+   */
   assertNoActiveRun(): void {
     if (!fs.existsSync(LOCK_FILE)) return;
     try {
@@ -166,6 +183,11 @@ export class ProjectWorkspace {
     }
   }
 
+  /**
+   * Deletes all run history and runtime trees while preserving local config and permissions.
+   *
+   * @param force - Required safety flag; refuses without it.
+   */
   resetRuns(force = false): { deleted: string; preserved: string[] } {
     this.requireInitialized();
     if (!force) throw new Error('Refusing to delete run history without --force.');
@@ -190,6 +212,11 @@ export class ProjectWorkspace {
     return { deleted: 'all run history', preserved: [LOCAL_CONFIG_FILE, LOCAL_PERMISSIONS_FILE] };
   }
 
+  /**
+   * Deletes a single run directory and reconciles the `latest` pointer.
+   *
+   * @returns The deleted run id on success.
+   */
   deleteRun(id: string, force = false): string {
     this.requireInitialized();
     if (!id) throw new Error('--run <run-id> is required.');

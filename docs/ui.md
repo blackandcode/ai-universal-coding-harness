@@ -12,7 +12,7 @@ flowchart TD
     ACP[Cursor ACP Protocol Stream: message, thought, tool calls] --> Norm[AcpEventNormalizer]
     Orch[Orchestrator: run, stage, phase shifts] --> Bus[EventBus]
     Qual[Quality Gate: PASS / FAIL results] --> Bus
-    Rev[Codex Reviewer: verdicts & feedback] --> Bus
+    Rev[ReviewerRouter: verdicts, fallback, feedback] --> Bus
     Norm --> Bus
   end
 
@@ -43,6 +43,10 @@ flowchart TD
     Modals --> LogsModal[l: LogsPanel - recent logs & errors]
   end
 ```
+
+## Reviewer failover messages
+
+When `ReviewerRouter` switches to a fallback adapter, the event bus emits `reviewer.fallback`. The UI reducer appends a system log line with the trigger, failed harness/model, fallback harness/model, and optional reason. Look for lines such as `Reviewer failover [usage_limit] from codex (...) to cursor (...)` in the dashboard logs panel (`l`) or in `ui-events.jsonl` under the run directory.
 
 ## Interactive Panels
 

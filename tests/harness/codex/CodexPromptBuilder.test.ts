@@ -42,3 +42,18 @@ test('CodexPromptBuilder: supports readonlyProject and extraPromptText', () => {
   assert.ok(prompt.includes('You may inspect repository files using read-only tooling'));
   assert.ok(prompt.includes('Special Reviewer Instruction'));
 });
+
+test('CodexPromptBuilder: defaults omitted stage context fields to empty strings', () => {
+  const prompt = CodexPromptBuilder.buildPrompt({
+    kind: 'question',
+    stageName: '',
+    stageContext: '',
+    skillsText: '',
+    payload: { q: 1 },
+    readonlyProject: false
+  });
+
+  assert.ok(prompt.includes('STAGE: \n'));
+  assert.ok(prompt.includes('FROZEN STAGE INPUTS:\n\n'));
+  assert.ok(prompt.includes('RELEVANT SKILL DIGEST:\n\n'));
+});

@@ -171,6 +171,69 @@ test('parseCliArgs parses run and resume with options', () => {
   });
 });
 
+test('parseCliArgs parses recover apply/dry-run and run harness flags', () => {
+  assert.deepEqual(
+    parseCliArgs(['recover', '--run', 'run-abc', '--stage', '03-feature', '--apply']),
+    {
+      kind: 'recover',
+      runId: 'run-abc',
+      stageName: '03-feature',
+      apply: true,
+      force: false
+    }
+  );
+
+  assert.deepEqual(
+    parseCliArgs([
+      'recover',
+      '--run',
+      'run-abc',
+      '--stage',
+      '03',
+      '--dry-run',
+      '--force',
+      '--project',
+      '/tmp/proj'
+    ]),
+    {
+      kind: 'recover',
+      runId: 'run-abc',
+      stageName: '03',
+      apply: false,
+      force: true
+    }
+  );
+
+  const runCmd = parseCliArgs([
+    'run',
+    '--stage-source',
+    'stages',
+    '--stage',
+    '01',
+    '--executor-harness',
+    'cursor',
+    '--reviewer-harness',
+    'codex',
+    '--quality-cmd',
+    'npm run verify',
+    '--dry-run',
+    '--apply',
+    '--cwd',
+    '/workspace'
+  ]);
+  assert.equal(runCmd.kind, 'run');
+  if (runCmd.kind === 'run') {
+    assert.equal(runCmd.executorHarness, 'cursor');
+    assert.equal(runCmd.reviewerHarness, 'codex');
+    assert.equal(runCmd.qualityCmd, 'npm run verify');
+  }
+});
+
+test('parseCliArgs treats --help and --version as global overrides inside run argv', () => {
+  assert.deepEqual(parseCliArgs(['run', '--help']), { kind: 'help' });
+  assert.deepEqual(parseCliArgs(['resume', '--version']), { kind: 'version' });
+});
+
 test('parseCliArgs throws on missing required options or unknown flags', () => {
   assert.throws(
     () => parseCliArgs(['run']),

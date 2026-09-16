@@ -15,6 +15,7 @@ import { ToolActivity } from '../../src/ui/components/ToolActivity.js';
 import { Footer } from '../../src/ui/components/Footer.js';
 import { ListPanel } from '../../src/ui/components/ListPanel.js';
 import { FocusPanel } from '../../src/ui/components/FocusPanel.js';
+import { ChangesPanel } from '../../src/ui/components/ChangesPanel.js';
 import { App } from '../../src/ui/App.js';
 import type { UiEvent } from '../../src/types.js';
 import type { UiPhaseMap } from '../../src/ui/types.js';
@@ -55,6 +56,59 @@ test('Header renders title, branch, stage metadata, and phase icons', () => {
   assert.ok(frame.includes('PLAN'));
   assert.ok(frame.includes('IMPLEMENT'));
   unmount();
+});
+
+test('Header renders completed status with green border styling', () => {
+  const { lastFrame, unmount } = render(
+    <Header
+      status="completed"
+      meta={{ branch: 'ai-done', executorLabel: 'cursor', reviewerLabel: 'codex' }}
+      currentStage="stage-09"
+      stageIndex={9}
+      stageTotal={9}
+      attempt={1}
+      phase={DEFAULT_PHASES}
+      height={8}
+      width={80}
+    />
+  );
+  const frame = lastFrame() ?? '';
+  assert.ok(frame.includes('completed'));
+  assert.ok(frame.includes('ai-done'));
+  unmount();
+});
+
+test('Header renders failed status and empty stage metadata', () => {
+  const { lastFrame, unmount } = render(
+    <Header
+      status="failed"
+      meta={{ branch: '', executorLabel: '', reviewerLabel: '' }}
+      currentStage=""
+      stageIndex={0}
+      stageTotal={0}
+      attempt={0}
+      phase={DEFAULT_PHASES}
+      height={8}
+      width={80}
+    />
+  );
+
+  const frame = lastFrame() ?? '';
+  assert.ok(frame.includes('Preparing run'));
+  assert.ok(frame.includes('Branch: —'));
+  unmount();
+});
+
+test('ChangesPanel renders placeholder and file list states', () => {
+  const empty = render(<ChangesPanel changedFiles={[]} height={6} />);
+  assert.ok((empty.lastFrame() ?? '').includes('No changed-file evidence yet'));
+  empty.unmount();
+
+  const populated = render(<ChangesPanel changedFiles={['src/a.ts', 'src/b.ts']} height={6} />);
+  const frame = populated.lastFrame() ?? '';
+  assert.ok(frame.includes('src/a.ts'));
+  assert.ok(frame.includes('src/b.ts'));
+  populated.unmount();
 });
 
 test('FocusPreview renders bordered box and bounded text lines', () => {
@@ -366,6 +420,14 @@ test('App handles focus stream scrolling keys', async () => {
 
   // Press down arrow
   stdin.write('\u001B[B');
+  await new Promise((r) => setTimeout(r, 40));
+
+  stdin.write('\u001B[5~');
+  await new Promise((r) => setTimeout(r, 40));
+  frame = lastFrame() ?? '';
+  assert.ok(frame.includes('paused'));
+
+  stdin.write('\u001B[6~');
   await new Promise((r) => setTimeout(r, 40));
 
   // Press End key to resume follow

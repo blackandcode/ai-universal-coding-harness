@@ -107,6 +107,7 @@ Tests may use narrowly justified test-double casts where unavoidable, but produc
 - No change to reviewer authority.
 - No new runtime validation library unless there is a demonstrated benefit over small local guards.
 - Do not combine Stage 02 evidence/recovery changes here except where typing is required to enable them.
+- Do not enforce `maxUniqueQuestionsPerStage`, apply `reviewer.<role>` overrides to Codex/Cursor runtime behavior, add config contract tests, or update `config.example.jsonc` / `docs/configuration.md` precedence — **owned by Stage 04 (F-12–F-14)**. Stage 01 may add typed fields on `HarnessContext` only where needed for typing, not behavioral wiring.
 
 ## Acceptance criteria
 

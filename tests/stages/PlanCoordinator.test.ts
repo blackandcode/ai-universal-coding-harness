@@ -71,6 +71,24 @@ function fixture() {
   };
 }
 
+test('duplicate REPLAN hash returns needs_revision before duplicate consolidation', async () => {
+  const f = fixture();
+  const p = new PlanCoordinator({
+    runId: 'r',
+    stage: f.stage,
+    stageContext: 'all frozen specs',
+    reviewer: f.reviewer,
+    store: f.store
+  });
+  const plan = 'Identical plan text for duplicate detection.';
+  const first = await p.submit(plan);
+  assert.equal(first.accepted, false);
+  const second = await p.submit(plan);
+  assert.equal(second.outcome, 'needs_revision');
+  assert.equal(second.accepted, false);
+  assert.ok(second.feedback);
+});
+
 test('three regular reviews plus one final consolidation always proceeds', async () => {
   const f = fixture();
   const p = new PlanCoordinator({
@@ -205,4 +223,118 @@ test('PlanCoordinator: forceAccept creates approved plan with carryover', () => 
   const acceptedPlan = p.forceAccept('emergency plan');
   assert.equal(acceptedPlan, 'emergency plan');
   assert.ok(fs.existsSync(path.join(f.root, 'PLAN.md')));
+});
+
+test('PlanCoordinator: accepts identical cached plan when reviewer already approved', async () => {
+  const f = fixture();
+  const reviewer = {
+    reviewPlan: async (): Promise<PlanReviewVerdict> => ({
+      verdict: 'APPROVE',
+      summary: 'ok',
+      missing_items: [],
+      feedback_for_cursor: ''
+    })
+  } as unknown as ReviewerHarness;
+  const p = new PlanCoordinator({
+    runId: 'r',
+    stage: f.stage,
+    stageContext: 'specs',
+    reviewer,
+    store: f.store
+  });
+
+  const first = await p.submit('stable approved plan text');
+  assert.equal(first.accepted, true);
+
+  const resubmit = await p.submit('stable approved plan text');
+  assert.equal(resubmit.accepted, true);
+  assert.equal(resubmit.outcome, 'accepted');
+});
+
+test('PlanCoordinator: final consolidation reviewer failure falls back to autonomous approval', async () => {
+  const f = fixture();
+  let calls = 0;
+  const reviewer = {
+    reviewPlan: async (
+      _input: unknown,
+      opts?: { finalConsolidation?: boolean }
+    ): Promise<PlanReviewVerdict> => {
+      calls++;
+      if (opts?.finalConsolidation) {
+        throw new Error('reviewer offline');
+      }
+      return {
+        verdict: 'REPLAN',
+        summary: 'needs work',
+        missing_items: ['x'],
+        feedback_for_cursor: 'fix x'
+      };
+    }
+  } as unknown as ReviewerHarness;
+
+  const p = new PlanCoordinator({
+    runId: 'r',
+    stage: f.stage,
+    stageContext: 'specs',
+    reviewer,
+    store: f.store
+  });
+
+  let decision: PlanDecision | null = null;
+  for (let i = 0; i < 5; i++) {
+    decision = await p.submit(`plan iteration ${i}`);
+    if (decision.accepted) break;
+  }
+  assert.ok(decision?.accepted);
+  assert.ok(calls >= 4);
+});
+
+test('PlanCoordinator: reusable returns null when spec digest changes', async () => {
+  const f = fixture();
+  const reviewer = {
+    reviewPlan: async (): Promise<PlanReviewVerdict> => ({
+      verdict: 'APPROVE',
+      summary: 'ok',
+      missing_items: [],
+      feedback_for_cursor: ''
+    })
+  } as unknown as ReviewerHarness;
+  const p = new PlanCoordinator({
+    runId: 'r',
+    stage: f.stage,
+    stageContext: 'specs',
+    reviewer,
+    store: f.store
+  });
+  await p.submit('digest-bound plan');
+
+  const changedStage: SelectedStage = {
+    ...f.stage,
+    manifest: {
+      ...f.stage.manifest,
+      sha256: { ...f.stage.manifest.sha256, 'functional-spec.md': 'changed' }
+    }
+  };
+  const p2 = new PlanCoordinator({
+    runId: 'r',
+    stage: changedStage,
+    stageContext: 'specs',
+    reviewer,
+    store: f.store
+  });
+  assert.equal(p2.reusable(), null);
+});
+
+test('PlanCoordinator: forceAccept with empty plan uses default template', () => {
+  const f = fixture();
+  const p = new PlanCoordinator({
+    runId: 'r',
+    stage: f.stage,
+    stageContext: 'specs',
+    reviewer: f.reviewer,
+    store: f.store
+  });
+  const plan = p.forceAccept('   ');
+  assert.ok(plan.includes('functional-spec.md'));
+  assert.ok(fs.existsSync(path.join(f.root, 'approved-plan.md')));
 });

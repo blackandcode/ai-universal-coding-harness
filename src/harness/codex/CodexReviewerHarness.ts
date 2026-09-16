@@ -19,6 +19,9 @@ import { CodexPromptBuilder } from './CodexPromptBuilder.js';
 import { CodexProcessRunner } from './CodexProcessRunner.js';
 import type { CodexDecisionKind } from './types.js';
 
+/**
+ * OpenAI Codex CLI adapter implementing the reviewer harness contract.
+ */
 export class CodexReviewerHarness implements ReviewerHarness {
   static defaults = {
     binary: 'codex',
@@ -53,6 +56,11 @@ export class CodexReviewerHarness implements ReviewerHarness {
     model: this.model
   };
 
+  /**
+   * Applies harness context overrides for binary, model, and display labels.
+   *
+   * @param ctx - Run-scoped harness context (run dir, stage, events, optional reviewer overrides).
+   */
   constructor(private ctx: any) {
     this.binary = ctx?.reviewerBinary || this.binary;
     this.model = ctx?.reviewerModel || this.model;
@@ -77,6 +85,11 @@ export class CodexReviewerHarness implements ReviewerHarness {
 
   /**
    * Internal coordinator delegating prompt construction and runner execution.
+   *
+   * @param kind - Reviewer decision kind (plan, question, permission, final).
+   * @param payload - Structured input forwarded to the prompt builder.
+   * @param schemaFile - JSON Schema filename under `schemas/`.
+   * @param extra - Additional reviewer instructions appended to the prompt.
    */
   private async decide<T>(
     kind: CodexDecisionKind,
@@ -118,6 +131,9 @@ export class CodexReviewerHarness implements ReviewerHarness {
 
   /**
    * Reviews executor plan against frozen stage specifications and architecture invariants.
+   *
+   * @param input - Plan review payload from the orchestrator.
+   * @param opts - When `finalConsolidation` is set, instructs the reviewer not to request another replan cycle.
    */
   reviewPlan(input: any, opts: any = {}): Promise<PlanReviewVerdict> {
     const extra = opts.finalConsolidation
@@ -128,6 +144,8 @@ export class CodexReviewerHarness implements ReviewerHarness {
 
   /**
    * Answers blocking questions posed by the executor.
+   *
+   * @param input - Question payload including options and executor context.
    */
   answerQuestions(input: any): Promise<QuestionVerdict> {
     return this.decide<QuestionVerdict>(
@@ -140,6 +158,8 @@ export class CodexReviewerHarness implements ReviewerHarness {
 
   /**
    * Classifies and decides whether a requested permission action is safe.
+   *
+   * @param input - Permission request describing the proposed operation.
    */
   decidePermission(input: any): Promise<PermissionVerdict> {
     return this.decide<PermissionVerdict>(
@@ -152,6 +172,8 @@ export class CodexReviewerHarness implements ReviewerHarness {
 
   /**
    * Reviews final implementation diff and evidence claims against frozen requirements.
+   *
+   * @param input - Final review payload including diff, evidence, and plan carryover.
    */
   reviewImplementation(input: any): Promise<FinalVerdict> {
     return this.decide<FinalVerdict>(

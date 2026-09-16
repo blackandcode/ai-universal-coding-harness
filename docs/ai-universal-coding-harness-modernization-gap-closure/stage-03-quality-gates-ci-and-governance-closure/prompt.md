@@ -11,7 +11,7 @@ Implement **Stage 03: Quality Gates, CI and Governance Closure**.
 5. Test exact Node 24.18.0 on Ubuntu, Windows and macOS; use one extra Ubuntu Node 24 latest job for forward compatibility.
 6. Repair the broken decision-log provenance and create/update `IMPLEMENTATION-STATUS.md`.
 7. Add local Markdown-link checking so broken internal documentation links fail quality gates.
-8. Reconcile docs with actual code and CI; do not leave aspirational claims presented as already implemented facts.
+8. Reconcile docs with actual code and CI; do not leave aspirational claims presented as already implemented facts. Do not fix `config.example.jsonc` or `reviewer.primary` runtime precedence here — defer to **Stage 04**.
 9. Retain npm Trusted Publishing/OIDC.
 10. Update `CHANGELOG.md`, `DECISIONS.md`, and `IMPLEMENTATION-STATUS.md`.
 

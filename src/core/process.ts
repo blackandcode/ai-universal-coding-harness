@@ -19,6 +19,7 @@ export interface ProcessResult {
   readonly code: number;
 }
 
+/** Builds a normalized {@link ProcessResult} with a legacy `code` getter alias. */
 export function createProcessResult(
   exitCode: number | null,
   signal: NodeJS.Signals | null,
@@ -55,6 +56,7 @@ export interface ProcessOptions {
   onStderrLine?: (line: string) => void;
 }
 
+/** Synchronously spawns a subprocess and captures stdout/stderr as UTF-8 text. */
 export function execSyncText(
   cmd: string,
   args: string[] = [],
@@ -79,6 +81,10 @@ export function execSyncText(
   );
 }
 
+/**
+ * Spawns a subprocess with optional stdin, line callbacks, timeout, and {@link AbortSignal} cancellation.
+ * Rejects with {@link ProcessExecutionError} on timeout or abort.
+ */
 export async function runProcess(
   cmd: string,
   args: string[],
@@ -202,6 +208,7 @@ export async function runProcess(
   });
 }
 
+/** Runs a shell string via `spawn(..., { shell: true })` with the same lifecycle semantics as {@link runProcess}. */
 export async function runShellCommand(
   command: string,
   opts: ProcessOptions = {}
@@ -321,6 +328,7 @@ export async function runShellCommand(
   });
 }
 
+/** Returns whether an executable exists on `PATH` (or at an absolute path). */
 export function commandExists(name: string): boolean {
   if (!name) return false;
   if (path.isAbsolute(name) || name.includes('/') || name.includes('\\')) {

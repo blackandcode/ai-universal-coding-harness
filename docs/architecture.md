@@ -12,13 +12,15 @@ flowchart TD
   Engine --> Exec[Executor Harness]
   Exec -->|plan / code / tests / quality| Project
   Exec -->|questions / permissions| Engine
-  Engine --> Review[Reviewer Harness]
-  Review -->|decisions only| Engine
+  Engine --> Router[ReviewerRouter]
+  Router --> ReviewAdapters[Primary / largeDiff / permission / fallback harnesses]
+  ReviewAdapters -->|decisions only| Engine
   Exec --> Evidence[Execution evidence]
   Evidence --> Verify[Mechanical evidence verifier]
-  Verify --> Review
-  Review -->|APPROVE| Commit[One stage-named Git commit]
-  Review -->|REWORK| Exec
+  Verify --> Payload[ReviewPayloadBuilder bounds diff + metrics]
+  Payload --> Router
+  Router -->|APPROVE| Commit[One stage-named Git commit]
+  Router -->|REWORK| Exec
   Commit --> Next[Next explicitly selected stage]
 ```
 
@@ -57,7 +59,28 @@ src/
 └── ui/            semantic events and Ink presentation
 ```
 
-The orchestration engine depends on harness interfaces, not Cursor/Codex implementations. The default registry currently provides `cursor` and `codex`.
+The orchestration engine depends on harness interfaces, not Cursor/Codex implementations. The default registry provides `cursor` (executor and reviewer) and `codex` (reviewer). Review dispatch, failover, and diff bounding live in `src/orchestrator/services/` (`ReviewerRouter`, `ReviewPayloadBuilder`); adapters remain unaware of Git lifecycle.
+
+## Reviewer dispatch and failover
+
+```mermaid
+flowchart TD
+  Orch[Orchestrator review phase] --> Builder[ReviewPayloadBuilder]
+  Builder --> Router[ReviewerRouter]
+  Router --> Role{Role dispatch}
+  Role -->|plan / questions| Primary[primary Codex]
+  Role -->|permission| Perm[permission Cursor fast model]
+  Role -->|final review| Size{diff length}
+  Size -->|above threshold| Large[largeDiff Cursor]
+  Size -->|within threshold| Primary
+  Primary -->|classified failure| Classifier[ReviewerErrorClassifier]
+  Large -->|classified failure| Classifier
+  Classifier -->|trigger enabled| Fallback[fallback Cursor]
+  Classifier -->|no failover| Error[external_dependency or retryable_error]
+  Fallback --> Verdict[Verdict + optional _orchestrator_meta]
+```
+
+Orchestration state (phase, attempt, fingerprints) stays in the engine; harness adapters only run provider-specific subprocesses and return structured verdicts.
 
 ## Target project context
 

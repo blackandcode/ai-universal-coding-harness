@@ -23,7 +23,7 @@ import { HarnessRegistry } from '../../src/harness/registry.js';
 import { GitRepository } from '../../src/git/GitRepository.js';
 import { RecoveryManager } from '../../src/orchestrator/RecoveryManager.js';
 import { RunStateStore } from '../../src/state/RunStateStore.js';
-import { removeTree } from '../../src/core/fs.js';
+import { removeTree, sha256Text } from '../../src/core/fs.js';
 import { CONFIG } from '../../src/core/config.js';
 import type { ExecutorSession } from '../../src/harness/types.js';
 import type { CommandObservation, FinalVerdict, ExecutionEvidence } from '../../src/types.js';
@@ -1029,6 +1029,133 @@ test('orchestrator integration: handles executor question and reviewer context r
   }
 });
 
+test('orchestrator integration: reuses stored approved plan without replanning', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-reuse-plan');
+  const eventLog = path.join(repoDir, '.ai-orchestrator', 'reuse-plan-events.jsonl');
+  const events = new EventBus(eventLog);
+  const store = new RunStateStore(path.join(repoDir, '.ai-orchestrator', 'runs'));
+
+  try {
+    const registry = new HarnessRegistry();
+    let planPrompts = 0;
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => {
+        const observations: CommandObservation[] = [];
+        return {
+          id: 'reuse-plan-session',
+          setMode: async () => {},
+          setQualityEpoch: () => {},
+          observedCommands: () => observations,
+          prompt: async (promptText) => {
+            if (promptText.includes('Work in PLAN mode')) {
+              planPrompts++;
+              await opts.callbacks.onPlan('should-not-be-used', {});
+            }
+            const runtimeDir = path.join(
+              repoDir,
+              '.ai-orchestrator',
+              'stage-runtime',
+              'stage-01-reuse-plan'
+            );
+            fs.mkdirSync(runtimeDir, { recursive: true });
+            fs.writeFileSync(
+              path.join(runtimeDir, 'evidence.json'),
+              JSON.stringify({
+                stage: 'stage-01-reuse-plan',
+                attempt: 1,
+                status: 'PASS',
+                quality_command: 'npm test',
+                quality_exit_code: 0,
+                git_diff_check_exit_code: 0,
+                focused_tests: [],
+                quality_summary: 'ok',
+                changed_files: [],
+                unresolved: []
+              })
+            );
+            observations.push(
+              {
+                observation_id: 'obs-q',
+                session_id: 'reuse-plan-session',
+                tool_id: 'tool-q',
+                tool_call_id: 'tool-q',
+                sequence: 1,
+                timestamp: new Date().toISOString(),
+                source: 'acp',
+                command: 'npm test',
+                normalized_command: 'npm test',
+                command_confidence: 'high',
+                status: 'completed',
+                exit_code: 0
+              },
+              {
+                observation_id: 'obs-d',
+                session_id: 'reuse-plan-session',
+                tool_id: 'tool-d',
+                tool_call_id: 'tool-d',
+                sequence: 2,
+                timestamp: new Date().toISOString(),
+                source: 'acp',
+                command: 'git diff --check',
+                normalized_command: 'git diff --check',
+                command_confidence: 'high',
+                status: 'completed',
+                exit_code: 0
+              }
+            );
+            fs.writeFileSync(path.join(repoDir, 'done.txt'), 'ok\n');
+            return { text: 'done', result: {} };
+          },
+          stop: async () => {}
+        };
+      }
+    }));
+
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => {
+        throw new Error('reviewPlan should not run when plan is reused');
+      },
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [] }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'ok' }),
+      reviewImplementation: async () => ({ verdict: 'APPROVE', summary: 'ok' })
+    }));
+
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test'
+    });
+
+    const stageName = state.stages[0].name;
+    const cachedPlan = 'Previously approved complete plan for reuse.';
+    const stageDir = store.stageDir(state.run_id, stageName);
+    fs.mkdirSync(stageDir, { recursive: true });
+    fs.writeFileSync(path.join(stageDir, 'approved-plan.md'), `${cachedPlan}\n`);
+    store.saveStage(state.run_id, stageName, {
+      phase: 'implementation',
+      plan_status: 'APPROVED',
+      plan_sha256: sha256Text(cachedPlan),
+      spec_sha256: sha256Text(JSON.stringify(state.stages[0].manifest.sha256 || {}))
+    });
+
+    const finalState = await orchestrator.run(state);
+    assert.equal(finalState.status, 'completed');
+    assert.equal(planPrompts, 0);
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
 test('orchestrator integration: prepareFrozenInputs sets up read-only stage inputs', () => {
   const repoDir = createTestRepo();
   const stagesDir = createStageSource(repoDir, 'stage-01-frozen');
@@ -1245,6 +1372,487 @@ test('orchestrator integration: reviewer fallback failover on usage limit enable
       CONFIG.reviewer = origReviewer;
     }
   } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: non-green quality evidence skips reviewer and retries implementation', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-quality-retry');
+  const eventLog = path.join(repoDir, '.ai-orchestrator', 'quality-retry-events.jsonl');
+  const events = new EventBus(eventLog);
+
+  try {
+    const registry = new HarnessRegistry();
+    let implPrompts = 0;
+    let reviewerCalls = 0;
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => {
+        const observations: CommandObservation[] = [];
+        return {
+          id: 'quality-retry-session',
+          setMode: async () => {},
+          setQualityEpoch: () => {},
+          observedCommands: () => observations,
+          prompt: async (promptText) => {
+            if (promptText.includes('Work in PLAN mode')) {
+              await opts.callbacks.onPlan('Quality retry plan', {});
+              return { text: 'Plan ok', result: {} };
+            }
+            implPrompts++;
+            const runtimeDir = path.join(
+              repoDir,
+              '.ai-orchestrator',
+              'stage-runtime',
+              'stage-01-quality-retry'
+            );
+            fs.mkdirSync(runtimeDir, { recursive: true });
+            const evidence: ExecutionEvidence = {
+              stage: 'stage-01-quality-retry',
+              attempt: implPrompts,
+              status: implPrompts === 1 ? 'FAIL' : 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: implPrompts === 1 ? 1 : 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: implPrompts === 1 ? 'Tests failed' : 'Tests passed',
+              changed_files: ['feature.txt'],
+              unresolved: []
+            };
+            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+            observations.push(
+              {
+                observation_id: `obs-q-${implPrompts}`,
+                session_id: 'quality-retry-session',
+                tool_id: 'tool-q',
+                tool_call_id: 'tool-q',
+                sequence: implPrompts * 2 - 1,
+                timestamp: new Date().toISOString(),
+                source: 'acp',
+                command: 'npm test',
+                normalized_command: 'npm test',
+                command_confidence: 'high',
+                status: 'completed',
+                exit_code: implPrompts === 1 ? 1 : 0
+              },
+              {
+                observation_id: `obs-d-${implPrompts}`,
+                session_id: 'quality-retry-session',
+                tool_id: 'tool-d',
+                tool_call_id: 'tool-d',
+                sequence: implPrompts * 2,
+                timestamp: new Date().toISOString(),
+                source: 'acp',
+                command: 'git diff --check',
+                normalized_command: 'git diff --check',
+                command_confidence: 'high',
+                status: 'completed',
+                exit_code: 0
+              }
+            );
+            if (implPrompts === 2) {
+              fs.writeFileSync(path.join(repoDir, 'feature.txt'), 'implemented\n');
+            }
+            return { text: `attempt ${implPrompts}`, result: {} };
+          },
+          stop: async () => {}
+        };
+      }
+    }));
+
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => ({
+        verdict: 'APPROVE',
+        summary: 'ok',
+        missing_items: [],
+        feedback_for_cursor: ''
+      }),
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [] }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'ok' }),
+      reviewImplementation: async () => {
+        reviewerCalls++;
+        return { verdict: 'APPROVE', summary: 'Approved after quality retry' };
+      }
+    }));
+
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test'
+    });
+
+    const finalState = await orchestrator.run(state);
+    assert.equal(finalState.status, 'completed');
+    assert.equal(implPrompts, 2);
+    assert.equal(reviewerCalls, 1);
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: bounded review diff truncates oversized patch text', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-big-diff');
+  const eventLog = path.join(repoDir, '.ai-orchestrator', 'big-diff-events.jsonl');
+  const events = new EventBus(eventLog);
+  const origMax = CONFIG.maxDiffChars;
+
+  try {
+    CONFIG.maxDiffChars = 300;
+    fs.writeFileSync(path.join(repoDir, 'large.txt'), 'line\n'.repeat(400));
+    execSync('git add large.txt && git commit -m "add large file"', {
+      cwd: repoDir,
+      stdio: 'ignore'
+    });
+
+    const registry = new HarnessRegistry();
+    let capturedDiff = '';
+    let capturedTruncated = false;
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => {
+        const observations: CommandObservation[] = [];
+        return {
+          id: 'big-diff-session',
+          setMode: async () => {},
+          setQualityEpoch: () => {},
+          observedCommands: () => observations,
+          prompt: async (promptText) => {
+            if (promptText.includes('Work in PLAN mode')) {
+              await opts.callbacks.onPlan('Big diff plan', {});
+              return { text: 'Plan ok', result: {} };
+            }
+            const runtimeDir = path.join(
+              repoDir,
+              '.ai-orchestrator',
+              'stage-runtime',
+              'stage-01-big-diff'
+            );
+            fs.mkdirSync(runtimeDir, { recursive: true });
+            const evidence: ExecutionEvidence = {
+              stage: 'stage-01-big-diff',
+              attempt: 1,
+              status: 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: 'ok',
+              changed_files: ['large.txt'],
+              unresolved: []
+            };
+            fs.writeFileSync(path.join(repoDir, 'large.txt'), `${'x'.repeat(5000)}\n`);
+            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+            observations.push(
+              {
+                observation_id: 'obs-q-1',
+                session_id: 'big-diff-session',
+                tool_id: 'tool-q',
+                tool_call_id: 'tool-q',
+                sequence: 1,
+                timestamp: new Date().toISOString(),
+                source: 'acp',
+                command: 'npm test',
+                normalized_command: 'npm test',
+                command_confidence: 'high',
+                status: 'completed',
+                exit_code: 0
+              },
+              {
+                observation_id: 'obs-d-1',
+                session_id: 'big-diff-session',
+                tool_id: 'tool-d',
+                tool_call_id: 'tool-d',
+                sequence: 2,
+                timestamp: new Date().toISOString(),
+                source: 'acp',
+                command: 'git diff --check',
+                normalized_command: 'git diff --check',
+                command_confidence: 'high',
+                status: 'completed',
+                exit_code: 0
+              }
+            );
+            return { text: 'done', result: {} };
+          },
+          stop: async () => {}
+        };
+      }
+    }));
+
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => ({
+        verdict: 'APPROVE',
+        summary: 'ok',
+        missing_items: [],
+        feedback_for_cursor: ''
+      }),
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [] }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'ok' }),
+      reviewImplementation: async (payload: {
+        diff?: string;
+        diff_metrics?: { truncated?: boolean };
+      }) => {
+        capturedDiff = payload.diff || '';
+        capturedTruncated = Boolean(payload.diff_metrics?.truncated);
+        return { verdict: 'APPROVE', summary: 'ok' };
+      }
+    }));
+
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test'
+    });
+
+    await orchestrator.run(state);
+    assert.equal(capturedTruncated, true);
+    assert.ok(capturedDiff.includes('diff truncated') || capturedDiff.length > CONFIG.maxDiffChars);
+  } finally {
+    CONFIG.maxDiffChars = origMax;
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: accepts plan submitted only via prompt text fallback', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-plan-text');
+  const events = new EventBus(path.join(repoDir, '.ai-orchestrator', 'plan-text-events.jsonl'));
+
+  try {
+    const registry = new HarnessRegistry();
+    let planSubmitCalls = 0;
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => ({
+        id: 'plan-text-session',
+        setMode: async () => {},
+        observedCommands: () => [
+          {
+            observation_id: 'obs-q',
+            session_id: 'plan-text-session',
+            tool_id: 'bash',
+            tool_call_id: 'q1',
+            sequence: 1,
+            timestamp: new Date().toISOString(),
+            source: 'acp',
+            command: 'npm test',
+            normalized_command: 'npm test',
+            command_confidence: 'high',
+            status: 'completed',
+            exit_code: 0
+          },
+          {
+            observation_id: 'obs-d',
+            session_id: 'plan-text-session',
+            tool_id: 'bash',
+            tool_call_id: 'd1',
+            sequence: 2,
+            timestamp: new Date().toISOString(),
+            source: 'acp',
+            command: 'git diff --check',
+            normalized_command: 'git diff --check',
+            command_confidence: 'high',
+            status: 'completed',
+            exit_code: 0
+          }
+        ],
+        prompt: async (promptText) => {
+          if (promptText.includes('Work in PLAN mode')) {
+            return {
+              text: '1. Implement frozen requirements for stage-01-plan-text with full tests.\n',
+              result: {}
+            };
+          }
+          const stageName = 'stage-01-plan-text';
+          fs.writeFileSync(path.join(repoDir, 'plan-text-feature.txt'), 'ok\n');
+          const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', stageName);
+          fs.mkdirSync(runtimeDir, { recursive: true });
+          const evidence: ExecutionEvidence = {
+            stage: stageName,
+            attempt: 1,
+            status: 'PASS',
+            quality_command: 'npm test',
+            quality_exit_code: 0,
+            git_diff_check_exit_code: 0,
+            focused_tests: [],
+            quality_summary: 'ok',
+            changed_files: ['plan-text-feature.txt'],
+            unresolved: []
+          };
+          fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+          return { text: 'done', result: {} };
+        },
+        stop: async () => {}
+      })
+    }));
+
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => {
+        planSubmitCalls++;
+        return { verdict: 'APPROVE', summary: 'Plan ok', missing_items: [] };
+      },
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [] }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'ok' }),
+      reviewImplementation: async () => ({ verdict: 'APPROVE', summary: 'ok' })
+    }));
+
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test'
+    });
+
+    const finalState = await orchestrator.run(state);
+    assert.equal(finalState.status, 'completed');
+    assert.ok(planSubmitCalls >= 1, 'plan text should flow through planCoord.submit');
+    const stageDir = path.join(
+      repoDir,
+      '.ai-orchestrator',
+      'runs',
+      state.run_id,
+      'stages',
+      'stage-01-plan-text'
+    );
+    assert.ok(fs.existsSync(path.join(stageDir, 'PLAN_REVIEW_HISTORY.md')));
+    assert.ok(fs.existsSync(path.join(stageDir, 'DECISIONS.md')));
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: exhausts maxExecutionAttempts when reviewer never approves', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-max-attempts');
+  const events = new EventBus(path.join(repoDir, '.ai-orchestrator', 'max-attempts-events.jsonl'));
+  const origMax = CONFIG.maxExecutionAttempts;
+
+  try {
+    CONFIG.maxExecutionAttempts = 2;
+    const registry = new HarnessRegistry();
+    let implAttempts = 0;
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => ({
+        id: 'max-attempts-session',
+        setMode: async () => {},
+        observedCommands: () => [
+          {
+            observation_id: 'obs-q',
+            session_id: 'max-attempts-session',
+            tool_id: 'bash',
+            tool_call_id: 'q1',
+            sequence: 1,
+            timestamp: new Date().toISOString(),
+            source: 'acp',
+            command: 'npm test',
+            normalized_command: 'npm test',
+            command_confidence: 'high',
+            status: 'completed',
+            exit_code: 0
+          },
+          {
+            observation_id: 'obs-d',
+            session_id: 'max-attempts-session',
+            tool_id: 'bash',
+            tool_call_id: 'd1',
+            sequence: 2,
+            timestamp: new Date().toISOString(),
+            source: 'acp',
+            command: 'git diff --check',
+            normalized_command: 'git diff --check',
+            command_confidence: 'high',
+            status: 'completed',
+            exit_code: 0
+          }
+        ],
+        prompt: async (promptText) => {
+          if (promptText.includes('Work in PLAN mode')) {
+            await opts.callbacks.onPlan('Complete plan for max attempts stage.', {});
+            return { text: 'plan', result: {} };
+          }
+          implAttempts++;
+          const stageName = 'stage-01-max-attempts';
+          fs.writeFileSync(path.join(repoDir, `attempt-${implAttempts}.txt`), 'x\n');
+          const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', stageName);
+          fs.mkdirSync(runtimeDir, { recursive: true });
+          const evidence: ExecutionEvidence = {
+            stage: stageName,
+            attempt: implAttempts,
+            status: 'PASS',
+            quality_command: 'npm test',
+            quality_exit_code: 0,
+            git_diff_check_exit_code: 0,
+            focused_tests: [],
+            quality_summary: 'ok',
+            changed_files: [`attempt-${implAttempts}.txt`],
+            unresolved: []
+          };
+          fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+          return { text: 'impl', result: {} };
+        },
+        stop: async () => {}
+      })
+    }));
+
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => ({ verdict: 'APPROVE', summary: 'ok', missing_items: [] }),
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [] }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'ok' }),
+      reviewImplementation: async () => ({
+        verdict: 'REWORK',
+        summary: 'Never satisfied',
+        rework_instructions: 'Try again'
+      })
+    }));
+
+    const store = new RunStateStore(path.join(repoDir, '.ai-orchestrator', 'runs'));
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test'
+    });
+
+    await assert.rejects(() => orchestrator.run(state), /execution attempts/i);
+    const finalState = store.load(state.run_id);
+    assert.equal(implAttempts, 2);
+    assert.equal(finalState.status, 'failed');
+    assert.match(finalState.error || '', /execution attempts/i);
+  } finally {
+    CONFIG.maxExecutionAttempts = origMax;
     events.close();
     removeTree(repoDir);
   }

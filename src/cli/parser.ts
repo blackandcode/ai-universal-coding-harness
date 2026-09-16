@@ -101,6 +101,13 @@ interface RawArgs {
   dryRun?: boolean;
 }
 
+/**
+ * Parses raw CLI argv into a discriminated {@link CliCommand} without side effects.
+ *
+ * @param argv - Arguments after the executable name (command-first).
+ * @returns Typed command descriptor for dispatch.
+ * @throws Error on unknown flags or missing required options.
+ */
 export function parseCliArgs(argv: string[]): CliCommand {
   const first = argv[0] || 'help';
   const initial =

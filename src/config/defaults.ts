@@ -5,6 +5,7 @@
 
 import type { OrchestratorConfig } from './types.js';
 
+/** Baseline orchestrator configuration merged beneath all file and env layers. */
 export const DEFAULT_CONFIG: OrchestratorConfig = {
   executorHarness: 'cursor',
   reviewerHarness: 'codex',

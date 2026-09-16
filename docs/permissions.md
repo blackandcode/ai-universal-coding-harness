@@ -35,4 +35,6 @@ flowchart TD
 
 Hard-dangerous Git history/system operations remain denied because the orchestrator owns branch and commit lifecycle.
 
+When the flow reaches **Reviewer decision** (`V`), the orchestrator routes the request through `ReviewerRouter` using the `reviewer.permission` role: Cursor with `composer-2.5-fast`, low thinking, and a short timeout (default 30 seconds). That keeps permission turns fast and separate from plan or final code review on the primary Codex reviewer. Configure the role under `reviewer.permission` in [Configuration](configuration.md).
+
 The shipped allowlist is deliberately narrow. Do not add broad executors such as bare `git`, `npm`, `node`, `python`, `docker`, `curl`, or `gh` unless every subcommand should be auto-approved.

@@ -6,6 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   RunStateStore,
@@ -57,6 +58,8 @@ test('validateRunState accepts valid state and rejects invalid objects', () => {
   assert.throws(() => validateRunState('not an object'), RunStateError);
   assert.throws(() => validateRunState({ ...valid, status: 'invalid_status' }), RunStateError);
   assert.throws(() => validateRunState({ ...valid, branch: '' }), RunStateError);
+  assert.throws(() => validateRunState({ ...valid, workspace: '' }), RunStateError);
+  assert.throws(() => validateRunState({ ...valid, run_id: '' }), RunStateError);
   assert.throws(() => validateRunState({ ...valid, stages: 'not an array' }), RunStateError);
 });
 
@@ -93,6 +96,27 @@ test('RunStateStore saves, loads, and writes human-readable markdown', () => {
     assert.ok(content.includes('Test Body'));
   } finally {
     fs.rmSync(store.runDir(runId), { recursive: true, force: true });
+  }
+});
+
+test('RunStateStore rejects invalid ids and defaults missing stage state', () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'run-state-root-'));
+  const store = new RunStateStore(tmpRoot);
+  assert.throws(() => store.runDir('bad/run'), RunStateError);
+  assert.throws(() => store.stageDir('valid-run', 'bad stage!'), RunStateError);
+  assert.throws(() => store.loadLatest(), RunStateError);
+  assert.equal(store.latestId(), '');
+  assert.deepEqual(store.loadStage('missing-run', 'stage-01'), { version: 1, phase: 'pending' });
+
+  const runId = `stage-corrupt-${Date.now()}`;
+  const stage = 'stage-01';
+  fs.mkdirSync(store.stageDir(runId, stage), { recursive: true });
+  fs.writeFileSync(store.stageStatePath(runId, stage), '{ not json');
+  try {
+    assert.deepEqual(store.loadStage(runId, stage), { version: 1, phase: 'pending' });
+  } finally {
+    fs.rmSync(store.runDir(runId), { recursive: true, force: true });
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
 });
 

@@ -40,19 +40,205 @@ ai-harness config init --local
 
 Use `--force` only when intentionally replacing an existing config file.
 
-## Example
+`ai-harness init` writes `.ai-orchestrator/config.jsonc` from the project placeholder template (all keys commented out). `ai-harness config init` writes a fuller template with active defaults for global, tracked project, or local scopes.
+
+Inspect the effective merged configuration:
+
+```bash
+ai-harness config show
+```
+
+## Core orchestration settings
+
+| Key                          | Type    | Default         | Description                                                                                                     |
+| ---------------------------- | ------- | --------------- | --------------------------------------------------------------------------------------------------------------- |
+| `executorHarness`            | string  | `cursor`        | Executor adapter id used for planning and implementation.                                                       |
+| `reviewerHarness`            | string  | `codex`         | Legacy alias for `reviewer.primary.harness` when `reviewer` is omitted or partially specified.                  |
+| `permissionMode`             | string  | `auto_safe`     | One of `auto_safe`, `allow_all`, `allowlist`, `ask_reviewer`. See [Permissions](permissions.md).                |
+| `permissionsFile`            | string  | _(auto)_        | Path to permissions JSONC; defaults to `.ai-orchestrator/permissions.jsonc` when present, else global defaults. |
+| `qualityCommand`             | string  | `npm run check` | Command the executor must run successfully before final review.                                                 |
+| `branchPrefix`               | string  | `ai-harness`    | Prefix for the dedicated AI Git branch per run.                                                                 |
+| `maxPlanReviews`             | number  | `3`             | Normal plan review rounds (clamped 1–10).                                                                       |
+| `finalPlanReview`            | boolean | `true`          | Run one advisory final plan consolidation after the normal budget.                                              |
+| `maxExecutionAttempts`       | number  | `3`             | Implementation/review rework attempts per stage (clamped 1–10).                                                 |
+| `maxUniqueQuestionsPerStage` | number  | `25`            | Cap on distinct blocking questions per stage.                                                                   |
+
+## Context bounding and UI budgets
+
+| Key                   | Type   | Default    | Description                                                          |
+| --------------------- | ------ | ---------- | -------------------------------------------------------------------- |
+| `maxDiffChars`        | number | `800000`   | Maximum unified diff characters sent to final implementation review. |
+| `maxContextFileChars` | number | `40000`    | Maximum characters per file included in harness prompt context.      |
+| `uiEventCoalesceMs`   | number | `80`       | Debounce window for terminal UI event updates.                       |
+| `uiDashboardMaxRows`  | number | `26`       | Fixed vertical row budget for the Ink dashboard.                     |
+| `runLogMaxBytes`      | number | `20971520` | Max size (20 MiB) for raw JSONL run logs before bounding.            |
+| `focusLogMaxBytes`    | number | `10485760` | Max size (10 MiB) for executor focus stream logs.                    |
+
+## External harness modules
+
+| Key              | Type     | Default | Description                                                                              |
+| ---------------- | -------- | ------- | ---------------------------------------------------------------------------------------- |
+| `harnessModules` | string[] | `[]`    | npm package names or repo-relative paths that register extra executor/reviewer adapters. |
+
+## Multi-tier reviewer routing (`reviewer`)
+
+When the orchestrator uses the built-in reviewer router (default for standard `codex` / `cursor` setups), review work is dispatched by role. Omitting `reviewer` still applies package defaults from `DEFAULT_CONFIG`; top-level `reviewerHarness` overrides `reviewer.primary.harness` when you do not set `reviewer.primary.harness` explicitly.
+
+### `reviewer.primary`
+
+Standard plan review, question answering, and final implementation review when the diff is below `reviewer.largeDiff.thresholdChars`.
+
+| Property          | Type   | Default         | Description                                                     |
+| ----------------- | ------ | --------------- | --------------------------------------------------------------- |
+| `harness`         | string | `codex`         | Reviewer adapter id.                                            |
+| `model`           | string | `gpt-6-astra`   | Model id passed to the adapter.                                 |
+| `reasoningEffort` | string | `medium`        | `low`, `medium`, or `high` (OpenAI-style reasoning models).     |
+| `verbosity`       | string | `low`           | `low`, `medium`, or `high`.                                     |
+| `timeoutMinutes`  | number | `8`             | Review timeout (minimum 1).                                     |
+| `contextMode`     | string | `evidence_only` | `evidence_only` or `project_readonly` for Codex-style adapters. |
+
+### `reviewer.fallback`
+
+Automatic failover when the primary (or large-diff) reviewer fails with a recognized trigger.
+
+| Property         | Type     | Default            | Description                                       |
+| ---------------- | -------- | ------------------ | ------------------------------------------------- |
+| `enabled`        | boolean  | `true`             | Turn automatic failover on or off.                |
+| `harness`        | string   | `cursor`           | Fallback reviewer adapter id.                     |
+| `model`          | string   | `gemini-3.8-flash` | Fallback model id.                                |
+| `thinking`       | string   | `high`             | `low`, `medium`, or `high` (Cursor-style models). |
+| `timeoutMinutes` | number   | `8`                | Fallback review timeout (minimum 1).              |
+| `triggers`       | string[] | _(all seven)_      | Subset of trigger ids listed below.               |
+
+#### Fallback triggers
+
+| Trigger           | Typical cause                                                         |
+| ----------------- | --------------------------------------------------------------------- |
+| `usage_limit`     | Provider usage limit or “purchase credits” style messages.            |
+| `rate_limit`      | HTTP 429 / rate limiting / too many requests.                         |
+| `quota_exhausted` | Quota or insufficient credits.                                        |
+| `no_result`       | Process finished without expected `result.json` / structured verdict. |
+| `process_crash`   | Non-zero exit without a valid verdict artifact.                       |
+| `timeout`         | Turn or subprocess timeout.                                           |
+| `turn_failed`     | Wire protocol `turn.failed` or fatal error events.                    |
+
+When failover runs, the UI emits `reviewer.fallback` and verdicts may include `_orchestrator_meta` with provenance. See [Harness adapters](harnesses.md) and [Terminal UI](ui.md).
+
+### `reviewer.largeDiff`
+
+Used for `reviewImplementation` when unified diff length exceeds `thresholdChars`.
+
+| Property         | Type   | Default            | Description                               |
+| ---------------- | ------ | ------------------ | ----------------------------------------- |
+| `thresholdChars` | number | `300000`           | Character count threshold (minimum 1000). |
+| `harness`        | string | `cursor`           | High-context reviewer adapter.            |
+| `model`          | string | `gemini-3.8-flash` | Model id.                                 |
+| `thinking`       | string | `high`             | Thinking level.                           |
+| `timeoutMinutes` | number | `10`               | Timeout (minimum 1).                      |
+
+Fallback rules still apply if this role fails with a configured trigger.
+
+### `reviewer.permission`
+
+Fast-path reviewer for permission decisions when deterministic policy cannot decide.
+
+| Property          | Type   | Default             | Description                             |
+| ----------------- | ------ | ------------------- | --------------------------------------- |
+| `harness`         | string | `cursor`            | Permission reviewer adapter.            |
+| `model`           | string | `composer-2.5-fast` | Lightweight model for sub-minute turns. |
+| `thinking`        | string | `low`               | Thinking level.                         |
+| `reasoningEffort` | string | `low`               | Reasoning effort where supported.       |
+| `timeoutSeconds`  | number | `30`                | Timeout (minimum 5).                    |
+
+## Harness adapter namespaces (`harnesses`)
+
+Per-adapter settings are keyed by harness id (`cursor`, `codex`, or custom ids from `harnessModules`). Common keys:
+
+**`harnesses.cursor`**
+
+| Key                  | Default            | Description                                                |
+| -------------------- | ------------------ | ---------------------------------------------------------- |
+| `binary`             | `agent`            | Cursor CLI binary name.                                    |
+| `model`              | `gemini-3.8-flash` | Default executor model when not overridden by role config. |
+| `thinking`           | `high`             | Default thinking level.                                    |
+| `turnTimeoutMinutes` | `45`               | Executor turn timeout.                                     |
+
+**`harnesses.codex`**
+
+| Key               | Default         | Description                            |
+| ----------------- | --------------- | -------------------------------------- |
+| `binary`          | `codex`         | Codex CLI binary name.                 |
+| `model`           | `gpt-6-astra`   | Default reviewer model.                |
+| `reasoningEffort` | `low`           | Reasoning effort.                      |
+| `verbosity`       | `low`           | Output verbosity.                      |
+| `timeoutMinutes`  | `8`             | Subprocess timeout.                    |
+| `contextMode`     | `evidence_only` | `evidence_only` or `project_readonly`. |
+
+Role-specific `reviewer.*` entries can override model and timeout for routed reviews without changing global harness defaults.
+
+## Example (full schema)
+
+See also [config.example.jsonc](../config.example.jsonc) at the repository root.
 
 ```jsonc
 {
   "executorHarness": "cursor",
   "reviewerHarness": "codex",
   "permissionMode": "auto_safe",
+  // "permissionsFile": ".ai-orchestrator/permissions.jsonc",
   "qualityCommand": "npm run check",
   "branchPrefix": "ai-harness",
   "maxPlanReviews": 3,
   "finalPlanReview": true,
   "maxExecutionAttempts": 3,
+  "maxUniqueQuestionsPerStage": 25,
+  "maxDiffChars": 800000,
+  "maxContextFileChars": 40000,
+  "uiEventCoalesceMs": 80,
+  "uiDashboardMaxRows": 26,
+  "runLogMaxBytes": 20971520,
+  "focusLogMaxBytes": 10485760,
   "harnessModules": [],
+  "reviewer": {
+    "primary": {
+      "harness": "codex",
+      "model": "gpt-6-astra",
+      "reasoningEffort": "medium",
+      "verbosity": "low",
+      "timeoutMinutes": 8,
+      "contextMode": "evidence_only"
+    },
+    "fallback": {
+      "enabled": true,
+      "harness": "cursor",
+      "model": "gemini-3.8-flash",
+      "thinking": "high",
+      "timeoutMinutes": 8,
+      "triggers": [
+        "usage_limit",
+        "rate_limit",
+        "quota_exhausted",
+        "no_result",
+        "process_crash",
+        "timeout",
+        "turn_failed"
+      ]
+    },
+    "largeDiff": {
+      "thresholdChars": 300000,
+      "harness": "cursor",
+      "model": "gemini-3.8-flash",
+      "thinking": "high",
+      "timeoutMinutes": 10
+    },
+    "permission": {
+      "harness": "cursor",
+      "model": "composer-2.5-fast",
+      "thinking": "low",
+      "reasoningEffort": "low",
+      "timeoutSeconds": 30
+    }
+  },
   "harnesses": {
     "cursor": {
       "binary": "agent",

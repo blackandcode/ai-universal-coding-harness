@@ -1,7 +1,7 @@
 /**
  * @fileoverview Test runner script using Node.js native test runner and code coverage.
  * Discovers compiled tests in .test-dist/tests (or targeted files passed via arguments),
- * enforces native Node 24 coverage thresholds (85% lines, 85% functions, 80% branches),
+ * enforces native Node 24 coverage thresholds (95% lines, 95% functions, 85% branches),
  * and verifies critical security, quality, and recovery modules.
  */
 
@@ -59,13 +59,13 @@ const args = [];
 if (isCoverage) {
   args.push(
     '--experimental-test-coverage',
-    '--test-coverage-lines=85',
-    '--test-coverage-functions=85',
-    '--test-coverage-branches=80',
+    '--test-coverage-lines=95',
+    '--test-coverage-functions=95',
+    '--test-coverage-branches=85',
     '--test-coverage-exclude=.test-dist/tests/**'
   );
 }
-args.push('--test', ...testFiles);
+args.push('--experimental-test-module-mocks', '--test', ...testFiles);
 
 const result = spawnSync(process.execPath, args, {
   stdio: 'inherit',

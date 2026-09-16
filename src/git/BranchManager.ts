@@ -8,12 +8,23 @@ import type { RunState } from '../types.js';
 import { iso } from '../core/time.js';
 import { GitLifecycleError } from '../errors.js';
 
+/**
+ * Keeps persisted {@link RunState} aligned with the dedicated AI branch and pre-run stash metadata.
+ */
 export class BranchManager {
+  /**
+   * @param git - Repository wrapper for the target workspace.
+   * @param save - Persists run state after branch reconciliation mutations.
+   */
   constructor(
     private git: GitRepository,
     private save: (state: RunState) => void
   ) {}
 
+  /**
+   * Rehydrates branch flags from Git, links pre-run stash commits, and switches back to the AI branch when safe.
+   * Dirty trees encountered during resume may be stashed under a run-scoped label.
+   */
   reconcile(state: RunState): void {
     const exists = this.git.branchExists(state.branch);
     const current = this.git.currentBranch();
@@ -38,6 +49,10 @@ export class BranchManager {
     this.save(state);
   }
 
+  /**
+   * Ensures the AI branch exists and is checked out, stashing a dirty pre-run tree once when needed.
+   * Called before stage planning so implementation always runs on the run branch.
+   */
   ensureCreated(state: RunState): void {
     this.reconcile(state);
     if (state.branch_created) return;
@@ -53,6 +68,11 @@ export class BranchManager {
     this.save(state);
   }
 
+  /**
+   * Verifies the working tree is on the run branch before mutating files or committing.
+   *
+   * @throws {@link GitLifecycleError} when dirty and checked out on a different branch.
+   */
   assertActive(state: RunState): void {
     const current = this.git.currentBranch();
     if (current === state.branch) return;

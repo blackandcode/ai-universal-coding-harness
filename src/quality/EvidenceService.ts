@@ -25,6 +25,9 @@ export interface CorroborationResult {
 }
 
 export class EvidenceService {
+  /**
+   * @param stageRuntimeRoot - Directory where executors write per-stage `evidence.json` files.
+   */
   constructor(private stageRuntimeRoot: string = STAGE_RUNTIME_ROOT) {}
 
   /**

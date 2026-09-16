@@ -8,6 +8,7 @@
 
 import { CONFIG } from '../../core/config.js';
 
+/** Minimal git surface required to assemble a final review payload. */
 export interface GitReviewProvider {
   statusShort(): string;
   diffStat(): string;
@@ -56,6 +57,9 @@ export interface FinalReviewPayload {
   [key: string]: unknown;
 }
 
+/**
+ * Assembles bounded final-review payloads with diff metrics and NEEDS_CONTEXT path prioritization.
+ */
 export class ReviewPayloadBuilder {
   /**
    * Constructs an authoritative FinalReviewPayload embedding diff statistics and metrics.

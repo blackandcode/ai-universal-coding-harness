@@ -37,9 +37,18 @@ function pidAlive(pid: number): boolean {
   }
 }
 
+/**
+ * Process-scoped lock file preventing concurrent orchestrator runs in one workspace.
+ */
 export class RunLock {
+  /** True after this process successfully created the lock file. */
   owned = false;
 
+  /**
+   * Creates `orchestrator.lock` after clearing stale locks from dead PIDs.
+   *
+   * @throws {@link LockConflictError} when another live process holds the lock.
+   */
   acquire(runId = 'pending', branch = ''): void {
     if (fs.existsSync(LOCK_FILE)) {
       let prior: Partial<LockPayload> | null = null;
@@ -65,6 +74,7 @@ export class RunLock {
     this.owned = true;
   }
 
+  /** Rewrites lock metadata once the real run id and AI branch are known. */
   update(runId: string, branch = ''): void {
     if (this.owned) {
       const payload: LockPayload = {
@@ -77,6 +87,7 @@ export class RunLock {
     }
   }
 
+  /** Removes the lock file when this process acquired it. */
   release(): void {
     if (!this.owned) return;
     try {

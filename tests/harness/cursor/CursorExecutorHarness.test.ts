@@ -209,6 +209,10 @@ if (args.includes('acp')) {
     }
 
     if (msg.method === 'authenticate') {
+      if (process.env.TEST_CURSOR_AUTH_FAIL === '1') {
+        console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { message: 'auth failed' } }));
+        return;
+      }
       console.log(JSON.stringify({
         jsonrpc: '2.0',
         id: msg.id,
@@ -217,20 +221,40 @@ if (args.includes('acp')) {
       return;
     }
 
-    if (msg.method === 'session/new' || msg.method === 'session/load') {
-      const isLoad = msg.method === 'session/load';
+    if (msg.method === 'session/load') {
+      if (process.env.TEST_CURSOR_LOAD_FAIL === '1') {
+        console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { message: 'load failed' } }));
+        return;
+      }
       console.log(JSON.stringify({
         jsonrpc: '2.0',
         id: msg.id,
         result: {
-          sessionId: isLoad ? msg.params?.sessionId : 'mock-sess-1',
+          sessionId: msg.params?.sessionId,
           configOptions: [{ id: 'thinking', options: [{ value: 'high' }] }]
         }
       }));
       return;
     }
 
+    if (msg.method === 'session/new') {
+      const configOptions =
+        process.env.TEST_CURSOR_NO_THINKING === '1'
+          ? [{ id: 'other', options: [{ value: 'low' }] }]
+          : [{ id: 'thinking', options: [{ value: 'high' }] }];
+      console.log(JSON.stringify({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: { sessionId: 'mock-sess-1', configOptions }
+      }));
+      return;
+    }
+
     if (msg.method === 'session/set_config_option' || msg.method === 'session/set_mode') {
+      if (msg.method === 'session/set_config_option' && process.env.TEST_CURSOR_CONFIG_FAIL === '1') {
+        console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { message: 'config failed' } }));
+        return;
+      }
       console.log(JSON.stringify({
         jsonrpc: '2.0',
         id: msg.id,
@@ -299,6 +323,118 @@ if (args.includes('acp')) {
             ]
           }
         }));
+      } else if (promptText === 'trigger-permission-deny') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 108,
+          method: 'session/request_permission',
+          params: {
+            toolCall: { rawInput: { command: 'rm risky-file' } },
+            options: [{ optionId: 'opt-deny', name: 'reject' }]
+          }
+        }));
+      } else if (promptText === 'trigger-permission-broker-git') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 109,
+          method: 'session/request_permission',
+          params: {
+            toolCall: { rawInput: { command: 'git checkout main' } },
+            options: [{ optionId: 'opt-deny-only', name: 'reject' }]
+          }
+        }));
+        setTimeout(() => {
+          console.log(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { status: 'completed' }
+          }));
+        }, 150);
+        return;
+      } else if (promptText === 'trigger-plan-throw') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 110,
+          method: 'cursor/create_plan',
+          params: { name: 'bad-plan', plan: 'Plan that throws' }
+        }));
+      } else if (promptText === 'trigger-allow-always') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 111,
+          method: 'session/request_permission',
+          params: {
+            toolCall: { rawInput: { command: 'echo allow-always' } },
+            options: [{ optionId: 'opt-aa', name: 'allow_always' }]
+          }
+        }));
+      } else if (promptText === 'trigger-allow-session') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 112,
+          method: 'session/request_permission',
+          params: {
+            toolCall: { rawInput: { command: 'echo allow-session' } },
+            options: [{ optionId: 'opt-as', name: 'allow_session' }]
+          }
+        }));
+      } else if (promptText === 'trigger-perm-cancel') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 113,
+          method: 'session/request_permission',
+          params: {
+            toolCall: { rawInput: { command: 'echo no-option' } },
+            options: [{ optionId: 'opt-x', name: 'unrelated' }]
+          }
+        }));
+      } else if (promptText === 'trigger-broker-fail') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 114,
+          method: 'session/request_permission',
+          params: {
+            toolCall: { rawInput: { command: 'false' } },
+            options: [{ optionId: 'opt-deny-only', name: 'reject' }]
+          }
+        }));
+        setTimeout(() => {
+          console.log(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { status: 'completed' }
+          }));
+        }, 150);
+        return;
+      } else if (promptText === 'trigger-hang') {
+        return;
+      } else if (promptText === 'trigger-exit') {
+        process.exit(9);
+      } else if (promptText === 'trigger-bad-line') {
+        console.log('SERVER {not-json');
+        setTimeout(() => {
+          console.log(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { status: 'completed' }
+          }));
+        }, 20);
+        return;
+      } else if (promptText === 'trigger-notify-id') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 200,
+          method: 'cursor/ping',
+          params: {}
+        }));
+        setTimeout(() => {
+          console.log(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { status: 'completed' }
+          }));
+        }, 20);
+        return;
       } else if (promptText === 'trigger-permission-broker') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -411,6 +547,9 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
       callbacks: {
         onPlan: async (plan: string) => {
           planDecisions.push(plan);
+          if (plan.includes('throws')) {
+            throw new Error('Plan review exploded');
+          }
           if (plan.includes('needing changes')) {
             return {
               accepted: false,
@@ -436,14 +575,18 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
           if (req.command.includes('throwing')) {
             throw new Error('Permission classifier exploded');
           }
+          if (req.command.includes('risky-file')) {
+            return { allow: false, reason: 'Denied by policy' };
+          }
           permissionsGranted.push(req.command);
           return { allow: true, reason: 'Allowed' };
         }
       }
     });
 
-    // 1. setMode
+    // 1. setMode and quality epoch
     await session.setMode('plan');
+    session.setQualityEpoch?.('epoch-1');
     await session.setMode('agent');
 
     // 2. Normal prompt with streaming chunks
@@ -469,9 +612,22 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
     assert.ok(permissionsGranted.includes('echo perm-ok'));
     await session.prompt('trigger-perm-err');
 
-    // 7. Trigger permission broker fallback
+    // 7. Trigger permission deny and broker fallbacks
+    await session.prompt('trigger-permission-deny');
     await session.prompt('trigger-permission-broker');
     assert.ok(permissionsGranted.includes('echo broker-executed'));
+    await session.prompt('trigger-permission-broker-git');
+    await session.prompt('trigger-plan-throw');
+    await session.prompt('trigger-allow-always');
+    await session.prompt('trigger-allow-session');
+    await session.prompt('trigger-perm-cancel');
+    await session.prompt('trigger-broker-fail');
+    await session.prompt('trigger-bad-line');
+    await session.prompt('trigger-notify-id');
+
+    const failedBroker = session.observedCommands().find((o) => o.command === 'false');
+    assert.ok(failedBroker);
+    assert.equal(failedBroker?.status, 'failed');
 
     // Verify command was observed in journal
     const observed = session.observedCommands();
@@ -499,6 +655,72 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
     eventsBus.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('parseAcpEvents replays tool observations and ignores malformed server lines', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-parse-'));
+  const eventsFile = path.join(tmpDir, 'events.jsonl');
+  const toolLine = JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'session/update',
+    params: {
+      sessionId: 'sess-1',
+      update: {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'tool-1',
+        title: 'Run',
+        rawInput: { command: 'npm test' },
+        status: 'completed'
+      }
+    }
+  });
+  fs.writeFileSync(
+    eventsFile,
+    `SERVER not-json\nSERVER ${toolLine}\nSERVER ${JSON.stringify({ method: 'session/update', params: { update: { sessionUpdate: 'agent_message_chunk' } } })}\n`
+  );
+
+  try {
+    const observations = parseAcpEvents(eventsFile, {
+      runId: 'run-1',
+      stageName: 'stage-01',
+      attempt: 1,
+      workspace: tmpDir
+    });
+    assert.equal(observations.length, 1);
+    assert.equal(observations[0].command, 'npm test');
+    assert.equal(parseAcpEvents(path.join(tmpDir, 'missing.jsonl')).length, 0);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('AcpToolAccumulator: merges primitive rawOutput and defers observation until completion', () => {
+  const acc = new AcpToolAccumulator();
+  const pending = acc.processUpdate(
+    {
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tool-primitive',
+      title: 'Run',
+      status: 'in_progress',
+      rawInput: { command: 'npm test' }
+    },
+    { defaultSessionId: 'sess-1', workspace: '/tmp' }
+  );
+  assert.ok(pending.observation);
+  assert.equal(pending.observation?.status, 'in_progress');
+
+  const done = acc.processUpdate(
+    {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'tool-primitive',
+      status: 'completed',
+      rawOutput: { exit_code: 0 }
+    },
+    { defaultSessionId: 'sess-1', workspace: '/tmp' }
+  );
+  assert.ok(done.observation);
+  assert.equal(done.observation?.status, 'completed');
+  assert.equal(done.observation?.exit_code, 0);
 });
 
 test('AcpToolAccumulator and ObservationJournal: unit test methods and persistence', () => {
@@ -537,6 +759,182 @@ test('AcpToolAccumulator and ObservationJournal: unit test methods and persisten
     journal.clear();
     assert.equal(journal.getObservations().length, 0);
   } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+function baseSessionOptions(
+  tmpDir: string,
+  mockBinary: string,
+  eventsBus: EventBus,
+  extra?: Partial<ConstructorParameters<typeof CursorAcpSession>[0]>
+): ConstructorParameters<typeof CursorAcpSession>[0] {
+  return {
+    workspace: tmpDir,
+    runLog: path.join(tmpDir, 'run.log'),
+    eventsFile: path.join(tmpDir, 'events.jsonl'),
+    focusFile: path.join(tmpDir, 'focus.txt'),
+    callbacks: {
+      onPlan: async () => ({
+        accepted: true as const,
+        outcome: 'accepted' as const,
+        status: 'APPROVE' as const
+      }),
+      onQuestion: async () => ({ answers: [], rationale: '' }),
+      onPermission: async () => ({ allow: true, reason: 'ok' })
+    },
+    binary: mockBinary,
+    model: 'gemini-3.8-flash',
+    thinking: 'high',
+    turnTimeoutMinutes: 1,
+    events: eventsBus,
+    ...extra
+  };
+}
+
+test('CursorAcpSession: start tolerates auth/load/config edge cases', async () => {
+  const authDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-auth-'));
+  const loadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-load-'));
+  const mockAuth = createMockCursorBinary(authDir);
+  const mockLoad = createMockCursorBinary(loadDir);
+  const busAuth = new EventBus(path.join(authDir, 'bus.jsonl'), true);
+  const busLoad = new EventBus(path.join(loadDir, 'bus.jsonl'), true);
+
+  try {
+    process.env.TEST_CURSOR_AUTH_FAIL = '1';
+    const authSession = new CursorAcpSession(baseSessionOptions(authDir, mockAuth, busAuth));
+    await authSession.start();
+    await authSession.stop();
+    delete process.env.TEST_CURSOR_AUTH_FAIL;
+
+    process.env.TEST_CURSOR_LOAD_FAIL = '1';
+    const loadRunLog = path.join(loadDir, 'run.log');
+    const loadSession = new CursorAcpSession(
+      baseSessionOptions(loadDir, mockLoad, busLoad, {
+        runLog: loadRunLog,
+        resumeSessionId: 'resume-load-fail'
+      })
+    );
+    await loadSession.start();
+    assert.ok(fs.readFileSync(loadRunLog, 'utf8').includes('[executor session/load failed]'));
+    await loadSession.stop();
+    delete process.env.TEST_CURSOR_LOAD_FAIL;
+
+    process.env.TEST_CURSOR_NO_THINKING = '1';
+    const thinkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-think-'));
+    const mockThink = createMockCursorBinary(thinkDir);
+    const busThink = new EventBus(path.join(thinkDir, 'bus.jsonl'), true);
+    const noThink = new CursorAcpSession(baseSessionOptions(thinkDir, mockThink, busThink));
+    await noThink.start();
+    await noThink.stop();
+    delete process.env.TEST_CURSOR_NO_THINKING;
+    busThink.close();
+    fs.rmSync(thinkDir, { recursive: true, force: true });
+
+    process.env.TEST_CURSOR_CONFIG_FAIL = '1';
+    const cfgDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-cfg-'));
+    const mockCfg = createMockCursorBinary(cfgDir);
+    const busCfg = new EventBus(path.join(cfgDir, 'bus.jsonl'), true);
+    const cfgFail = new CursorAcpSession(baseSessionOptions(cfgDir, mockCfg, busCfg));
+    await cfgFail.start();
+    await cfgFail.stop();
+    delete process.env.TEST_CURSOR_CONFIG_FAIL;
+    busCfg.close();
+    fs.rmSync(cfgDir, { recursive: true, force: true });
+  } finally {
+    delete process.env.TEST_CURSOR_AUTH_FAIL;
+    delete process.env.TEST_CURSOR_LOAD_FAIL;
+    delete process.env.TEST_CURSOR_NO_THINKING;
+    delete process.env.TEST_CURSOR_CONFIG_FAIL;
+    busAuth.close();
+    busLoad.close();
+    fs.rmSync(authDir, { recursive: true, force: true });
+    fs.rmSync(loadDir, { recursive: true, force: true });
+  }
+});
+
+test('CursorAcpSession: prompt timeout and child exit reject in-flight requests', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-timeout-exit-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+
+  try {
+    const hangSession = new CursorAcpSession(
+      baseSessionOptions(tmpDir, mockBinary, eventsBus, { turnTimeoutMinutes: 0.0005 })
+    );
+    await hangSession.start();
+    await assert.rejects(() => hangSession.prompt('trigger-hang'), /timed out/i);
+    await hangSession.stop();
+
+    const exitSession = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    await exitSession.start();
+    await assert.rejects(() => exitSession.prompt('trigger-exit'), /exited/i);
+    await exitSession.stop();
+  } finally {
+    eventsBus.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('CursorAcpSession: replays historical SERVER tool observations on start', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-replay-ok-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  const eventsFile = path.join(tmpDir, 'events.jsonl');
+  const toolLine = JSON.stringify({
+    jsonrpc: '2.0',
+    method: 'session/update',
+    params: {
+      sessionId: 'sess-replay',
+      update: {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'tool-replay-1',
+        title: 'Run',
+        rawInput: { command: 'npm run test' },
+        status: 'completed'
+      }
+    }
+  });
+  fs.writeFileSync(eventsFile, `SERVER ${toolLine}\n`);
+
+  try {
+    const session = new CursorAcpSession(
+      baseSessionOptions(tmpDir, mockBinary, eventsBus, {
+        eventsFile,
+        resumeSessionId: 'sess-replay'
+      })
+    );
+    await session.start();
+    const obs = session.observedCommands();
+    assert.ok(obs.some((o) => o.command === 'npm run test'));
+    await session.stop();
+  } finally {
+    eventsBus.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('CursorAcpSession: setQualityEpoch rebuilds normalizer and records epoch on observations', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-quality-epoch-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+
+  try {
+    const session = new CursorAcpSession(
+      baseSessionOptions(tmpDir, mockBinary, eventsBus, {
+        runId: 'run-epoch',
+        stageName: 'stage-01',
+        attempt: 2
+      })
+    );
+    await session.start();
+    session.setQualityEpoch('quality-epoch-42');
+    await session.prompt('trigger-permission-broker-git');
+    const obs = session.observedCommands();
+    assert.ok(obs.some((o) => o.quality_epoch_id === 'quality-epoch-42'));
+    await session.stop();
+  } finally {
+    eventsBus.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

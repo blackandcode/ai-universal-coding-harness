@@ -44,12 +44,17 @@ import type {
   RunStatus
 } from '../types.js';
 
+/** Dependency injection and test overrides for {@link Orchestrator}. */
 export interface OrchestratorOptions {
   workspace?: string;
   store?: RunStateStore;
   registry?: HarnessRegistry;
 }
 
+/**
+ * Harness-neutral stage engine: validates inputs, drives executor/reviewer adapters,
+ * corroborates evidence, and commits approved stages on the dedicated AI branch.
+ */
 export class Orchestrator {
   git: GitRepository;
   store: RunStateStore;
@@ -59,6 +64,10 @@ export class Orchestrator {
   activeExecutor: ExecutorSession | null = null;
   readonly workspace: string;
 
+  /**
+   * @param events - Semantic event bus for UI and JSONL persistence.
+   * @param options - Optional workspace root and injectable store/registry for tests.
+   */
   constructor(
     public events: EventBus,
     options: OrchestratorOptions = {}
@@ -74,6 +83,7 @@ export class Orchestrator {
     );
   }
 
+  /** Adds `.ai-orchestrator/` to `.git/info/exclude` so runtime state stays local-only. */
   ensureExclude() {
     const p = path.join(this.workspace, '.git', 'info', 'exclude');
     if (!fs.existsSync(path.dirname(p))) return;
@@ -84,6 +94,10 @@ export class Orchestrator {
     fs.writeFileSync(p, txt);
   }
 
+  /**
+   * Validates stage selectors, snapshots frozen stage inputs under the run directory,
+   * and persists initial {@link RunState} without creating the AI branch yet.
+   */
   createRun(input: {
     stageSource: string;
     selectors: string[];
@@ -156,6 +170,10 @@ export class Orchestrator {
     }
   }
 
+  /**
+   * Refreshes `.ai-orchestrator/stage-input/<stage>/` from the run snapshot as read-only trees.
+   * Invoked before planning/execution so executor prompts reference immutable specs.
+   */
   prepareFrozenInputs(state: RunState) {
     const root = path.join(this.workspace, '.ai-orchestrator', 'stage-input');
     removeTree(root);
@@ -170,9 +188,13 @@ export class Orchestrator {
       fs.chmodSync(root, 0o555);
     } catch {}
   }
+
+  /** Stable hash of frozen stage manifest checksums for commit metadata. */
   private specDigest(stage: SelectedStage) {
     return sha256Text(JSON.stringify(stage.manifest.sha256 || {}));
   }
+
+  /** Returns a {@link ReviewerRouter} when configured, otherwise a direct registry reviewer. */
   private createReviewerHarness(reviewerId: string, context: any): ReviewerHarness {
     if (CONFIG.reviewer) {
       const isCustomHarness =
@@ -207,9 +229,13 @@ export class Orchestrator {
     }
     return this.registry.reviewer(reviewerId, context);
   }
+
+  /** Delegates to {@link GitRepository.patchFingerprint} for the active workspace. */
   private patchFingerprint() {
     return this.git.patchFingerprint();
   }
+
+  /** Review diff truncated to {@link CONFIG.maxDiffChars} with an explicit reviewer hint footer. */
   private boundedDiff(paths?: string[]) {
     const d = this.git.reviewDiff(paths);
     return d.length > CONFIG.maxDiffChars
@@ -218,9 +244,12 @@ export class Orchestrator {
       : d;
   }
 
+  /** Executor planning-mode instructions referencing frozen stage-input paths. */
   private planPrompt(stage: string) {
     return `Work in PLAN mode for ${stage}.\n\nRead ALL frozen inputs under .ai-orchestrator/stage-input/${stage}/, relevant .agents/skills/**/SKILL.md and .cursor/skills/**/SKILL.md, .cursor/rules, AGENTS.md, current implementation, and tests. Submit one comprehensive plan through the executor harness plan mechanism. The plan must cover exact files/components, all functional and technical requirements, edge cases, migrations, tests, documentation, and quality gates. Do not implement yet. When reviewer feedback arrives, revise the ENTIRE plan and incorporate ALL findings together rather than addressing one item at a time.`;
   }
+
+  /** Agent-mode implementation prompt including plan, carry-over findings, and evidence schema. */
   private executionPrompt(
     stage: string,
     plan: string,
@@ -264,6 +293,11 @@ export class Orchestrator {
     );
   }
 
+  /**
+   * Verifies executor and reviewer harness binaries/configuration before a run starts.
+   *
+   * @throws Error when either harness preflight reports `ok: false`.
+   */
   async preflight(stateOrInput: { executor_harness?: string; reviewer_harness?: string }) {
     await this.registry.loadConfigured();
     const exec = this.registry.executor(stateOrInput.executor_harness || CONFIG.executorHarness, {
@@ -288,6 +322,7 @@ export class Orchestrator {
     return { executor: a, reviewer: b };
   }
 
+  /** Answers executor multiple-choice questions via reviewer harness with per-payload caching. */
   private async questionDecision(
     reviewer: ReviewerHarness,
     payload: QuestionReviewInput,
@@ -322,6 +357,7 @@ export class Orchestrator {
     return { answers, rationale: v?.rationale || 'Autonomous fallback used.' };
   }
 
+  /** Resolves permission prompts using deterministic rules first, then reviewer fallback. */
   private async permissionDecision(
     engine: PermissionEngine,
     reviewer: ReviewerHarness,
@@ -352,6 +388,10 @@ export class Orchestrator {
     return { allow: d.allow, reason: d.reason || d.source };
   }
 
+  /**
+   * Runs the full stage pipeline: plan review, implementation attempts, evidence corroboration,
+   * final review, and stage-named commit on the AI branch.
+   */
   async executeStage(state: RunState, index: number) {
     const stage = state.stages[index];
     this.branch.ensureCreated(state);
@@ -444,6 +484,7 @@ export class Orchestrator {
     this.activeExecutor = session;
     try {
       let approved = reused?.plan || '';
+      // Planning loop: executor submits plans via ACP until reviewer accepts or budget forces fallback.
       if (!approved) {
         await session.setMode('plan');
         let turns = 0;
@@ -479,6 +520,7 @@ export class Orchestrator {
           message: 'Reusing previously corroborated quality evidence for unchanged patch.'
         });
       }
+      // Implementation/review loop: each attempt must produce corroborated green evidence before final review.
       for (let attempt = 1; attempt <= CONFIG.maxExecutionAttempts; attempt++) {
         this.branch.assertActive(state);
         this.events.emit('stage.attempt', { stage: stage.name, attempt });
@@ -613,6 +655,7 @@ export class Orchestrator {
           maxDiffChars: CONFIG.maxDiffChars
         });
         let verdict = await reviewer.reviewImplementation(payload as any);
+        // One follow-up review with path-scoped diff when the reviewer requests more context.
         if (verdict.verdict === 'NEEDS_CONTEXT' && verdict.requested_paths?.length) {
           const followUpPayload = ReviewPayloadBuilder.build({
             git: this.git,
@@ -687,6 +730,11 @@ export class Orchestrator {
     }
   }
 
+  /**
+   * Executes all pending stages from `startIndex`, updating run status on failure or completion.
+   *
+   * @returns Updated run state when every stage completes successfully.
+   */
   async run(state: RunState, startIndex = 0) {
     await this.registry.loadConfigured();
     state.status = 'running';
@@ -728,6 +776,8 @@ export class Orchestrator {
     this.events.emit('run.completed', { branch: state.branch, workspace: state.workspace });
     return state;
   }
+
+  /** Maps thrown errors to persisted {@link RunStatus} values for resume UX. */
   private classifyError(e: unknown): RunStatus {
     const classification = ReviewerErrorClassifier.classifyError(e);
     if (
@@ -753,6 +803,8 @@ export class Orchestrator {
     if (/contradict|specification/i.test(m)) return 'specification_blocked';
     return 'failed';
   }
+
+  /** Best-effort cancellation of the active executor session (for example Ctrl+C handling). */
   async cancel() {
     try {
       await this.activeExecutor?.cancel?.();

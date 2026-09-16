@@ -10,6 +10,9 @@ import { readJson } from '../../core/fs.js';
 import { validateReviewerVerdict } from './CodexEventParser.js';
 import type { CodexDecisionKind } from './types.js';
 
+/**
+ * Parses and validates structured JSON verdict files emitted by Codex CLI.
+ */
 export class CodexResultParser {
   /**
    * Reads, parses, and validates the structured reviewer verdict from the result file.

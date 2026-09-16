@@ -7,13 +7,187 @@
  * Generates the default global configuration JSONC template.
  */
 export function configTemplate(): string {
-  return `// AI Universal Coding Harness configuration\n// Precedence: CLI > AI_HARNESS_* env > .ai-orchestrator/config.jsonc > .ai-universal-coding-harness.jsonc > global > defaults.\n{\n  "executorHarness": "cursor",\n  "reviewerHarness": "codex",\n  "permissionMode": "auto_safe",\n  "qualityCommand": "npm run check",\n  "branchPrefix": "ai-harness",\n  "maxPlanReviews": 3,\n  "finalPlanReview": true,\n  "maxExecutionAttempts": 3,\n  "harnesses": {\n    "cursor": {\n      "binary": "agent",\n      "model": "gemini-3.8-flash",\n      "thinking": "high",\n      "turnTimeoutMinutes": 45\n    },\n    "codex": {\n      "binary": "codex",\n      "model": "gpt-6-astra",\n      "reasoningEffort": "low",\n      "verbosity": "low",\n      "timeoutMinutes": 8,\n      "contextMode": "evidence_only"\n    }\n  }\n}\n`;
+  return `// AI Universal Coding Harness configuration
+// Precedence: CLI > AI_HARNESS_* env > .ai-orchestrator/config.jsonc > .ai-universal-coding-harness.jsonc > global > defaults.
+{
+  "executorHarness": "cursor",
+  "reviewerHarness": "codex",
+  "permissionMode": "auto_safe",
+  "qualityCommand": "npm run check",
+  "branchPrefix": "ai-harness",
+  "maxPlanReviews": 3,
+  "finalPlanReview": true,
+  "maxExecutionAttempts": 3,
+  "maxUniqueQuestionsPerStage": 25,
+  "maxDiffChars": 800000,
+  "maxContextFileChars": 40000,
+  "uiEventCoalesceMs": 80,
+  "uiDashboardMaxRows": 26,
+  "runLogMaxBytes": 20971520,
+  "focusLogMaxBytes": 10485760,
+  "harnessModules": [],
+  "reviewer": {
+    "primary": {
+      "harness": "codex",
+      "model": "gpt-6-astra",
+      "reasoningEffort": "medium",
+      "verbosity": "low",
+      "timeoutMinutes": 8,
+      "contextMode": "evidence_only"
+    },
+    "fallback": {
+      "enabled": true,
+      "harness": "cursor",
+      "model": "gemini-3.8-flash",
+      "thinking": "high",
+      "timeoutMinutes": 8,
+      "triggers": [
+        "usage_limit",
+        "rate_limit",
+        "quota_exhausted",
+        "no_result",
+        "process_crash",
+        "timeout",
+        "turn_failed"
+      ]
+    },
+    "largeDiff": {
+      "thresholdChars": 300000,
+      "harness": "cursor",
+      "model": "gemini-3.8-flash",
+      "thinking": "high",
+      "timeoutMinutes": 10
+    },
+    "permission": {
+      "harness": "cursor",
+      "model": "composer-2.5-fast",
+      "thinking": "low",
+      "reasoningEffort": "low",
+      "timeoutSeconds": 30
+    }
+  },
+  "harnesses": {
+    "cursor": {
+      "binary": "agent",
+      "model": "gemini-3.8-flash",
+      "thinking": "high",
+      "turnTimeoutMinutes": 45
+    },
+    "codex": {
+      "binary": "codex",
+      "model": "gpt-6-astra",
+      "reasoningEffort": "low",
+      "verbosity": "low",
+      "timeoutMinutes": 8,
+      "contextMode": "evidence_only"
+    }
+  }
+}
+`;
 }
 
+/**
+ * Generates the local `.ai-orchestrator/config.jsonc` placeholder with commented overrides.
+ */
 export function projectPlaceholderConfigTemplate(): string {
-  return `// Local project overrides for AI Universal Coding Harness.\n// This file lives under .ai-orchestrator and is intentionally local/untracked.\n// Uncomment only what this repository needs. Package defaults apply for omitted values.\n{\n  // "executorHarness": "cursor",\n  // "reviewerHarness": "codex",\n  // "permissionMode": "auto_safe",\n  // "qualityCommand": "npm run check",\n  // "branchPrefix": "ai-harness",\n  // "maxPlanReviews": 3,\n  // "finalPlanReview": true,\n  // "maxExecutionAttempts": 3,\n  // "harnessModules": [],\n  // "harnesses": {\n  //   "cursor": { "model": "gemini-3.8-flash", "thinking": "high" },\n  //   "codex": { "model": "gpt-6-astra", "reasoningEffort": "low" }\n  // }\n}\n`;
+  return `// Local project overrides for AI Universal Coding Harness.
+// This file lives under .ai-orchestrator and is intentionally local/untracked.
+// Uncomment only what this repository needs. Package defaults apply for omitted values.
+{
+  "harnessModules": [],
+  // "executorHarness": "cursor",
+  // "reviewerHarness": "codex",
+  // "permissionMode": "auto_safe",
+  // "permissionsFile": ".ai-orchestrator/permissions.jsonc",
+  // "qualityCommand": "npm run check",
+  // "branchPrefix": "ai-harness",
+  // "maxPlanReviews": 3,
+  // "finalPlanReview": true,
+  // "maxExecutionAttempts": 3,
+  // "maxUniqueQuestionsPerStage": 25,
+  // "maxDiffChars": 800000,
+  // "maxContextFileChars": 40000,
+  // "uiEventCoalesceMs": 80,
+  // "uiDashboardMaxRows": 26,
+  // "runLogMaxBytes": 20971520,
+  // "focusLogMaxBytes": 10485760,
+  // "harnessModules": [],
+  // "reviewer": {
+  //   "primary": {
+  //     "harness": "codex",
+  //     "model": "gpt-6-astra",
+  //     "reasoningEffort": "medium",
+  //     "verbosity": "low",
+  //     "timeoutMinutes": 8,
+  //     "contextMode": "evidence_only"
+  //   },
+  //   "fallback": {
+  //     "enabled": true,
+  //     "harness": "cursor",
+  //     "model": "gemini-3.8-flash",
+  //     "thinking": "high",
+  //     "timeoutMinutes": 8,
+  //     "triggers": [
+  //       "usage_limit",
+  //       "rate_limit",
+  //       "quota_exhausted",
+  //       "no_result",
+  //       "process_crash",
+  //       "timeout",
+  //       "turn_failed"
+  //     ]
+  //   },
+  //   "largeDiff": {
+  //     "thresholdChars": 300000,
+  //     "harness": "cursor",
+  //     "model": "gemini-3.8-flash",
+  //     "thinking": "high",
+  //     "timeoutMinutes": 10
+  //   },
+  //   "permission": {
+  //     "harness": "cursor",
+  //     "model": "composer-2.5-fast",
+  //     "thinking": "low",
+  //     "reasoningEffort": "low",
+  //     "timeoutSeconds": 30
+  //   }
+  // },
+  // "harnesses": {
+  //   "cursor": {
+  //     "binary": "agent",
+  //     "model": "gemini-3.8-flash",
+  //     "thinking": "high",
+  //     "turnTimeoutMinutes": 45
+  //   },
+  //   "codex": {
+  //     "binary": "codex",
+  //     "model": "gpt-6-astra",
+  //     "reasoningEffort": "low",
+  //     "verbosity": "low",
+  //     "timeoutMinutes": 8,
+  //     "contextMode": "evidence_only"
+  //   }
+  // }
+}
+`;
 }
 
+/**
+ * Generates the default project permissions JSONC template for terminal allow/deny lists.
+ */
 export function projectPermissionsTemplate(): string {
-  return `// Local permission overrides. Used automatically when this file exists.\n// Keep this list narrow. Unknown/risky commands are routed through the reviewer.\n{\n  "terminalAllowlist": [\n    // "npm run check",\n    // "npm test",\n    // "git status",\n    // "git diff"\n  ],\n  "terminalDenylist": [\n    // Add repository-specific commands that must always be denied.\n  ]\n}\n`;
+  return `// Local permission overrides. Used automatically when this file exists.
+// Keep this list narrow. Unknown/risky commands are routed through the reviewer.
+{
+  "terminalAllowlist": [
+    // "npm run check",
+    // "npm test",
+    // "git status",
+    // "git diff"
+  ],
+  "terminalDenylist": [
+    // Add repository-specific commands that must always be denied.
+  ]
+}
+`;
 }

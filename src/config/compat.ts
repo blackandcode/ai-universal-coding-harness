@@ -1,11 +1,12 @@
 /**
  * @fileoverview Backward-compatibility adapter for legacy uppercase configuration keys.
- * Wraps camelCase OrchestratorConfig in a Proxy to support legacy uppercase property access.
+ * Extends camelCase {@link OrchestratorConfig} with uppercase getter aliases for legacy call sites.
  */
 
 import type { OrchestratorConfig } from './types.js';
 import { EFFECTIVE_CONFIG } from './loader.js';
 
+/** Uppercase property names mirroring historical orchestrator configuration fields. */
 export interface LegacyConfigAliases {
   readonly EXECUTOR_HARNESS: string;
   readonly REVIEWER_HARNESS: string;
@@ -24,8 +25,14 @@ export interface LegacyConfigAliases {
   readonly FOCUS_LOG_MAX_BYTES: number;
 }
 
+/** Effective configuration with both camelCase fields and legacy uppercase getters. */
 export type CompatibleConfig = OrchestratorConfig & LegacyConfigAliases;
 
+/**
+ * Builds a configuration object that exposes legacy uppercase aliases via getters.
+ *
+ * @param cfg - Source orchestrator configuration (defaults to {@link EFFECTIVE_CONFIG}).
+ */
 export function createCompatibleConfig(
   cfg: OrchestratorConfig = EFFECTIVE_CONFIG
 ): CompatibleConfig {
@@ -79,4 +86,5 @@ export function createCompatibleConfig(
   };
 }
 
+/** Process-wide configuration with legacy uppercase alias getters for existing imports. */
 export const CONFIG: CompatibleConfig = createCompatibleConfig(EFFECTIVE_CONFIG);

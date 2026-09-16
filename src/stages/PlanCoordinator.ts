@@ -12,6 +12,9 @@ import { RunStateStore } from '../state/RunStateStore.js';
 import type { PlanReviewVerdict, SelectedStage } from '../types.js';
 import { iso } from '../core/time.js';
 
+/**
+ * Bounded plan-review loop: deduplicates plan hashes, enforces reviewer budgets, and records carry-over findings.
+ */
 export class PlanCoordinator {
   private regularReviews = 0;
   private finalReviewDone = false;
@@ -21,6 +24,7 @@ export class PlanCoordinator {
   private acceptedPlan = '';
   private carryover = '';
 
+  /** @param opts - Run/stage context, reviewer harness, and state store for artifacts. */
   constructor(
     private opts: {
       runId: string;
@@ -33,22 +37,27 @@ export class PlanCoordinator {
     ensureDir(this.plansDir());
   }
 
+  /** Per-stage artifact directory for the active run. */
   private stageDir(): string {
     return this.opts.store.stageDir(this.opts.runId, this.opts.stage.name);
   }
 
+  /** Subdirectory storing plan candidates and reviewer JSON/Markdown reviews. */
   private plansDir(): string {
     return path.join(this.stageDir(), 'plans');
   }
 
+  /** Latest accepted plan text (empty until a plan is approved). */
   get plan(): string {
     return this.acceptedPlan;
   }
 
+  /** Mandatory reviewer findings forwarded into implementation prompts. */
   get reviewerCarryover(): string {
     return this.carryover;
   }
 
+  /** Flattens reviewer verdict fields into executor-facing feedback text. */
   private feedback(v: PlanReviewVerdict): string {
     return [
       v.feedback_for_executor || v.feedback_for_cursor || v.summary || '',
@@ -58,10 +67,12 @@ export class PlanCoordinator {
       .join('\n');
   }
 
+  /** Persists a numbered plan candidate before reviewer evaluation. */
   private saveCandidate(plan: string, round: number): void {
     writeText(path.join(this.plansDir(), `plan-${String(round).padStart(2, '0')}.md`), plan + '\n');
   }
 
+  /** Writes reviewer verdict artifacts (JSON + Markdown) for a review round. */
   private saveReview(v: PlanReviewVerdict, round: number, final = false): void {
     writeJson(
       path.join(
@@ -79,6 +90,7 @@ export class PlanCoordinator {
     );
   }
 
+  /** Records an accepted plan, updates stage state hashes, and appends human plan history. */
   private accept(plan: string, status: string, reason: string, review?: PlanReviewVerdict): void {
     this.acceptedPlan = plan;
     this.carryover = review ? this.feedback(review) : this.lastFeedback;
@@ -104,10 +116,15 @@ export class PlanCoordinator {
     );
   }
 
+  /** Hash of frozen stage manifest checksums for resume validation. */
   private specDigest(): string {
     return sha256Text(JSON.stringify(this.opts.stage.manifest.sha256 || {}));
   }
 
+  /**
+   * Returns a previously approved plan when spec and plan hashes still match persisted state.
+   * Skips planning when resume metadata is still valid.
+   */
   reusable(): { plan: string; carryover: string; status: string } | null {
     const p = path.join(this.stageDir(), 'approved-plan.md');
     const s = this.opts.store.loadStage(this.opts.runId, this.opts.stage.name);
@@ -119,6 +136,7 @@ export class PlanCoordinator {
     return { plan, carryover: this.carryover, status: s.plan_status || 'REUSED' };
   }
 
+  /** Accepts a synthetic plan when the executor never submitted via ACP within the planning budget. */
   forceAccept(plan: string, reason = 'Autonomous fallback plan accepted.'): string {
     const clean =
       plan.trim() ||
@@ -133,6 +151,10 @@ export class PlanCoordinator {
     return clean;
   }
 
+  /**
+   * Reviews a candidate plan with the reviewer harness, applying duplicate-hash and budget rules.
+   * Plan review is advisory: execution proceeds after the configured review cycle completes.
+   */
   async submit(plan: string): Promise<PlanDecision> {
     const clean = plan.trim();
     if (!clean) {

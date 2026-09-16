@@ -114,7 +114,7 @@ export function commandMatches(observedCmd: string, targetCmd: string): boolean 
  * @param e - Execution evidence from executor
  * @param commands - Observed command events
  * @param context - Optional verification context
- * @returns Corroboration report with issue diagnostics
+ * @returns Corroboration report with issue diagnostics and matched quality/diff observations.
  */
 export function verifyEvidenceAgainstObserved(
   e: ExecutionEvidence,

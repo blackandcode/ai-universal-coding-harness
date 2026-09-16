@@ -71,6 +71,20 @@ test('CursorReviewerHarness.extractJsonFromText: parses direct JSON, code fences
   // Empty or invalid text throws
   assert.throws(() => extractJsonFromText(''), /empty/i);
   assert.throws(() => extractJsonFromText('no json here at all'), /valid JSON/i);
+
+  const invalidWrapper = extractJsonFromText<Record<string, unknown>>(
+    JSON.stringify({ text: 'still not json' })
+  );
+  assert.equal(typeof invalidWrapper.text, 'string');
+
+  assert.throws(() => extractJsonFromText('```json\n{ broken json }\n```'), /valid JSON/i);
+});
+
+test('CursorReviewerHarness: preflight succeeds when binary is executable', async () => {
+  const harness = new CursorReviewerHarness({ reviewerBinary: process.execPath });
+  const preflight = await harness.preflight();
+  assert.equal(preflight.ok, true);
+  assert.ok(preflight.details.length > 0);
 });
 
 test('CursorReviewerHarness: executes decision flows through mocked runProcess', async () => {

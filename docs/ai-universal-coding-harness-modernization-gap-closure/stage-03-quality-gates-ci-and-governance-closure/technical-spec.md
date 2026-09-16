@@ -155,3 +155,5 @@ Where useful, add lightweight invariant tests for claims that can be mechanicall
 - required verify subcommands;
 - local decision-log target exists;
 - implementation status exists.
+
+Configuration contract tests (`config.example.jsonc`, reviewer role precedence, `maxUniqueQuestionsPerStage` behavior) belong to **Stage 04 / F-14**, not Stage 03.

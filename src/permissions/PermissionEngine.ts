@@ -34,11 +34,19 @@ export interface PermissionDecision {
   signature: string;
 }
 
+/**
+ * Classifies shell/file permission requests using mode-specific rules before optional reviewer escalation.
+ */
 export class PermissionEngine {
   private allowlist: string[] = [];
   private denylist: string[] = [];
   private cache = new Map<string, PermissionDecision>();
 
+  /**
+   * @param workspace - Repository root used for path boundary checks.
+   * @param mode - Autonomous permission mode from configuration.
+   * @param permissionsFile - JSONC allow/deny lists (optional).
+   */
   constructor(
     private workspace: string,
     private mode: PermissionMode,
@@ -47,6 +55,7 @@ export class PermissionEngine {
     this.load(permissionsFile);
   }
 
+  /** Loads terminal allow/deny prefix lists from JSONC; no-op when the file is absent. */
   private load(file: string): void {
     if (!fs.existsSync(file)) return;
     const errors: ParseError[] = [];
@@ -75,6 +84,7 @@ export class PermissionEngine {
     return JSON.stringify({ category, command: command.split(' ').slice(0, 4).join(' '), paths });
   }
 
+  /** Rejects paths outside the workspace or targeting protected Git/orchestrator control files. */
   private workspacePathsSafe(req: PermissionRequest): boolean {
     return (req.paths || []).every((p) => {
       if (!pathInside(this.workspace, p)) return false;

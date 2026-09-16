@@ -2,6 +2,8 @@
 
 Implement **Stage 02: Evidence, State and Recovery Trust Hardening**.
 
+**Related:** configuration contract fidelity (F-12–F-14) is **Stage 04**; no overlap with evidence epoch invariants.
+
 This stage protects the core product promise. Treat correctness as more important than minimizing code changes.
 
 ## Rules

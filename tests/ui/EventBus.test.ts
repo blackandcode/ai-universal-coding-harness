@@ -46,7 +46,7 @@ test('EventBus: debounces tool updates and focus deltas and flushes on close', a
     const received: UiEvent[] = [];
     bus.emitter.on('event', (e: UiEvent) => received.push(e));
 
-    bus.emit('executor.focus.delta', { text: 'chunk 1 ' });
+    bus.emit('executor.focus.delta', { text: 'chunk 1 ', focus_file: '/tmp/focus.log' });
     bus.emit('executor.focus.delta', { text: 'chunk 2' });
     bus.emit('executor.tool', { id: 'call-1', title: 'Running test', status: 'running' });
     bus.emit('executor.tool', { id: 'call-1', title: 'Running test', status: 'completed' });
@@ -68,9 +68,30 @@ test('EventBus: debounces tool updates and focus deltas and flushes on close', a
   }
 });
 
+test('EventBus: schedule debounce flushes after delay', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eventbus-schedule-'));
+  const eventFile = path.join(tmpDir, 'events.jsonl');
+  try {
+    const bus = new EventBus(eventFile, false, 1024 * 1024, 30);
+    const received: UiEvent[] = [];
+    bus.emitter.on('event', (e: UiEvent) => received.push(e));
+    bus.emit('executor.focus.delta', { text: 'delayed ' });
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(received.length, 1);
+    bus.close();
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('EventBus: lineMode logs formatted summaries without error', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eventbus-linemode-'));
   const eventFile = path.join(tmpDir, 'events.jsonl');
+  const lineLogs: string[] = [];
+  const origLog = console.log;
+  console.log = (...args: unknown[]) => {
+    lineLogs.push(args.map(String).join(' '));
+  };
   try {
     const bus = new EventBus(eventFile, true, 1024 * 1024, 10);
     // Emit different event types to exercise formatLine mappings
@@ -90,9 +111,45 @@ test('EventBus: lineMode logs formatted summaries without error', () => {
     bus.emit('run.completed', { branch: 'b1' });
     bus.emit('run.blocked', { status: 'failed', reason: 'Error occurred' });
     bus.emit('log', { level: 'error', message: 'Test error message' });
+    bus.emit('log', { level: 'warn', message: 'Test warning message' });
+    bus.emit('log', { level: 'info', message: 'Test info message' });
+    bus.emit('reviewer.fallback', {
+      trigger: 'timeout',
+      failed_harness: 'codex',
+      fallback_harness: 'cursor'
+    });
+    bus.emit('quality.result', { status: 'PASS', quality_summary: 'Fallback summary only' });
+    bus.emit('run.started', {});
+    bus.emit('unknown.event.type', { foo: 'bar' });
+    bus.emit('executor.tool', { toolCallId: 'tool-from-id' });
+
+    const emptyPayloadTypes = [
+      'run.started',
+      'run.completed',
+      'run.blocked',
+      'stage.started',
+      'stage.completed',
+      'stage.committed',
+      'executor.message',
+      'reviewer.fallback',
+      'reviewer.plan',
+      'reviewer.permission',
+      'reviewer.question',
+      'quality.result',
+      'review.result',
+      'log'
+    ] as const;
+    for (const type of emptyPayloadTypes) {
+      bus.emit(type, {});
+    }
 
     bus.close();
+    assert.ok(lineLogs.some((l) => l.includes('▶ Run')));
+    assert.ok(lineLogs.some((l) => l.includes('Reviewer failover')));
+    assert.ok(lineLogs.some((l) => l.includes('Quality PASS')));
+    assert.ok(lineLogs.some((l) => l.includes('▶ Stage started')));
   } finally {
+    console.log = origLog;
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

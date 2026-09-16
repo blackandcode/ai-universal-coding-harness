@@ -34,6 +34,7 @@ export interface StageValidationReport {
 
 export const stageNameOk = (s: string): boolean => /^stage-[0-9]{2}-[a-z0-9][a-z0-9-]*$/.test(s);
 
+/** Normalizes a stage selector to a two-digit stage number string. */
 export function selectorNum(sel: string): string {
   if (/^[0-9]{1,2}$/.test(sel)) return String(Number(sel)).padStart(2, '0');
   const m = sel.match(/^stage-([0-9]{2})-[a-z0-9][a-z0-9-]*$/);
@@ -82,10 +83,17 @@ function hasMarkdownHeading(text: string): boolean {
   return /^#{1,6}\s+\S+/m.test(text);
 }
 
+/**
+ * Resolves stage folders from a directory tree or extracted ZIP archive with safety validation.
+ */
 export class StageSource {
   private tempDir: string | null = null;
   readonly root: string;
 
+  /**
+   * @param source - Directory or `.zip` path containing `stage-NN-*` folders.
+   * @throws {@link StageSourceError} when the source is missing or unsupported.
+   */
   constructor(public source: string) {
     const abs = path.resolve(source);
     if (!fs.existsSync(abs)) {
@@ -104,6 +112,7 @@ export class StageSource {
     }
   }
 
+  /** Lists validated stage directory paths, optionally filtered by feature folder name. */
   list(feature = ''): string[] {
     return walk(this.root)
       .filter(
@@ -115,6 +124,7 @@ export class StageSource {
       .sort();
   }
 
+  /** Structural validation for a single stage directory (required Markdown specs, naming, symlinks). */
   validateDir(dir: string): StageValidationReport {
     const issues: StageValidationIssue[] = [];
     const stage = path.basename(dir);
@@ -185,6 +195,7 @@ export class StageSource {
     return { stage, dir, valid: !issues.some((i) => i.level === 'error'), issues };
   }
 
+  /** Like {@link validateDir} but throws when any error-level issue is present. */
   assertValid(dir: string): StageValidationReport {
     const report = this.validateDir(dir);
     if (!report.valid) {
@@ -195,10 +206,16 @@ export class StageSource {
     return report;
   }
 
+  /** Validates every stage discovered under the source (optional feature filter). */
   validateAll(feature = ''): StageValidationReport[] {
     return this.list(feature).map((dir) => this.validateDir(dir));
   }
 
+  /**
+   * Resolves a selector to exactly one stage directory path without content validation.
+   *
+   * @throws {@link StageSourceError} on ambiguity or no match.
+   */
   find(selector: string, feature = ''): string {
     const num = selectorNum(selector);
     const found = this.list(feature).filter((p) => {
@@ -218,12 +235,14 @@ export class StageSource {
     return found[0];
   }
 
+  /** {@link find} plus {@link assertValid} before returning the directory path. */
   resolve(selector: string, feature = ''): string {
     const dir = this.find(selector, feature);
     this.assertValid(dir);
     return dir;
   }
 
+  /** Builds a {@link StageManifest} with SHA-256 checksums for required spec files. */
   manifest(dir: string, selector: string): StageManifest {
     this.assertValid(dir);
     const sha: Record<string, string> = {};
@@ -239,6 +258,7 @@ export class StageSource {
     };
   }
 
+  /** Removes temporary extraction directory when the source was a ZIP archive. */
   close(): void {
     if (this.tempDir) removeTree(this.tempDir);
     this.tempDir = null;

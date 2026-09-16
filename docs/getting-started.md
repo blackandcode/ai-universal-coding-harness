@@ -7,7 +7,7 @@
 - the executor/reviewer CLIs selected in configuration
 - a Git repository as the target project
 
-Default harnesses are Cursor (`agent`) as executor and Codex (`codex`) as reviewer.
+Default harnesses are Cursor (`agent`) as executor and Codex (`codex`) as the primary reviewer, with multi-tier routing (fallback, large-diff, and fast permission reviewers) configured under `reviewer` in [Configuration](configuration.md).
 
 ## Install
 

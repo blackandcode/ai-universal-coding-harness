@@ -13,12 +13,14 @@ import type {
   QuestionVerdict
 } from '../../types.js';
 
+/** Token accounting extracted from Codex JSONL usage events. */
 export interface TokenUsage {
   input: number;
   cached: number;
   output: number;
 }
 
+/** Normalized fields extracted from a single Codex stdout JSONL line. */
 export interface ParsedCodexEvent {
   hasTokenUsage: boolean;
   tokenUsage?: TokenUsage;

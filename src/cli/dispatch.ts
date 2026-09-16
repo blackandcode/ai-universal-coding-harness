@@ -25,12 +25,18 @@ import { ProjectWorkspace } from '../project/ProjectWorkspace.js';
 import { VERSION, PRODUCT_NAME } from '../version.js';
 import type { RunState } from '../types.js';
 
+/** Prints CLI usage, command list, and stage contract summary to stdout. */
 export function printHelp(): void {
   console.log(
     `${PRODUCT_NAME} v${VERSION}\n\nUsage:\n  ai-harness <command> [options]\n\nStart a project:\n  ai-harness init\n  ai-harness validate --stage-source <dir|zip> --stage 06\n  ai-harness preflight --stage-source <dir|zip> --stage 06\n  ai-harness run --stage-source <dir|zip> --stage 06 [--stage 07 ...]\n\nRun lifecycle:\n  ai-harness resume [--run <run-id>]\n  ai-harness recover [--run <run-id>] [--stage <stage>] [--dry-run] [--apply]\n  ai-harness status [--run <run-id>]\n  ai-harness tail [--run <run-id>]\n  ai-harness runs list\n  ai-harness runs delete --run <run-id> --force\n  ai-harness runs reset --force\n\nStage discovery:\n  ai-harness list-stages --stage-source <dir|zip> [--feature token]\n  ai-harness inspect --stage-source <dir|zip> --stage 06\n  ai-harness validate --stage-source <dir|zip> [--stage 06 ...]\n\nConfiguration:\n  ai-harness config paths\n  ai-harness config show\n  ai-harness config init --global\n  ai-harness config init --project\n  ai-harness config init --local\n\nProject targeting:\n  --project <path>   Target another Git repository.\n\nStage contract:\n  stage-NN-kebab-name/{functional-spec.md,technical-spec.md,prompt.md}\n\nOne run = one dedicated AI branch. One approved stage = one commit. No push or merge.`
   );
 }
 
+/**
+ * Handles `config` subcommands: path listing, effective config dump, and template initialization.
+ *
+ * @param cmd - Parsed config command with subcommand and scope flags.
+ */
 export function handleConfigCommand(cmd: Extract<CliCommand, { kind: 'config' }>): void {
   if (cmd.subCommand === 'paths') {
     console.log(
@@ -63,6 +69,14 @@ export function handleConfigCommand(cmd: Extract<CliCommand, { kind: 'config' }>
   }
 }
 
+/**
+ * Creates the run UI event bus and optional Ink dashboard for an active run.
+ *
+ * @param runId - Durable run identifier.
+ * @param state - Current run state used for dashboard metadata.
+ * @param mode - UI mode override (`line`, `raw`, `compact`, etc.).
+ * @returns Event bus handle and a `close` cleanup function.
+ */
 async function makeUi(runId: string, state: RunState, mode?: string) {
   const file = path.join(STATE_ROOT, 'runs', runId, 'ui-events.jsonl');
   const effective = mode || (!process.stdout.isTTY ? 'line' : 'compact');
@@ -101,6 +115,12 @@ async function makeUi(runId: string, state: RunState, mode?: string) {
   };
 }
 
+/**
+ * Prints validation results for each stage directory and returns overall success.
+ *
+ * @param src - Stage source used to validate contract files.
+ * @param dirs - Resolved stage directory paths to validate.
+ */
 function printValidation(src: StageSource, dirs: string[]): boolean {
   let ok = true;
   for (const dir of dirs) {
@@ -120,6 +140,12 @@ function printValidation(src: StageSource, dirs: string[]): boolean {
   return ok;
 }
 
+/**
+ * Dispatches a parsed CLI command to domain handlers and returns a process exit code.
+ *
+ * @param cmd - Strongly typed command produced by {@link parseCliArgs}.
+ * @returns Shell exit code (`0` success, `2` validation failure, `3` run failure, etc.).
+ */
 export async function dispatchCliCommand(cmd: CliCommand): Promise<number> {
   const workspace = new ProjectWorkspace();
 

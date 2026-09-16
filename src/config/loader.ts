@@ -21,6 +21,13 @@ import { validateAndNormalizeConfig } from './validation.js';
 import { configTemplate } from './templates.js';
 import { ConfigError } from '../errors.js';
 
+/**
+ * Reads a JSONC file from disk, returning an empty object when the path is missing.
+ *
+ * @param file - Absolute path to a `.jsonc` configuration file.
+ * @returns Parsed object layer; non-objects yield `{}`.
+ * @throws ConfigError when JSONC syntax is invalid.
+ */
 export function readJsonc(file: string): Record<string, unknown> {
   if (!fs.existsSync(file)) return {};
   const errors: { error: number; offset: number; length: number }[] = [];
@@ -38,6 +45,13 @@ export function readJsonc(file: string): Record<string, unknown> {
     : {};
 }
 
+/**
+ * Recursively merges configuration layers; nested plain objects merge, arrays and scalars replace.
+ *
+ * @param base - Starting configuration object.
+ * @param layers - Additional layers applied in order; `undefined`/`null` layers are skipped.
+ * @returns Merged configuration object.
+ */
 export function deepMerge<T extends Record<string, unknown>>(
   base: T,
   ...layers: (Record<string, unknown> | undefined | null)[]
@@ -63,6 +77,16 @@ export function deepMerge<T extends Record<string, unknown>>(
   return out as T;
 }
 
+/**
+ * Loads and merges all configuration layers from defaults through env overrides.
+ *
+ * Precedence (lowest to highest): defaults, global, legacy project, project tracked,
+ * project local, `AI_HARNESS_*` / `AI_STAGE_*` env, then `customLayers`.
+ *
+ * @param projectRoot - Target repository root for project-scoped paths.
+ * @param customLayers - Extra layers merged last (e.g. CLI overrides).
+ * @returns Validated effective orchestrator configuration.
+ */
 export function loadEffectiveConfig(
   projectRoot = PROJECT_ROOT,
   customLayers: Record<string, unknown>[] = []
@@ -85,8 +109,15 @@ export function loadEffectiveConfig(
   return validateAndNormalizeConfig(merged, DEFAULT_CONFIG, projectRoot);
 }
 
+/** Process-wide effective configuration loaded at module initialization. */
 export const EFFECTIVE_CONFIG: OrchestratorConfig = loadEffectiveConfig();
 
+/**
+ * Returns a shallow copy of harness-specific settings for a registered harness id.
+ *
+ * @param id - Harness identifier (e.g. `cursor`, `codex`).
+ * @param config - Configuration snapshot to read from.
+ */
 export function harnessConfig(
   id: string,
   config: OrchestratorConfig = EFFECTIVE_CONFIG
@@ -94,6 +125,14 @@ export function harnessConfig(
   return { ...config.harnesses?.[id] };
 }
 
+/**
+ * Reads a string harness setting with a fallback when missing or nullish.
+ *
+ * @param id - Harness identifier.
+ * @param key - Property key within `config.harnesses[id]`.
+ * @param fallback - Value used when the setting is absent.
+ * @param config - Configuration snapshot to read from.
+ */
 export function harnessString(
   id: string,
   key: string,
@@ -104,6 +143,14 @@ export function harnessString(
   return v == null ? fallback : String(v);
 }
 
+/**
+ * Reads a numeric harness setting with a fallback when missing or non-finite.
+ *
+ * @param id - Harness identifier.
+ * @param key - Property key within `config.harnesses[id]`.
+ * @param fallback - Value used when the setting is absent or invalid.
+ * @param config - Configuration snapshot to read from.
+ */
 export function harnessNumber(
   id: string,
   key: string,
@@ -114,6 +161,15 @@ export function harnessNumber(
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * Writes a configuration template file, creating parent directories as needed.
+ *
+ * @param file - Destination path for the new config file.
+ * @param overwrite - When false, throws if the file already exists.
+ * @param content - JSONC template body (defaults to global `configTemplate()`).
+ * @returns The written file path.
+ * @throws ConfigError when the file exists and `overwrite` is false.
+ */
 export function writeConfig(file: string, overwrite = false, content = configTemplate()): string {
   if (fs.existsSync(file) && !overwrite) {
     throw new ConfigError(`Config already exists: ${file}`);
@@ -123,6 +179,12 @@ export function writeConfig(file: string, overwrite = false, content = configTem
   return file;
 }
 
+/**
+ * Builds a diagnostic summary of resolved config paths and the effective configuration.
+ *
+ * @param root - Project root used for path resolution in the summary.
+ * @param config - Effective configuration to embed.
+ */
 export function configSummary(
   root = PROJECT_ROOT,
   config: OrchestratorConfig = EFFECTIVE_CONFIG
