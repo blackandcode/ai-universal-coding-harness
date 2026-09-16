@@ -4,10 +4,13 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [2.1.4] - 2026-09-16
+
 ### Added
 
 - Added repository-wide TSDoc documentation standard (`.cursor/rules/tsdoc.mdc` and `.agents/skills/tsdoc-documentation/SKILL.md`) codifying semantic descriptions, protocol boundaries, and architectural invariants.
 - Added automated TSDoc export coverage audit script (`scripts/docs/list-undocumented-exports.mjs`) and npm script `npm run docs:check` to track exported symbol documentation across `src/`.
+- Committed npm `allowScripts` policy for root `prepare` and documented local vs global install script approval in `docs/development.md`.
 
 ### Changed
 

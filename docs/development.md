@@ -16,6 +16,24 @@ npm test
 npm run verify
 ```
 
+### npm install scripts (`allowScripts`)
+
+Local development uses the root `prepare` script (`npm run build` and Git hooks setup). npm 11.16+ tracks which packages may run install-related lifecycle scripts via the committed `allowScripts` field in `package.json`. After `npm install` in a clone, that policy covers this project’s `prepare` hook.
+
+When you add or upgrade dependencies that run `preinstall`, `install`, `postinstall`, or native builds, re-check with:
+
+```bash
+npm approve-scripts --allow-scripts-pending
+```
+
+Approve only packages you trust, then commit the updated `allowScripts` entries. npm 12 blocks unlisted dependency scripts by default. See [npm approve-scripts](https://docs.npmjs.com/cli/v12/commands/npm-approve-scripts/).
+
+**Global CLI from this repository** (`npm i -g` with no project root) does not read this repo’s `package.json`. Use one of:
+
+- `npm link` after `npm run build` in a clone
+- `npm i -g --allow-scripts=ai-universal-coding-harness`
+- `npm config set allow-scripts=ai-universal-coding-harness --location=user` for repeated global installs
+
 ## Commands
 
 ```bash
