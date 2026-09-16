@@ -100,6 +100,10 @@ export {
   type HarnessPreflightResult,
   type PlanDecision,
   type PlanDecisionOutcome,
+  type PlanReviewInput,
+  type QuestionReviewInput,
+  type PermissionReviewInput,
+  type FinalReviewInput,
 } from './harness/types.js';
 
 // Stages & Planning

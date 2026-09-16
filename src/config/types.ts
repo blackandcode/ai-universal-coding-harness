@@ -4,6 +4,7 @@
  */
 
 import type { PermissionMode } from '../types.js';
+import type { ReviewerRouterConfig } from '../harness/types.js';
 
 /**
  * Mapping of harness IDs to their harness-specific configuration records.
@@ -18,6 +19,7 @@ export interface HarnessConfigMap {
 export interface OrchestratorConfig {
   executorHarness: string;
   reviewerHarness: string;
+  reviewer?: ReviewerRouterConfig;
   maxPlanReviews: number;
   finalPlanReview: boolean;
   maxExecutionAttempts: number;

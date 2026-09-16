@@ -2,7 +2,7 @@
 
 ## Stage 01 — Modern Toolchain and Quality Foundation
 
-Status: In Progress (Gap closure ready for review / stage gate)
+Status: Completed (Ready for review / stage gate)
 
 - **Quality Commands (Measured Results)**:
   - `npm run format:check` — Oxfmt formatting verification (0 formatting violations).

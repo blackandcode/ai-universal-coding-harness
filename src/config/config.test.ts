@@ -171,3 +171,45 @@ test('loadEffectiveConfig reads legacy .ai-stage-orchestrator.jsonc', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('reviewer configuration defaults and normalization in validateAndNormalizeConfig', () => {
+  const normalized = validateAndNormalizeConfig({}, DEFAULT_CONFIG);
+  assert.ok(normalized.reviewer);
+  assert.equal(normalized.reviewer.primary.harness, 'codex');
+  assert.equal(normalized.reviewer.primary.model, 'gpt-6-astra');
+  assert.equal(normalized.reviewer.fallback.enabled, true);
+  assert.equal(normalized.reviewer.fallback.harness, 'cursor');
+  assert.equal(normalized.reviewer.fallback.model, 'gemini-3.8-flash');
+  assert.equal(normalized.reviewer.largeDiff.thresholdChars, 300000);
+  assert.equal(normalized.reviewer.permission.model, 'composer-2.5-fast');
+
+  // Test custom overrides and clamping
+  const custom = validateAndNormalizeConfig(
+    {
+      reviewerHarness: 'custom-primary',
+      reviewer: {
+        primary: {
+          timeoutMinutes: 0, // Clamps to 1
+        },
+        fallback: {
+          enabled: false,
+          triggers: ['usage_limit', 'invalid_trigger', 'process_crash'],
+        },
+        largeDiff: {
+          thresholdChars: 50, // Clamps to 1000
+        },
+        permission: {
+          timeoutSeconds: 2, // Clamps to 5
+        },
+      },
+    },
+    DEFAULT_CONFIG,
+  );
+
+  assert.equal(custom.reviewer?.primary.harness, 'custom-primary');
+  assert.equal(custom.reviewer?.primary.timeoutMinutes, 1);
+  assert.equal(custom.reviewer?.fallback.enabled, false);
+  assert.deepEqual(custom.reviewer?.fallback.triggers, ['usage_limit', 'process_crash']);
+  assert.equal(custom.reviewer?.largeDiff.thresholdChars, 1000);
+  assert.equal(custom.reviewer?.permission.timeoutSeconds, 5);
+});

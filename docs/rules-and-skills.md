@@ -10,11 +10,14 @@ Reusable development skills live under:
 
 ```text
 .agents/skills/
-├── harness-adapter/
-├── orchestrator-development/
-├── project-workspace/
-├── release-readiness/
-└── trusted-publishing/
+├── ai-harness-architecture/
+├── ai-harness-review/
+├── harness-adapter-protocols/
+├── harness-security-permissions/
+├── harness-testing-quality/
+├── harness-workflow-state/
+├── react19-ink-tui/
+└── typescript-node24-engineering/
 ```
 
 Keep reusable instructions here rather than duplicating the same guidance per provider.

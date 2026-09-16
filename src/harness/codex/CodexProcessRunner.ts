@@ -14,6 +14,7 @@ import { SCHEMA_DIR } from '../../core/paths.js';
 import { runProcess, execSyncText } from '../../core/process.js';
 import { ensureDir, writeJson, writeText, appendBounded } from '../../core/fs.js';
 import { CONFIG, PROJECT_ROOT } from '../../core/config.js';
+import { ProcessExecutionError } from '../../errors.js';
 import { parseCodexEventLine } from './CodexEventParser.js';
 import { CodexResultParser } from './CodexResultParser.js';
 
@@ -79,6 +80,7 @@ export class CodexProcessRunner {
 
     let violation = false;
     let violationMessage = '';
+    const recordedEventLines: string[] = [];
 
     try {
       const r = await runProcess(options.binary, args, {
@@ -86,6 +88,7 @@ export class CodexProcessRunner {
         stdinText: options.prompt,
         timeoutMs: options.timeoutMinutes * 60_000,
         onStdoutLine: (line: string) => {
+          recordedEventLines.push(line);
           appendBounded(eventsFile, line, CONFIG.runLogMaxBytes);
           const parsed = parseCodexEventLine(line, { readonlyProject });
 
@@ -111,7 +114,22 @@ export class CodexProcessRunner {
       });
 
       if (r.code !== 0) {
-        throw new Error(`Reviewer ${options.decisionKind} failed (exit ${r.code}).`);
+        const resultFileExists = fs.existsSync(resultFile);
+        const err = new ProcessExecutionError(
+          `Reviewer ${options.decisionKind} failed (exit ${r.code}).`,
+          {
+            exitCode: r.code,
+            signal: r.signal,
+            stdout: r.stdout,
+            stderr: r.stderr,
+            timedOut: r.timedOut,
+          },
+        );
+        Object.assign(err, {
+          eventLines: recordedEventLines,
+          resultFileExists,
+        });
+        throw err;
       }
 
       if (violation) {

@@ -284,3 +284,51 @@ test('evidence integrity: wrapper matching rejects substring false positives lik
   assert.equal(commandMatches('cmd /c "npm run check"', 'npm run check'), true);
   assert.equal(commandMatches('powershell -Command "npm run check"', 'npm run check'), true);
 });
+
+test('evidence integrity: wrong working directory is rejected when cwd is available', () => {
+  const commands: CommandObservation[] = [
+    {
+      observation_id: 'obs-cwd-1',
+      session_id: 'sess-1',
+      tool_id: 'tool-1',
+      tool_call_id: 'tool-1',
+      sequence: 10,
+      timestamp: new Date().toISOString(),
+      source: 'acp',
+      command: 'npm run check',
+      normalized_command: 'npm run check',
+      command_confidence: 'high',
+      status: 'completed',
+      exit_code: 0,
+      cwd: '/different/workspace/directory',
+      stage: 'stage-03',
+      attempt: 2,
+    },
+    {
+      observation_id: 'obs-2',
+      session_id: 'sess-1',
+      tool_id: 'tool-2',
+      tool_call_id: 'tool-2',
+      sequence: 11,
+      timestamp: new Date().toISOString(),
+      source: 'acp',
+      command: 'git diff --check',
+      normalized_command: 'git diff --check',
+      command_confidence: 'high',
+      status: 'completed',
+      exit_code: 0,
+      cwd: '/expected/workspace/target',
+      stage: 'stage-03',
+      attempt: 2,
+    },
+  ];
+
+  const r = verifyEvidenceAgainstObserved(baseEvidence, commands, {
+    stage: 'stage-03',
+    attempt: 2,
+    workspace: '/expected/workspace/target',
+  });
+
+  assert.equal(r.ok, false);
+  assert.match(r.issues.join(' '), /Quality command executed in wrong directory/);
+});

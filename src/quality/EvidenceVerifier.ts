@@ -7,7 +7,8 @@
  */
 
 import fs from 'node:fs';
-import type { ExecutionEvidence, CommandObservation } from '../types.js';
+import path from 'node:path';
+import type { ExecutionEvidence, CommandObservation, ObservedQuality } from '../types.js';
 
 /**
  * Contextual metadata required to corroborate execution evidence against
@@ -129,6 +130,8 @@ export function verifyEvidenceAgainstObserved(
         stage?: string;
         attempt?: number;
         quality_epoch_id?: string;
+        cwd?: string;
+        workspace?: string;
       }
   >,
   context?: VerificationContext,
@@ -161,6 +164,14 @@ export function verifyEvidenceAgainstObserved(
     issues.push(`Observed quality command has no exit code: ${q.command}`);
   } else if (q.exit_code !== Number(e.quality_exit_code)) {
     issues.push(`Quality exit mismatch: evidence=${e.quality_exit_code}, ACP=${q.exit_code}`);
+  } else if (context?.workspace) {
+    const expectedWs = path.resolve(context.workspace);
+    const obsWs = ('workspace' in q && q.workspace) || ('cwd' in q && (q as { cwd?: string }).cwd);
+    if (obsWs && path.resolve(obsWs) !== expectedWs) {
+      issues.push(
+        `Quality command executed in wrong directory: observed=${obsWs}, expected=${context.workspace}`,
+      );
+    }
   }
 
   if (!d) {
@@ -216,7 +227,7 @@ export function verifyEvidenceAgainstObserved(
   return {
     ok: issues.length === 0,
     issues,
-    observed_quality: q || null,
-    observed_diff_check: d || null,
+    observed_quality: (q as unknown as ObservedQuality) || null,
+    observed_diff_check: (d as unknown as ObservedQuality) || null,
   };
 }

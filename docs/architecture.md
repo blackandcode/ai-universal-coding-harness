@@ -42,15 +42,18 @@ No AI branch is created until selected stage packages have passed structural val
 
 ```text
 src/
-├── core/          configuration, paths, filesystem, processes
+├── cli/           pure CLI argument parsing and dispatching
+├── config/        configuration layers, paths, schema, normalization
+├── core/          paths, filesystem, process execution, time
 ├── git/           branch and repository lifecycle
 ├── harness/       pluggable executor/reviewer adapters
-├── orchestrator/  stage state machine
-├── permissions/   autonomous permission policy
+├── orchestrator/  stage state machine and recovery
+├── permissions/   autonomous permission classification and policy
 ├── project/       project init and local history lifecycle
 ├── quality/       execution evidence verification
 ├── stages/        source resolution, validation and plan coordination
 ├── state/         run persistence and repository lock
+├── tooling/       package invariants and build tooling
 └── ui/            semantic events and Ink presentation
 ```
 

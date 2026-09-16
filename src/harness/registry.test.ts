@@ -13,9 +13,11 @@ import path from 'node:path';
 import os from 'node:os';
 import { HarnessRegistry } from './registry.js';
 
-test('default harness registry exposes Cursor executor and Codex reviewer only through generic contracts', () => {
+test('default harness registry exposes Cursor executor and Codex/Cursor reviewers through generic contracts', () => {
   const r = new HarnessRegistry();
-  assert.deepEqual(r.list(), { executors: ['cursor'], reviewers: ['codex'] });
+  assert.deepEqual(r.list(), { executors: ['cursor'], reviewers: ['codex', 'cursor'] });
+  assert.equal(r.reviewer('cursor', {}).info.id, 'cursor');
+  assert.equal(r.reviewer('codex', {}).info.id, 'codex');
 });
 
 test('HarnessRegistry: throws on unknown executor or reviewer harness', () => {

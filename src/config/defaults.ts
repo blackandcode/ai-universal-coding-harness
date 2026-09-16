@@ -8,6 +8,42 @@ import type { OrchestratorConfig } from './types.js';
 export const DEFAULT_CONFIG: OrchestratorConfig = {
   executorHarness: 'cursor',
   reviewerHarness: 'codex',
+  reviewer: {
+    primary: {
+      harness: 'codex',
+      model: 'gpt-6-astra',
+      reasoningEffort: 'medium',
+      timeoutMinutes: 8,
+    },
+    fallback: {
+      enabled: true,
+      harness: 'cursor',
+      model: 'gemini-3.8-flash',
+      thinking: 'high',
+      triggers: [
+        'usage_limit',
+        'rate_limit',
+        'quota_exhausted',
+        'no_result',
+        'process_crash',
+        'timeout',
+        'turn_failed',
+      ],
+    },
+    largeDiff: {
+      thresholdChars: 300000,
+      harness: 'cursor',
+      model: 'gemini-3.8-flash',
+      thinking: 'high',
+    },
+    permission: {
+      harness: 'cursor',
+      model: 'composer-2.5-fast',
+      thinking: 'low',
+      reasoningEffort: 'low',
+      timeoutSeconds: 30,
+    },
+  },
   maxPlanReviews: 3,
   finalPlanReview: true,
   maxExecutionAttempts: 3,

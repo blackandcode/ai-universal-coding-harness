@@ -24,6 +24,7 @@ import { GitRepository } from '../git/GitRepository.js';
 import { RecoveryManager } from './RecoveryManager.js';
 import { RunStateStore } from '../state/RunStateStore.js';
 import { removeTree } from '../core/fs.js';
+import { CONFIG } from '../core/config.js';
 import type { ExecutorSession } from '../harness/types.js';
 import type { CommandObservation, FinalVerdict, ExecutionEvidence } from '../types.js';
 
@@ -1051,6 +1052,153 @@ test('orchestrator integration: prepareFrozenInputs sets up read-only stage inpu
       'prompt.md',
     );
     assert.ok(fs.existsSync(frozenInput));
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
+test('orchestrator integration: reviewer fallback failover on usage limit enables completion and persists metadata', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-failover');
+  const eventLog = path.join(repoDir, '.ai-orchestrator', 'failover-events.jsonl');
+  const events = new EventBus(eventLog);
+
+  try {
+    const registry = new HarnessRegistry();
+    let fallbackEmitted = false;
+    events.emitter.on('reviewer.fallback', () => {
+      fallbackEmitted = true;
+    });
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: (async () => {
+        return {
+          id: 'sess-failover-1',
+          sendUserMessage: async () => {
+            const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', 'stage-01-failover');
+            fs.mkdirSync(runtimeDir, { recursive: true });
+
+            fs.writeFileSync(path.join(repoDir, 'failover-feature.txt'), 'Feature implemented\n');
+
+            const obs = [
+              {
+                id: 'obs-cmd-1',
+                type: 'terminal_command',
+                command: 'npm test',
+                exit_code: 0,
+                stdout: 'All checks green',
+                stderr: '',
+                working_directory: repoDir,
+              },
+            ];
+            fs.writeFileSync(path.join(runtimeDir, 'observations.jsonl'), obs.map((o) => JSON.stringify(o)).join('\n') + '\n');
+
+            const evidence: ExecutionEvidence = {
+              stage: 'stage-01-failover',
+              attempt: 1,
+              status: 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: 'All checks green',
+              changed_files: ['failover-feature.txt'],
+              unresolved: [],
+            };
+            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+
+            return { text: 'Done', result: {} };
+          },
+          setMode: async () => {},
+          prompt: async () => ({ text: '' }),
+          observedCommands: [],
+          stop: async () => {},
+        };
+      }) as any,
+    }));
+
+    // Primary reviewer: plan review succeeds, but final review hits usage limit
+    registry.registerReviewer('primary-rev', () => ({
+      info: { id: 'primary-rev', label: 'Primary Reviewer', role: 'reviewer', model: 'gpt-6-astra' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => ({
+        verdict: 'APPROVE',
+        summary: 'Plan approved',
+        missing_items: [],
+      }),
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [] }),
+      decidePermission: async () => ({ verdict: 'ALLOW' }),
+      reviewImplementation: async () => {
+        throw new Error("You've hit your usage limit. Upgrade to Pro or visit settings to purchase more credits");
+      },
+    }));
+
+    // Fallback reviewer: succeeds on final review
+    registry.registerReviewer('fallback-rev', () => ({
+      info: { id: 'fallback-rev', label: 'Fallback Reviewer', role: 'reviewer', model: 'gemini-3.8-flash' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async () => ({ verdict: 'APPROVE', summary: 'Fallback plan OK', missing_items: [] }),
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [] }),
+      decidePermission: async () => ({ verdict: 'ALLOW' }),
+      reviewImplementation: async () => ({
+        verdict: 'APPROVE',
+        summary: 'Fallback review approved implementation',
+      }),
+    }));
+
+    // Temporarily configure CONFIG.reviewer for this test
+    const origReviewer = CONFIG.reviewer;
+    CONFIG.reviewer = {
+      primary: { harness: 'primary-rev', model: 'gpt-6-astra' },
+      fallback: {
+        enabled: true,
+        harness: 'fallback-rev',
+        model: 'gemini-3.8-flash',
+        triggers: ['usage_limit', 'rate_limit', 'quota_exhausted', 'process_crash'],
+      },
+      largeDiff: { thresholdChars: 300000, harness: 'fallback-rev', model: 'gemini-3.8-flash' },
+      permission: { harness: 'fallback-rev', model: 'composer-2.5-fast' },
+    };
+
+    try {
+      const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+      const state = orchestrator.createRun({
+        stageSource: stagesDir,
+        selectors: ['01'],
+        executorHarness: 'test-exec',
+        reviewerHarness: 'primary-rev',
+        qualityCmd: 'npm test',
+      });
+
+      const finalState = await orchestrator.run(state);
+
+      assert.equal(finalState.status, 'completed');
+      assert.equal(finalState.stages[0].status, 'completed');
+      assert.equal(fallbackEmitted, true, 'reviewer.fallback event should have been emitted');
+
+      // Verify verdict artifact contains _orchestrator_meta provenance
+      const reviewJsonPath = path.join(
+        repoDir,
+        '.ai-orchestrator',
+        'runs',
+        state.run_id,
+        'stages',
+        'stage-01-failover',
+        'review-attempt-1.json',
+      );
+      assert.ok(fs.existsSync(reviewJsonPath));
+      const parsedReview = JSON.parse(fs.readFileSync(reviewJsonPath, 'utf8'));
+      assert.equal(parsedReview.verdict, 'APPROVE');
+      assert.ok(parsedReview._orchestrator_meta);
+      assert.equal(parsedReview._orchestrator_meta.trigger, 'usage_limit');
+      assert.equal(parsedReview._orchestrator_meta.executed_by, 'fallback-rev:gemini-3.8-flash');
+      assert.equal(parsedReview._orchestrator_meta.fallback_from, 'primary-rev:gpt-6-astra');
+    } finally {
+      CONFIG.reviewer = origReviewer;
+    }
   } finally {
     events.close();
     removeTree(repoDir);

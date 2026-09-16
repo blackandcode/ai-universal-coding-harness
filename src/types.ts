@@ -3,6 +3,8 @@
  * Defines run and stage states, verdicts, execution evidence, UI event streams, and manifests.
  */
 
+import type { ReviewerFallbackMetadata } from './harness/types.js';
+
 // Semantic branded identifier types
 declare const RunIdBrand: unique symbol;
 export type RunId = string & { readonly [RunIdBrand]?: typeof RunIdBrand };
@@ -166,19 +168,24 @@ export interface PlanReviewVerdict {
   verdict: 'APPROVE' | 'REPLAN' | 'BLOCKED';
   summary: string;
   missing_items: string[];
-  feedback_for_cursor: string;
+  feedback_for_cursor?: string;
+  feedback_for_executor?: string;
+  _orchestrator_meta?: ReviewerFallbackMetadata;
+  [key: string]: unknown;
 }
 
 export interface PermissionVerdict {
   verdict: 'ALLOW' | 'DENY';
   cache_for_stage?: boolean;
   reason?: string;
+  _orchestrator_meta?: ReviewerFallbackMetadata;
 }
 
 export interface QuestionVerdict {
   verdict: 'ANSWER' | 'BLOCKED';
   answers?: Array<{ question_id: string; selected_option_ids: string[] }>;
   rationale?: string;
+  _orchestrator_meta?: ReviewerFallbackMetadata;
 }
 
 export interface FinalVerdictFinding {
@@ -195,16 +202,27 @@ export interface FinalVerdict {
   rework_instructions?: string;
   requested_paths?: string[];
   required_follow_up_tests?: string[];
+  _orchestrator_meta?: ReviewerFallbackMetadata;
 }
 
 export interface HarnessContext {
-  workspace: string;
-  runId: string;
-  stageName: string;
-  runDir: string;
-  stageDir: string;
-  frozenStageDir: string;
-  qualityCommand: string;
+  workspace?: string;
+  runId?: string;
+  stageName?: string;
+  runDir?: string;
+  stageDir?: string;
+  frozenStageDir?: string;
+  qualityCommand?: string;
+  events?: unknown;
+  stageContext?: string;
+  skillsText?: string;
+  runLog?: string;
+  projectDir?: string;
+  executorBinary?: string;
+  executorModel?: string;
+  reviewerBinary?: string;
+  reviewerModel?: string;
+  [key: string]: unknown;
 }
 
 // UI Event Definitions
@@ -230,6 +248,18 @@ export interface UiEventPayloadMap {
   'reviewer.plan': { verdict?: string; summary?: string; [key: string]: unknown };
   'reviewer.question': { answer?: string; [key: string]: unknown };
   'reviewer.permission': { verdict?: string; summary?: string; [key: string]: unknown };
+  'reviewer.fallback': {
+    stage?: string;
+    attempt?: number;
+    decision_type?: string;
+    failed_harness?: string;
+    failed_model?: string;
+    trigger?: string;
+    fallback_harness?: string;
+    fallback_model?: string;
+    reason?: string;
+    [key: string]: unknown;
+  };
   'reviewer.tokens': { [key: string]: unknown };
   'quality.result': {
     status?: string;
@@ -253,10 +283,10 @@ export interface TypedUiEvent<K extends KnownUiEventType = KnownUiEventType> {
 export interface GenericUiEvent {
   ts: string;
   type: string;
-  payload: Record<string, any>;
+  payload: Record<string, unknown>;
 }
 
-export interface UiEvent<TPayload = Record<string, any>> {
+export interface UiEvent<TPayload = Record<string, unknown>> {
   ts: string;
   type: string;
   payload: TPayload;

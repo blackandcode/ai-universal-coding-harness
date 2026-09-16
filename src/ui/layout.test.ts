@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dashboardLayout } from './layout.js';
+
 for (const [rows, expected] of [
   [10, 'minimal'],
   [15, 'minimal'],
@@ -19,6 +20,7 @@ for (const [rows, expected] of [
     assert.ok(l.maxRows <= rows - 2);
   });
 }
+
 test('configured max is respected', () => {
   assert.equal(dashboardLayout(60, 22).maxRows, 22);
 });

@@ -51,7 +51,7 @@ export class PlanCoordinator {
 
   private feedback(v: PlanReviewVerdict): string {
     return [
-      v.feedback_for_cursor || v.summary || '',
+      v.feedback_for_executor || v.feedback_for_cursor || v.summary || '',
       ...(v.missing_items || []).map((x) => `- ${x}`),
     ]
       .filter(Boolean)
@@ -75,7 +75,7 @@ export class PlanCoordinator {
         this.plansDir(),
         `${final ? 'final-' : 'review-'}${String(round).padStart(2, '0')}.md`,
       ),
-      `# ${final ? 'Final consolidation' : 'Plan review'} ${round}\n\n- **Verdict:** ${v.verdict}\n- **Summary:** ${v.summary || ''}\n\n## Missing / improvement items\n\n${(v.missing_items || []).map((x) => `- ${x}`).join('\n') || '_None._'}\n\n## Feedback for executor\n\n${v.feedback_for_cursor || '_None._'}\n`,
+      `# ${final ? 'Final consolidation' : 'Plan review'} ${round}\n\n- **Verdict:** ${v.verdict}\n- **Summary:** ${v.summary || ''}\n\n## Missing / improvement items\n\n${(v.missing_items || []).map((x) => `- ${x}`).join('\n') || '_None._'}\n\n## Feedback for executor\n\n${v.feedback_for_executor || v.feedback_for_cursor || '_None._'}\n`,
     );
   }
 
@@ -128,6 +128,7 @@ export class PlanCoordinator {
       summary: reason,
       missing_items: [],
       feedback_for_cursor: this.lastFeedback,
+      feedback_for_executor: this.lastFeedback,
     });
     return clean;
   }

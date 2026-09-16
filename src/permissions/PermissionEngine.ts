@@ -8,7 +8,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { parse, printParseErrorCode } from 'jsonc-parser';
+import { parse, printParseErrorCode, type ParseError } from 'jsonc-parser';
 import type { PermissionMode, PermissionVerdict } from '../types.js';
 import {
   commandStartsWith,
@@ -23,7 +23,7 @@ export interface PermissionRequest {
   command?: string;
   description?: string;
   paths?: string[];
-  raw: any;
+  raw: unknown;
 }
 
 export interface PermissionDecision {
@@ -49,14 +49,14 @@ export class PermissionEngine {
 
   private load(file: string): void {
     if (!fs.existsSync(file)) return;
-    const errors: any[] = [];
-    const doc: any = parse(fs.readFileSync(file, 'utf8'), errors, {
+    const errors: ParseError[] = [];
+    const doc = parse(fs.readFileSync(file, 'utf8'), errors, {
       allowTrailingComma: true,
       disallowComments: false,
-    });
+    }) as { terminalAllowlist?: unknown[]; terminalDenylist?: unknown[] } | null;
     if (errors.length)
       throw new Error(
-        `Unable to parse permissions file ${file}: ${errors.map((x: any) => printParseErrorCode(x.error)).join(', ')}`,
+        `Unable to parse permissions file ${file}: ${errors.map((x) => printParseErrorCode(x.error)).join(', ')}`,
       );
     this.allowlist = Array.isArray(doc?.terminalAllowlist) ? doc.terminalAllowlist.map(String) : [];
     this.denylist = Array.isArray(doc?.terminalDenylist) ? doc.terminalDenylist.map(String) : [];

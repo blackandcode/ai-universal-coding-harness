@@ -25,14 +25,24 @@ import { GitRepository } from '../git/GitRepository.js';
 import { BranchManager } from '../git/BranchManager.js';
 import { RunStateStore } from '../state/RunStateStore.js';
 import { HarnessRegistry } from '../harness/registry.js';
-import type { ReviewerHarness, ExecutorSession } from '../harness/types.js';
+import type { ReviewerHarness, ExecutorSession, QuestionReviewInput } from '../harness/types.js';
 import { PermissionEngine, type PermissionRequest } from '../permissions/PermissionEngine.js';
 import { StageSource } from '../stages/StageSource.js';
 import { frozenStageContext, relevantSkills, skillIndex } from '../stages/context.js';
 import { PlanCoordinator } from '../stages/PlanCoordinator.js';
 import { EvidenceService } from '../quality/EvidenceService.js';
 import { EventBus } from '../ui/EventBus.js';
-import type { RunState, SelectedStage, QuestionVerdict, FinalVerdict } from '../types.js';
+import { ReviewerRouter } from './services/ReviewerRouter.js';
+import { ReviewPayloadBuilder } from './services/ReviewPayloadBuilder.js';
+import { ReviewerErrorClassifier } from '../harness/ReviewerErrorClassifier.js';
+import type {
+  RunState,
+  SelectedStage,
+  QuestionVerdict,
+  FinalVerdict,
+  ExecutionEvidence,
+  RunStatus,
+} from '../types.js';
 
 export interface OrchestratorOptions {
   workspace?: string;
@@ -110,7 +120,7 @@ export class Orchestrator {
       const executorId = input.executorHarness || CONFIG.executorHarness,
         reviewerId = input.reviewerHarness || CONFIG.reviewerHarness;
       const executorInfo = this.registry.executor(executorId, { events: this.events }).info,
-        reviewerInfo = this.registry.reviewer(reviewerId, {
+        reviewerInfo = this.createReviewerHarness(reviewerId, {
           events: this.events,
           runDir,
           stageName: '_run',
@@ -162,6 +172,40 @@ export class Orchestrator {
   }
   private specDigest(stage: SelectedStage) {
     return sha256Text(JSON.stringify(stage.manifest.sha256 || {}));
+  }
+  private createReviewerHarness(reviewerId: string, context: any): ReviewerHarness {
+    if (CONFIG.reviewer) {
+      const isCustomHarness =
+        reviewerId !== 'codex' &&
+        reviewerId !== 'cursor' &&
+        reviewerId !== CONFIG.reviewer.primary.harness;
+      const routerConfig = {
+        ...CONFIG.reviewer,
+        primary: {
+          ...CONFIG.reviewer.primary,
+          harness: reviewerId || CONFIG.reviewer.primary.harness,
+        },
+        fallback: {
+          ...CONFIG.reviewer.fallback,
+          harness: isCustomHarness ? reviewerId : CONFIG.reviewer.fallback.harness,
+        },
+        largeDiff: {
+          ...CONFIG.reviewer.largeDiff,
+          harness: isCustomHarness ? reviewerId : CONFIG.reviewer.largeDiff.harness,
+        },
+        permission: {
+          ...CONFIG.reviewer.permission,
+          harness: isCustomHarness ? reviewerId : CONFIG.reviewer.permission.harness,
+        },
+      };
+      return new ReviewerRouter({
+        config: routerConfig,
+        registry: this.registry,
+        context,
+        events: this.events,
+      });
+    }
+    return this.registry.reviewer(reviewerId, context);
   }
   private patchFingerprint() {
     return this.git.patchFingerprint();
@@ -225,7 +269,7 @@ export class Orchestrator {
     const exec = this.registry.executor(stateOrInput.executor_harness || CONFIG.executorHarness, {
       events: this.events,
     });
-    const rev = this.registry.reviewer(stateOrInput.reviewer_harness || CONFIG.reviewerHarness, {
+    const rev = this.createReviewerHarness(stateOrInput.reviewer_harness || CONFIG.reviewerHarness, {
       events: this.events,
       runDir: this.workspace,
       stageName: '_preflight',
@@ -243,24 +287,24 @@ export class Orchestrator {
 
   private async questionDecision(
     reviewer: ReviewerHarness,
-    payload: any,
-    cache: Map<string, any>,
+    payload: QuestionReviewInput,
+    cache: Map<string, QuestionVerdict>,
     stageName: string,
     state: RunState,
   ) {
     const key = sha256Text(
       JSON.stringify({ title: payload.title || '', questions: payload.questions || [] }),
     );
-    let v: QuestionVerdict = cache.get(key);
+    let v: QuestionVerdict | undefined = cache.get(key);
     if (!v) {
       v = await reviewer.answerQuestions({ title: payload.title, questions: payload.questions });
       if (v.verdict === 'ANSWER') cache.set(key, v);
     }
-    const answers: any[] = [];
+    const answers: Array<{ questionId: string; selectedOptionIds: string[] }> = [];
     for (const q of payload.questions || []) {
-      const a = (v.answers || []).find((x) => x.question_id === q.id);
+      const a = (v?.answers || []).find((x) => x.question_id === q.id);
       let ids = (a?.selected_option_ids || []).filter((id: string) =>
-        (q.options || []).some((o: any) => o.id === id),
+        (q.options || []).some((o) => o.id === id),
       );
       if (!ids.length && q.options?.length) ids = [q.options[0].id];
       answers.push({ questionId: q.id, selectedOptionIds: ids });
@@ -270,9 +314,9 @@ export class Orchestrator {
       stageName,
       'DECISIONS.md',
       'Executor question answered',
-      `**Question:** ${(payload.questions || []).map((q: any) => q.prompt).join(' | ')}\n\n**Reviewer verdict:** ${v.verdict}\n\n**Rationale:** ${v.rationale || 'Autonomous fallback selected the first available option.'}`,
+      `**Question:** ${(payload.questions || []).map((q) => q.prompt).join(' | ')}\n\n**Reviewer verdict:** ${v?.verdict || 'ANSWER'}\n\n**Rationale:** ${v?.rationale || 'Autonomous fallback selected the first available option.'}`,
     );
-    return { answers, rationale: v.rationale || 'Autonomous fallback used.' };
+    return { answers, rationale: v?.rationale || 'Autonomous fallback used.' };
   }
 
   private async permissionDecision(
@@ -334,7 +378,7 @@ export class Orchestrator {
       ['DECISIONS.md', 'Decisions'],
       ['EXECUTION.md', 'Execution'],
       ['FINAL_REVIEW.md', 'Final Review'],
-    ] as any) {
+    ] as const) {
       const p = path.join(stageRunDir, file);
       if (!fs.existsSync(p)) writeText(p, `# ${title}\n\n`);
     }
@@ -342,7 +386,7 @@ export class Orchestrator {
     const frozenDir = path.join(this.workspace, '.ai-orchestrator', 'stage-input', stage.name);
     const stageContext = frozenStageContext(frozenDir);
     const skillsText = relevantSkills(skillIndex(this.workspace), stageContext);
-    const reviewer = this.registry.reviewer(state.reviewer_harness, {
+    const reviewer = this.createReviewerHarness(state.reviewer_harness, {
       events: this.events,
       runDir: this.store.runDir(state.run_id),
       stageName: stage.name,
@@ -421,7 +465,7 @@ export class Orchestrator {
       this.store.save(state);
       let feedback = '';
       let approvedFinal: FinalVerdict | null = null;
-      let _finalEvidence: any = null;
+      let _finalEvidence: ExecutionEvidence | null = null;
       let pendingResumedEvidence = this.evidenceService.checkReusableEvidence(
         runtime0,
         this.patchFingerprint(),
@@ -435,7 +479,8 @@ export class Orchestrator {
       for (let attempt = 1; attempt <= CONFIG.maxExecutionAttempts; attempt++) {
         this.branch.assertActive(state);
         this.events.emit('stage.attempt', { stage: stage.name, attempt });
-        let ev: any = null;
+        let ev: { ok: boolean; reason?: string; e?: ExecutionEvidence; resumed?: boolean } | null =
+          null;
         if (attempt === 1 && pendingResumedEvidence) {
           ev = pendingResumedEvidence;
           pendingResumedEvidence = null;
@@ -450,7 +495,7 @@ export class Orchestrator {
           );
           ev = this.evidenceService.validateRuntimeEvidence(stage.name, attempt);
         }
-        if (!ev?.ok) {
+        if (!ev?.ok || !ev.e) {
           feedback = `Execution evidence invalid: ${ev?.reason || 'missing'}. Re-run required checks and regenerate evidence.json.`;
           this.events.emit('quality.result', { status: 'FAIL', summary: feedback });
           this.store.appendHuman(
@@ -472,16 +517,22 @@ export class Orchestrator {
           this.store.save(state);
           continue;
         }
+        const activeEvidence: ExecutionEvidence = ev.e;
+        const isResumed = Boolean(ev.resumed);
         const diffCheck = this.git.diffCheck();
-        const corroboration = this.evidenceService.corroborate(ev.e, session.observedCommands(), {
-          stage: stage.name,
-          attempt,
-          quality_epoch_id: epochId || undefined,
-          expected_patch_fingerprint: this.patchFingerprint(),
-          last_mutation_sequence: session.lastMutationSeq?.(),
-          orchestrator_diff_check_ok: diffCheck.ok,
-        });
-        if (!ev.resumed && !corroboration.ok) {
+        const corroboration = this.evidenceService.corroborate(
+          activeEvidence,
+          session.observedCommands(),
+          {
+            stage: stage.name,
+            attempt,
+            quality_epoch_id: epochId || undefined,
+            expected_patch_fingerprint: this.patchFingerprint(),
+            last_mutation_sequence: session.lastMutationSeq?.(),
+            orchestrator_diff_check_ok: diffCheck.ok,
+          },
+        );
+        if (!isResumed && !corroboration.ok) {
           feedback = `Execution evidence could not be corroborated against executor ACP results:\n${corroboration.issues.map((x: string) => `- ${x}`).join('\n')}\nRerun the exact quality commands and regenerate evidence.json.`;
           this.events.emit('quality.result', { status: 'FAIL', summary: feedback });
           this.store.appendHuman(
@@ -503,28 +554,31 @@ export class Orchestrator {
           this.store.save(state);
           continue;
         }
-        const finalEvidence = corroboration.evidence || ev.e;
+        const finalEvidence = corroboration.evidence || activeEvidence;
         finalEvidence.patch_fingerprint = this.patchFingerprint();
         const saved = this.evidenceService.saveCorroboratedEvidence(
           stageRunDir,
           finalEvidence,
           attempt,
         );
-        this.events.emit('quality.result', { ...ev.e, summary: ev.e.quality_summary });
+        this.events.emit('quality.result', {
+          ...activeEvidence,
+          summary: activeEvidence.quality_summary,
+        });
         this.store.appendHuman(
           state.run_id,
           stage.name,
           'EXECUTION.md',
           `Attempt ${attempt} — corroborated evidence`,
-          `- **Status:** ${ev.e.status}\n- **Quality:** ${ev.e.quality_command} → ${ev.e.quality_exit_code}\n- **git diff --check:** ${ev.e.git_diff_check_exit_code}\n- **Summary:** ${ev.e.quality_summary || ''}`,
+          `- **Status:** ${activeEvidence.status}\n- **Quality:** ${activeEvidence.quality_command} → ${activeEvidence.quality_exit_code}\n- **git diff --check:** ${activeEvidence.git_diff_check_exit_code}\n- **Summary:** ${activeEvidence.quality_summary || ''}`,
         );
         if (
-          ev.e.status !== 'PASS' ||
-          Number(ev.e.quality_exit_code) !== 0 ||
-          Number(ev.e.git_diff_check_exit_code) !== 0 ||
-          (ev.e.unresolved || []).length
+          activeEvidence.status !== 'PASS' ||
+          Number(activeEvidence.quality_exit_code) !== 0 ||
+          Number(activeEvidence.git_diff_check_exit_code) !== 0 ||
+          (activeEvidence.unresolved || []).length
         ) {
-          feedback = `Deterministic quality evidence is not green. Resolve without reviewer execution.\n${JSON.stringify(ev.e, null, 2).slice(0, 30000)}`;
+          feedback = `Deterministic quality evidence is not green. Resolve without reviewer execution.\n${JSON.stringify(activeEvidence, null, 2).slice(0, 30000)}`;
           this.store.saveStage(state.run_id, stage.name, {
             phase: 'implementation',
             attempt,
@@ -538,7 +592,7 @@ export class Orchestrator {
           continue;
         }
         this.store.saveStage(state.run_id, stage.name, {
-          phase: 'quality',
+          phase: 'review',
           attempt,
           evidence_file: saved,
           patch_fingerprint: this.patchFingerprint(),
@@ -548,31 +602,34 @@ export class Orchestrator {
         state.current_phase = 'review';
         this.store.save(state);
         this.events.emit('review.started', { stage: stage.name, attempt });
-        const payload = {
-          approved_plan: approved,
-          plan_reviewer_carryover: carry,
-          evidence: ev.e,
-          git_status: this.git.statusShort(),
-          diff_stat: this.git.diffStat(),
-          changed_files: this.git.changedFiles(),
-          diff: this.boundedDiff(),
-        };
-        let verdict = await reviewer.reviewImplementation(payload);
+        const payload = ReviewPayloadBuilder.build({
+          git: this.git,
+          approvedPlan: approved,
+          planReviewerCarryover: carry,
+          evidence: activeEvidence,
+          maxDiffChars: CONFIG.maxDiffChars,
+        });
+        let verdict = await reviewer.reviewImplementation(payload as any);
         if (verdict.verdict === 'NEEDS_CONTEXT' && verdict.requested_paths?.length) {
-          verdict = await reviewer.reviewImplementation({
-            ...payload,
-            requested_context_diff: this.boundedDiff(verdict.requested_paths),
+          const followUpPayload = ReviewPayloadBuilder.build({
+            git: this.git,
+            approvedPlan: approved,
+            planReviewerCarryover: carry,
+            evidence: activeEvidence,
+            maxDiffChars: CONFIG.maxDiffChars,
+            requestedPaths: verdict.requested_paths,
           });
+          verdict = await reviewer.reviewImplementation(followUpPayload as any);
         }
         this.events.emit('review.result', { verdict: verdict.verdict, summary: verdict.summary });
         writeJson(path.join(stageRunDir, `review-attempt-${attempt}.json`), verdict);
         writeText(
           path.join(stageRunDir, `review-attempt-${attempt}.md`),
-          `# Final review — attempt ${attempt}\n\n- **Verdict:** ${verdict.verdict}\n- **Summary:** ${verdict.summary}\n\n${(verdict.findings || []).map((x: any) => `- **${x.severity || 'n/a'} / ${x.area || ''}:** ${x.finding || x}\n  - Required fix: ${x.required_fix || ''}`).join('\n')}\n`,
+          `# Final review — attempt ${attempt}\n\n- **Verdict:** ${verdict.verdict}\n- **Summary:** ${verdict.summary}\n\n${(verdict.findings || []).map((x) => `- **${typeof x === 'object' && x.severity ? x.severity : 'n/a'} / ${typeof x === 'object' && x.area ? x.area : ''}:** ${typeof x === 'object' && x.finding ? x.finding : String(x)}\n  - Required fix: ${typeof x === 'object' && x.required_fix ? x.required_fix : ''}`).join('\n')}\n`,
         );
         if (verdict.verdict === 'APPROVE') {
           approvedFinal = verdict;
-          _finalEvidence = ev.e;
+          _finalEvidence = activeEvidence;
           break;
         }
         feedback =
@@ -641,20 +698,21 @@ export class Orchestrator {
       if (state.stages[i].status === 'completed') continue;
       try {
         await this.executeStage(state, i);
-      } catch (e: any) {
+      } catch (e: unknown) {
+        const errMessage = e instanceof Error ? e.message : String(e);
         state = this.store.load(state.run_id);
         state.status = this.classifyError(e);
         state.blocked_stage = state.stages[i].name;
-        state.error = e.message;
+        state.error = errMessage;
         this.store.save(state);
         this.events.emit('stage.blocked', {
           stage: state.stages[i].name,
           status: state.status,
-          reason: e.message,
+          reason: errMessage,
         });
         this.events.emit('run.blocked', {
           status: state.status,
-          reason: e.message,
+          reason: errMessage,
           branch: state.branch,
         });
         throw e;
@@ -667,9 +725,26 @@ export class Orchestrator {
     this.events.emit('run.completed', { branch: state.branch, workspace: state.workspace });
     return state;
   }
-  private classifyError(e: any) {
-    const m = String(e?.message || e);
-    if (/timeout|temporar|exited|connection|unavailable/i.test(m)) return 'retryable_error';
+  private classifyError(e: unknown): RunStatus {
+    const classification = ReviewerErrorClassifier.classifyError(e);
+    if (
+      classification.trigger === 'usage_limit' ||
+      classification.trigger === 'rate_limit' ||
+      classification.trigger === 'quota_exhausted'
+    ) {
+      return 'external_dependency';
+    }
+    if (
+      classification.trigger === 'process_crash' ||
+      classification.trigger === 'timeout' ||
+      classification.trigger === 'turn_failed'
+    ) {
+      return 'retryable_error';
+    }
+
+    const m = e instanceof Error ? e.message : String(e);
+    if (/usage limit|quota|credits|rate limit|429/i.test(m)) return 'external_dependency';
+    if (/timeout|temporar|exited|connection|unavailable|crash/i.test(m)) return 'retryable_error';
     if (/credential|authentication|network|external dependency/i.test(m))
       return 'external_dependency';
     if (/contradict|specification/i.test(m)) return 'specification_blocked';

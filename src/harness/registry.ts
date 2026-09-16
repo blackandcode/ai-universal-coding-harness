@@ -7,7 +7,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import type { ExecutorHarness, ReviewerHarness } from './types.js';
+import type { HarnessContext } from '../types.js';
 import { CursorExecutorHarness } from './cursor/CursorExecutorHarness.js';
+import { CursorReviewerHarness } from './cursor/CursorReviewerHarness.js';
 import { CodexReviewerHarness } from './codex/CodexReviewerHarness.js';
 import { PROJECT_ROOT, CONFIG } from '../core/config.js';
 
@@ -15,8 +17,8 @@ import { PROJECT_ROOT, CONFIG } from '../core/config.js';
  * Registry managing factory constructors for executor and reviewer harnesses.
  */
 export class HarnessRegistry {
-  private executors = new Map<string, (ctx: any) => ExecutorHarness>();
-  private reviewers = new Map<string, (ctx: any) => ReviewerHarness>();
+  private executors = new Map<string, (ctx: HarnessContext) => ExecutorHarness>();
+  private reviewers = new Map<string, (ctx: HarnessContext) => ReviewerHarness>();
   private loaded = new Set<string>();
 
   /**
@@ -25,6 +27,7 @@ export class HarnessRegistry {
   constructor() {
     this.registerExecutor('cursor', (ctx) => new CursorExecutorHarness(ctx));
     this.registerReviewer('codex', (ctx) => new CodexReviewerHarness(ctx));
+    this.registerReviewer('cursor', (ctx) => new CursorReviewerHarness(ctx));
   }
 
   /**
@@ -33,7 +36,7 @@ export class HarnessRegistry {
    * @param id - Unique identifier for the executor harness.
    * @param f - Factory function returning an ExecutorHarness instance.
    */
-  registerExecutor(id: string, f: (ctx: any) => ExecutorHarness): void {
+  registerExecutor(id: string, f: (ctx: HarnessContext) => ExecutorHarness): void {
     this.executors.set(id, f);
   }
 
@@ -43,7 +46,7 @@ export class HarnessRegistry {
    * @param id - Unique identifier for the reviewer harness.
    * @param f - Factory function returning a ReviewerHarness instance.
    */
-  registerReviewer(id: string, f: (ctx: any) => ReviewerHarness): void {
+  registerReviewer(id: string, f: (ctx: HarnessContext) => ReviewerHarness): void {
     this.reviewers.set(id, f);
   }
 
@@ -55,7 +58,7 @@ export class HarnessRegistry {
    * @returns An instantiated ExecutorHarness.
    * @throws Error if the specified executor ID is not registered.
    */
-  executor(id: string, ctx: any): ExecutorHarness {
+  executor(id: string, ctx: HarnessContext): ExecutorHarness {
     const f = this.executors.get(id);
     if (!f) {
       throw new Error(
@@ -73,7 +76,7 @@ export class HarnessRegistry {
    * @returns An instantiated ReviewerHarness.
    * @throws Error if the specified reviewer ID is not registered.
    */
-  reviewer(id: string, ctx: any): ReviewerHarness {
+  reviewer(id: string, ctx: HarnessContext): ReviewerHarness {
     const f = this.reviewers.get(id);
     if (!f) {
       throw new Error(
@@ -118,7 +121,7 @@ export class HarnessRegistry {
       const req = createRequire(path.join(PROJECT_ROOT, 'package.json'));
       target = pathToFileURL(req.resolve(spec)).href;
     }
-    const mod: any = await import(target);
+    const mod = (await import(target)) as Record<string, unknown>;
     const register = mod.registerHarnesses || mod.default;
     if (typeof register !== 'function') {
       throw new Error(
