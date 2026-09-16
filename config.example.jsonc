@@ -48,16 +48,17 @@
     },
     "largeDiff": {
       "thresholdChars": 300000,
-      "harness": "cursor",
-      "model": "gemini-3.8-flash",
-      "thinking": "high",
+      "harness": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "medium",
       "timeoutMinutes": 10
     },
     "permission": {
-      "harness": "cursor",
-      "model": "gemini-3.8-flash",
-      "thinking": "high",
-      "timeoutSeconds": 30
+      "harness": "codex",
+      "model": "gpt-5.6-luna",
+      "reasoningEffort": "low",
+      "verbosity": "low",
+      "timeoutMinutes": 8
     }
   },
   "harnesses": {
