@@ -27,10 +27,10 @@ test('root IMPLEMENTATION-STATUS.md exists and contains required governance sect
   assert.match(content, /Stage 01.*Completed/);
   assert.match(content, /Stage 02.*Completed/);
   assert.match(content, /Stage 03.*Completed/);
-  assert.match(content, /Stage 04.*Pending/);
+  assert.match(content, /Stage 04.*Completed/);
 });
 
-test('root DECISIONS.md is authoritative and contains decisions 1 through 16 without broken links', () => {
+test('root DECISIONS.md is authoritative and contains decisions 1 through 17 without broken links', () => {
   const decisionsPath = path.resolve('DECISIONS.md');
   assert.ok(fs.existsSync(decisionsPath), 'Root DECISIONS.md must exist');
 
@@ -45,8 +45,8 @@ test('root DECISIONS.md is authoritative and contains decisions 1 through 16 wit
   // Must declare itself authoritative
   assert.match(content, /authoritative log/i);
 
-  // Must contain decisions 1 through 16
-  for (let i = 1; i <= 16; i++) {
+  // Must contain decisions 1 through 17
+  for (let i = 1; i <= 17; i++) {
     assert.match(
       content,
       new RegExp(`(?:^|\\n)${i}\\.\\s+\\*\\*`),
@@ -56,6 +56,9 @@ test('root DECISIONS.md is authoritative and contains decisions 1 through 16 wit
 
   // Decision 16 must specifically mention critical subsystem coverage gates
   assert.match(content, /16\.\s+\*\*Independent Critical Subsystem Coverage Gates/);
+
+  // Decision 17 must specifically mention configuration contract fidelity
+  assert.match(content, /17\.\s+\*\*Configuration Contract Fidelity/);
 });
 
 test('.github/workflows/ci.yml enforces exact Node 24.18.0 across all OSes and Node 24 latest on Ubuntu', () => {

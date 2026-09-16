@@ -103,12 +103,18 @@ export class ReviewerRouter implements ReviewerHarness {
 
     const mergedContext: HarnessContext = {
       ...this.baseContext,
-      reviewerModel: roleConfig.model,
-      reviewerBinary: roleConfig.binary,
-      thinking: roleConfig.thinking,
-      reasoningEffort: roleConfig.reasoningEffort,
-      timeoutMinutes: roleConfig.timeoutMinutes,
-      timeoutSeconds: roleConfig.timeoutSeconds
+      ...(roleConfig.model ? { reviewerModel: roleConfig.model } : {}),
+      ...(roleConfig.binary ? { reviewerBinary: roleConfig.binary } : {}),
+      ...(roleConfig.thinking ? { thinking: roleConfig.thinking } : {}),
+      ...(roleConfig.reasoningEffort ? { reasoningEffort: roleConfig.reasoningEffort } : {}),
+      ...(roleConfig.verbosity ? { verbosity: roleConfig.verbosity } : {}),
+      ...(typeof roleConfig.timeoutMinutes === 'number'
+        ? { timeoutMinutes: roleConfig.timeoutMinutes }
+        : {}),
+      ...(typeof roleConfig.timeoutSeconds === 'number'
+        ? { timeoutSeconds: roleConfig.timeoutSeconds }
+        : {}),
+      ...(roleConfig.contextMode ? { contextMode: roleConfig.contextMode } : {})
     };
 
     const harness = this.registry.reviewer(roleConfig.harness, mergedContext);

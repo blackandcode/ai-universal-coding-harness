@@ -331,21 +331,61 @@ export class Orchestrator {
     return { executor: a, reviewer: b };
   }
 
-  /** Answers executor multiple-choice questions via reviewer harness with per-payload caching. */
+  /**
+   * Answers executor multiple-choice questions via reviewer harness with per-payload caching and distinct question budgeting.
+   *
+   * @remarks
+   * Invariants:
+   * - Identical questions within the same stage hit the cache without consuming budget.
+   * - Caps distinct question fingerprints per stage attempt at {@link OrchestratorConfig.maxUniqueQuestionsPerStage}.
+   * - Exceeding the budget triggers an autonomous first-option fallback rather than failing the stage.
+   * - Emits `executor.question.budget` event when the cap is reached.
+   *
+   * @param reviewer - Active reviewer harness adapter.
+   * @param payload - Questions asked by the executor agent.
+   * @param cache - In-memory cache mapping question payload hashes to verdicts for this stage.
+   * @param stageName - Canonical name of the current stage.
+   * @param state - Current persistent run state.
+   * @param distinctQuestions - Set tracking distinct question payload fingerprints encountered in this stage attempt.
+   * @returns Resolved multiple-choice answers and rationale.
+   */
   private async questionDecision(
     reviewer: ReviewerHarness,
     payload: QuestionReviewInput,
     cache: Map<string, QuestionVerdict>,
     stageName: string,
-    state: RunState
+    state: RunState,
+    distinctQuestions: Set<string> = new Set<string>()
   ) {
     const key = sha256Text(
       JSON.stringify({ title: payload.title || '', questions: payload.questions || [] })
     );
     let v: QuestionVerdict | undefined = cache.get(key);
     if (!v) {
-      v = await reviewer.answerQuestions({ title: payload.title, questions: payload.questions });
-      if (v.verdict === 'ANSWER') cache.set(key, v);
+      const isNew = !distinctQuestions.has(key);
+      const limit = CONFIG.maxUniqueQuestionsPerStage;
+      if (isNew && distinctQuestions.size >= limit) {
+        this.events.emit('executor.question.budget', {
+          stage: stageName,
+          count: distinctQuestions.size + 1,
+          limit,
+          title: payload.title || ''
+        });
+        const fallbackAnswers = (payload.questions || []).map((q) => ({
+          question_id: q.id,
+          selected_option_ids: q.options?.[0]?.id ? [q.options[0].id] : []
+        }));
+        v = {
+          verdict: 'ANSWER',
+          answers: fallbackAnswers,
+          rationale: `Stage unique question budget reached (${limit}); autonomous fallback selected the first available option.`
+        };
+        cache.set(key, v);
+      } else {
+        distinctQuestions.add(key);
+        v = await reviewer.answerQuestions({ title: payload.title, questions: payload.questions });
+        if (v.verdict === 'ANSWER') cache.set(key, v);
+      }
     }
     const answers: Array<{ questionId: string; selectedOptionIds: string[] }> = [];
     for (const q of payload.questions || []) {
@@ -485,6 +525,7 @@ export class Orchestrator {
       );
     }
     const qcache = new Map<string, QuestionVerdict>();
+    const distinctQuestions = new Set<string>();
     const executorHarness = this.registry.executor(state.executor_harness, { events: this.events });
     const session = await executorHarness.createSession({
       workspace: this.workspace,
@@ -497,7 +538,8 @@ export class Orchestrator {
       runId: state.run_id,
       callbacks: {
         onPlan: (plan, _meta) => planCoord.submit(plan),
-        onQuestion: (p) => this.questionDecision(reviewer, p, qcache, stage.name, state),
+        onQuestion: (p) =>
+          this.questionDecision(reviewer, p, qcache, stage.name, state, distinctQuestions),
         onPermission: (req, _p) =>
           this.permissionDecision(permission, reviewer, req, stage.name, state),
         onSessionId: (id) =>

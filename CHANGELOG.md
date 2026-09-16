@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-16
+
 ### Added
 
 - Accepted ADR-0001 (`docs/adr/0001-protocol-and-transport-boundary-separation.md`) codifying transport decoupling, centralized protocol parsing, and static `any` elimination.
@@ -30,6 +32,13 @@ All notable changes to this project are documented here. The project follows Sem
 - Added `DECISIONS.md` and `IMPLEMENTATION-STATUS.md` to `requiredDiskFiles` in `scripts/package-check.mjs`.
 - Added Section 7 ("Stage Closure History") to root `IMPLEMENTATION-STATUS.md` detailing concrete deliverables across Stages 01, 02, and 03.
 - Added governance and link integrity regression test suites in `tests/scripts/governance.test.mjs`, `tests/scripts/critical-coverage.test.mjs`, and `tests/scripts/doc-links.test.mjs`, including verification subcommands invariant testing.
+- Accepted ADR-0003 (`docs/adr/0003-configuration-contract-fidelity-and-role-precedence.md`) codifying normative reviewer role configuration precedence, non-blocking distinct question budgets, and configuration contract fidelity.
+- Documented Decision 17 ("Configuration Contract Fidelity and Reviewer Role Precedence") in `DECISIONS.md`.
+- Added semantic event `executor.question.budget` to `UiEventMap` in `src/types.ts` and formatted lineMode summaries in `src/ui/EventBus.ts`.
+- Added distinct question budget enforcement (`maxUniqueQuestionsPerStage`) in `Orchestrator.questionDecision()` in `src/orchestrator/Orchestrator.ts` applying autonomous first-option fallback with non-blocking event emission upon cap exhaustion (Finding F-12).
+- Extended `HarnessContext` in `src/types.ts` with `verbosity` and `contextMode` tunables.
+- Added comprehensive configuration contract test suite in `tests/config/contract.test.ts` and validation test suite in `tests/config/validation.test.ts` (Finding F-14).
+- Added `effective*` inspection getters on `CodexReviewerHarness` and `CursorReviewerHarness` for deterministic contract verification.
 
 ### Changed
 
@@ -50,6 +59,11 @@ All notable changes to this project are documented here. The project follows Sem
 - Updated `.github/workflows/ci.yml` matrix with explicit `include` testing exact Node `24.18.0` on Ubuntu, Windows, and macOS, plus forward Node `24` latest on Ubuntu.
 - Updated `scripts/run-tests.mjs` to dynamically consume `INCREMENTAL_COVERAGE_THRESHOLDS` (95/95/85) for targeted test runs and `GLOBAL_COVERAGE_THRESHOLDS` (85/85/80) for full test runs from `scripts/coverage-config.mjs`.
 - Reconciled quality gate documentation across `docs/testing.md`, `docs/development.md`, and `docs/Functional-specification.md`.
+- Reconciled reviewer role configuration precedence hierarchy in `src/orchestrator/services/ReviewerRouter.ts`, ensuring `reviewer.<role>` tunables override global `harnesses.<adapter>` settings before static defaults across all roles (Finding F-13).
+- Wired role tunables and `timeoutSeconds` support in `src/harness/codex/CodexReviewerHarness.ts`, `src/harness/codex/CodexProcessRunner.ts`, and `src/harness/cursor/CursorReviewerHarness.ts` (Finding F-13).
+- Preserved optional role tunables across `primary`, `fallback`, `largeDiff`, and `permission` reviewer roles in `src/config/validation.ts`.
+- Reconciled configuration examples and templates in `config.example.jsonc`, `src/config/templates.ts`, and `docs/configuration.md` to remove conflicting duplicate Codex keys and document the runtime reviewer role precedence table (Finding F-14).
+- Updated `IMPLEMENTATION-STATUS.md` and `docs/ai-universal-coding-harness-modernization-gap-closure/IMPLEMENTATION-STATUS.md` marking Stage 04 as Completed and closing findings F-12, F-13, and F-14.
 
 ### Fixed
 

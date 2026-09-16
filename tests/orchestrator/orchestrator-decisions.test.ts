@@ -78,6 +78,199 @@ test('Orchestrator questionDecision caches ANSWER verdicts and falls back to fir
   }
 });
 
+test('Orchestrator questionDecision caps unique questions and falls back autonomously when budget is exhausted', async () => {
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-q-budget-'));
+  const eventFile = path.join(repoDir, 'events.jsonl');
+  const events = new EventBus(eventFile, true);
+  const orchestrator = new Orchestrator(events, { workspace: repoDir });
+  const questionDecision = (
+    orchestrator as unknown as {
+      questionDecision: (
+        reviewer: { answerQuestions: (input?: unknown) => Promise<unknown> },
+        payload: unknown,
+        cache: Map<string, unknown>,
+        stageName: string,
+        state: RunState,
+        distinctQuestions?: Set<string>
+      ) => Promise<{
+        answers: Array<{ questionId: string; selectedOptionIds: string[] }>;
+        rationale: string;
+      }>;
+    }
+  ).questionDecision.bind(orchestrator);
+
+  const budgetEvents: unknown[] = [];
+  events.emitter.on('event', (e) => {
+    if (e.type === 'executor.question.budget') {
+      budgetEvents.push(e.payload);
+    }
+  });
+
+  let reviewerCalls = 0;
+  const reviewer = {
+    answerQuestions: async (input?: unknown) => {
+      reviewerCalls++;
+      const qInput = input as { questions?: Array<{ id: string }> } | undefined;
+      return {
+        verdict: 'ANSWER',
+        answers: (qInput?.questions || []).map((q) => ({
+          question_id: q.id,
+          selected_option_ids: ['opt2']
+        })),
+        rationale: 'chose option 2'
+      };
+    }
+  };
+
+  const cache = new Map<string, unknown>();
+  const distinctQuestions = new Set<string>();
+  const state = { run_id: 'run-q-budget-1' } as RunState;
+
+  // Temporarily set budget to 2
+  const originalLimit = CONFIG.maxUniqueQuestionsPerStage;
+  try {
+    (CONFIG as { maxUniqueQuestionsPerStage: number }).maxUniqueQuestionsPerStage = 2;
+
+    // Question 1: Distinct question 1 (under cap: 0 < 2)
+    const q1Payload = {
+      title: 'Question 1',
+      questions: [
+        {
+          id: 'q1',
+          prompt: 'Choose 1?',
+          options: [
+            { id: 'opt1', label: 'One' },
+            { id: 'opt2', label: 'Two' }
+          ]
+        }
+      ]
+    };
+    const res1 = await questionDecision(
+      reviewer,
+      q1Payload,
+      cache,
+      'stage-01',
+      state,
+      distinctQuestions
+    );
+    assert.equal(reviewerCalls, 1);
+    assert.deepEqual(res1.answers[0].selectedOptionIds, ['opt2']);
+    assert.equal(distinctQuestions.size, 1);
+
+    // Repeated Question 1: Should hit cache, not increment calls or distinct count
+    const res1Repeat = await questionDecision(
+      reviewer,
+      q1Payload,
+      cache,
+      'stage-01',
+      state,
+      distinctQuestions
+    );
+    assert.equal(reviewerCalls, 1);
+    assert.deepEqual(res1Repeat.answers[0].selectedOptionIds, ['opt2']);
+    assert.equal(distinctQuestions.size, 1);
+
+    // Question 2: Distinct question 2 (under cap: 1 < 2)
+    const q2Payload = {
+      title: 'Question 2',
+      questions: [
+        {
+          id: 'q2',
+          prompt: 'Choose 2?',
+          options: [
+            { id: 'opt1', label: 'One' },
+            { id: 'opt2', label: 'Two' }
+          ]
+        }
+      ]
+    };
+    const res2 = await questionDecision(
+      reviewer,
+      q2Payload,
+      cache,
+      'stage-01',
+      state,
+      distinctQuestions
+    );
+    assert.equal(reviewerCalls, 2);
+    assert.deepEqual(res2.answers[0].selectedOptionIds, ['opt2']);
+    assert.equal(distinctQuestions.size, 2);
+
+    // Question 3: Distinct question 3 (at cap: 2 >= 2) -> autonomous fallback!
+    const q3Payload = {
+      title: 'Question 3',
+      questions: [
+        {
+          id: 'q3',
+          prompt: 'Choose 3?',
+          options: [
+            { id: 'optA', label: 'Option A' },
+            { id: 'optB', label: 'Option B' }
+          ]
+        }
+      ]
+    };
+    const res3 = await questionDecision(
+      reviewer,
+      q3Payload,
+      cache,
+      'stage-01',
+      state,
+      distinctQuestions
+    );
+    // Reviewer should NOT have been called!
+    assert.equal(reviewerCalls, 2);
+    // First option should be selected
+    assert.deepEqual(res3.answers[0].selectedOptionIds, ['optA']);
+    assert.match(res3.rationale, /budget reached/i);
+
+    // Event should have been emitted
+    assert.equal(budgetEvents.length, 1);
+    assert.deepEqual(budgetEvents[0], {
+      stage: 'stage-01',
+      count: 3,
+      limit: 2,
+      title: 'Question 3'
+    });
+
+    // Repeating Question 3: Should hit cache with fallback answers
+    const res3Repeat = await questionDecision(
+      reviewer,
+      q3Payload,
+      cache,
+      'stage-01',
+      state,
+      distinctQuestions
+    );
+    assert.equal(reviewerCalls, 2);
+    assert.deepEqual(res3Repeat.answers[0].selectedOptionIds, ['optA']);
+
+    // Question 4: Distinct question at cap with empty options
+    const q4Payload = {
+      title: 'Question 4',
+      questions: [
+        {
+          id: 'q4',
+          prompt: 'Choose 4 without options?'
+        }
+      ]
+    };
+    const res4 = await questionDecision(
+      reviewer,
+      q4Payload,
+      cache,
+      'stage-01',
+      state,
+      distinctQuestions
+    );
+    assert.deepEqual(res4.answers[0].selectedOptionIds, []);
+  } finally {
+    (CONFIG as { maxUniqueQuestionsPerStage: number }).maxUniqueQuestionsPerStage = originalLimit;
+    events.close();
+    fs.rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test('Orchestrator permissionDecision uses reviewer when deterministic policy is inconclusive', async () => {
   const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orch-perm-'));
   const eventFile = path.join(repoDir, 'events.jsonl');

@@ -55,8 +55,14 @@ Delivered:
 
 ## Stage 04 — Configuration Contract Fidelity
 
-Status: Not started
+Status: Completed
 
 Primary findings: F-12, F-13, F-14
 
-Specs: `stage-04-configuration-contract-fidelity/` (functional-spec, technical-spec, prompt)
+Delivered:
+
+- Authoritative ADR-0003: Configuration contract fidelity and reviewer role precedence (`docs/adr/0003-configuration-contract-fidelity-and-role-precedence.md`) and Decision 17 in `DECISIONS.md`.
+- Implemented stage distinct question budget tracking and non-blocking autonomous fallback in `src/orchestrator/Orchestrator.ts` (`maxUniqueQuestionsPerStage`), emitting `executor.question.budget` semantic event on `EventBus` upon budget exhaustion (F-12).
+- Wired reviewer role configuration precedence hierarchy (`reviewer.<role>` overrides `harnesses.<adapter>`) through `ReviewerRouter.resolveHarness()`, `CodexReviewerHarness`, `CursorReviewerHarness`, and `CodexProcessRunner`, propagating all tunables including `reasoningEffort`, `verbosity`, `contextMode`, `thinking`, `timeoutMinutes`, and `timeoutSeconds` (F-13).
+- Added comprehensive configuration contract and validation test suites under `tests/config/contract.test.ts` and `tests/config/validation.test.ts` verifying numeric clamping, role override precedence, global fallback inheritance, and template schema fidelity (F-14).
+- Reconciled documentation and configuration templates in `config.example.jsonc`, `src/config/templates.ts`, and `docs/configuration.md`, eliminating conflicting duplicate Codex tunables and adding explicit runtime precedence reference tables.

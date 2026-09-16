@@ -560,6 +560,10 @@ export interface HarnessContext {
   timeoutMinutes?: number;
   /** Timeout in seconds configured for operations in this role. */
   timeoutSeconds?: number;
+  /** Verbosity level configured for reviewer models supporting verbosity control. */
+  verbosity?: 'low' | 'medium' | 'high' | string;
+  /** Context isolation mode for reviewer adapters (`'evidence_only'` or `'project_readonly'`). */
+  contextMode?: 'evidence_only' | 'project_readonly' | string;
   /** Active attempt counter for the current stage. */
   attempt?: number;
   [key: string]: unknown;
@@ -591,6 +595,13 @@ export interface UiEventPayloadMap {
   'executor.message': { text: string; stream?: boolean };
   'executor.plan.request': { name?: string; overview?: string };
   'executor.question': { prompt?: string; [key: string]: unknown };
+  'executor.question.budget': {
+    stage?: string;
+    count?: number;
+    limit?: number;
+    title?: string;
+    [key: string]: unknown;
+  };
   'executor.permission': { command?: string; [key: string]: unknown };
   'reviewer.plan': { verdict?: string; summary?: string; [key: string]: unknown };
   'reviewer.question': { answer?: string; [key: string]: unknown };

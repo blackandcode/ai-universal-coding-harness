@@ -72,6 +72,8 @@ export interface CodexExecutionOptions {
   verbosity: string;
   /** Subprocess timeout in minutes before aborting. */
   timeoutMinutes: number;
+  /** Subprocess timeout in seconds (takes precedence over timeoutMinutes if specified). */
+  timeoutSeconds?: number;
   /** Context isolation mode (`'evidence_only'` or `'project_readonly'`). */
   contextMode: 'evidence_only' | 'project_readonly';
   /** Root directory storing run artifacts and logs. */

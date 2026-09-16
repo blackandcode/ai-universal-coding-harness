@@ -66,9 +66,18 @@ export function validateAndNormalizeConfig(
   const c = { ...base, ...(raw as Record<string, unknown>) } as OrchestratorConfig;
 
   // Clamp numeric bounds
-  c.maxPlanReviews = Math.max(1, Math.min(10, Number(c.maxPlanReviews) || 3));
-  c.maxExecutionAttempts = Math.max(1, Math.min(10, Number(c.maxExecutionAttempts) || 3));
-  c.maxUniqueQuestionsPerStage = Math.max(1, Number(c.maxUniqueQuestionsPerStage) || 25);
+  const rawPlanReviews = Number(c.maxPlanReviews);
+  c.maxPlanReviews = Number.isFinite(rawPlanReviews)
+    ? Math.max(1, Math.min(10, rawPlanReviews))
+    : 3;
+
+  const rawExecutionAttempts = Number(c.maxExecutionAttempts);
+  c.maxExecutionAttempts = Number.isFinite(rawExecutionAttempts)
+    ? Math.max(1, Math.min(10, rawExecutionAttempts))
+    : 3;
+
+  const rawQuestions = Number(c.maxUniqueQuestionsPerStage);
+  c.maxUniqueQuestionsPerStage = Number.isFinite(rawQuestions) ? Math.max(1, rawQuestions) : 25;
 
   // Permission mode
   if (!VALID_PERMISSION_MODES.has(c.permissionMode)) {
@@ -115,6 +124,9 @@ export function validateAndNormalizeConfig(
     primary: {
       harness: primaryHarness,
       model: primaryModel,
+      ...((rawReviewer?.primary?.binary ?? baseReviewer?.primary?.binary)
+        ? { binary: String(rawReviewer?.primary?.binary ?? baseReviewer?.primary?.binary) }
+        : {}),
       reasoningEffort:
         rawReviewer?.primary?.reasoningEffort ?? baseReviewer?.primary?.reasoningEffort ?? 'medium',
       verbosity: rawReviewer?.primary?.verbosity ?? baseReviewer?.primary?.verbosity ?? 'low',
@@ -122,6 +134,18 @@ export function validateAndNormalizeConfig(
         1,
         Number(rawReviewer?.primary?.timeoutMinutes ?? baseReviewer?.primary?.timeoutMinutes ?? 8)
       ),
+      ...(rawReviewer?.primary?.timeoutSeconds !== undefined ||
+      baseReviewer?.primary?.timeoutSeconds !== undefined
+        ? {
+            timeoutSeconds: Math.max(
+              1,
+              Number(rawReviewer?.primary?.timeoutSeconds ?? baseReviewer?.primary?.timeoutSeconds)
+            )
+          }
+        : {}),
+      ...((rawReviewer?.primary?.thinking ?? baseReviewer?.primary?.thinking)
+        ? { thinking: rawReviewer?.primary?.thinking ?? baseReviewer?.primary?.thinking }
+        : {}),
       contextMode:
         rawReviewer?.primary?.contextMode ?? baseReviewer?.primary?.contextMode ?? 'evidence_only'
     },
@@ -136,12 +160,38 @@ export function validateAndNormalizeConfig(
       model: String(
         rawReviewer?.fallback?.model ?? baseReviewer?.fallback?.model ?? 'gemini-3.8-flash'
       ),
+      ...((rawReviewer?.fallback?.binary ?? baseReviewer?.fallback?.binary)
+        ? { binary: String(rawReviewer?.fallback?.binary ?? baseReviewer?.fallback?.binary) }
+        : {}),
       thinking: rawReviewer?.fallback?.thinking ?? baseReviewer?.fallback?.thinking ?? 'high',
+      ...((rawReviewer?.fallback?.reasoningEffort ?? baseReviewer?.fallback?.reasoningEffort)
+        ? {
+            reasoningEffort:
+              rawReviewer?.fallback?.reasoningEffort ?? baseReviewer?.fallback?.reasoningEffort
+          }
+        : {}),
+      ...((rawReviewer?.fallback?.verbosity ?? baseReviewer?.fallback?.verbosity)
+        ? { verbosity: rawReviewer?.fallback?.verbosity ?? baseReviewer?.fallback?.verbosity }
+        : {}),
       triggers: fallbackTriggers.length > 0 ? fallbackTriggers : DEFAULT_FALLBACK_TRIGGERS,
       timeoutMinutes: Math.max(
         1,
         Number(rawReviewer?.fallback?.timeoutMinutes ?? baseReviewer?.fallback?.timeoutMinutes ?? 8)
-      )
+      ),
+      ...(rawReviewer?.fallback?.timeoutSeconds !== undefined ||
+      baseReviewer?.fallback?.timeoutSeconds !== undefined
+        ? {
+            timeoutSeconds: Math.max(
+              1,
+              Number(
+                rawReviewer?.fallback?.timeoutSeconds ?? baseReviewer?.fallback?.timeoutSeconds
+              )
+            )
+          }
+        : {}),
+      ...((rawReviewer?.fallback?.contextMode ?? baseReviewer?.fallback?.contextMode)
+        ? { contextMode: rawReviewer?.fallback?.contextMode ?? baseReviewer?.fallback?.contextMode }
+        : {})
     },
     largeDiff: {
       thresholdChars: Math.max(
@@ -158,13 +208,41 @@ export function validateAndNormalizeConfig(
       model: String(
         rawReviewer?.largeDiff?.model ?? baseReviewer?.largeDiff?.model ?? 'gemini-3.8-flash'
       ),
+      ...((rawReviewer?.largeDiff?.binary ?? baseReviewer?.largeDiff?.binary)
+        ? { binary: String(rawReviewer?.largeDiff?.binary ?? baseReviewer?.largeDiff?.binary) }
+        : {}),
       thinking: rawReviewer?.largeDiff?.thinking ?? baseReviewer?.largeDiff?.thinking ?? 'high',
+      ...((rawReviewer?.largeDiff?.reasoningEffort ?? baseReviewer?.largeDiff?.reasoningEffort)
+        ? {
+            reasoningEffort:
+              rawReviewer?.largeDiff?.reasoningEffort ?? baseReviewer?.largeDiff?.reasoningEffort
+          }
+        : {}),
+      ...((rawReviewer?.largeDiff?.verbosity ?? baseReviewer?.largeDiff?.verbosity)
+        ? { verbosity: rawReviewer?.largeDiff?.verbosity ?? baseReviewer?.largeDiff?.verbosity }
+        : {}),
       timeoutMinutes: Math.max(
         1,
         Number(
           rawReviewer?.largeDiff?.timeoutMinutes ?? baseReviewer?.largeDiff?.timeoutMinutes ?? 10
         )
-      )
+      ),
+      ...(rawReviewer?.largeDiff?.timeoutSeconds !== undefined ||
+      baseReviewer?.largeDiff?.timeoutSeconds !== undefined
+        ? {
+            timeoutSeconds: Math.max(
+              1,
+              Number(
+                rawReviewer?.largeDiff?.timeoutSeconds ?? baseReviewer?.largeDiff?.timeoutSeconds
+              )
+            )
+          }
+        : {}),
+      ...((rawReviewer?.largeDiff?.contextMode ?? baseReviewer?.largeDiff?.contextMode)
+        ? {
+            contextMode: rawReviewer?.largeDiff?.contextMode ?? baseReviewer?.largeDiff?.contextMode
+          }
+        : {})
     },
     permission: {
       harness: String(
@@ -173,17 +251,40 @@ export function validateAndNormalizeConfig(
       model: String(
         rawReviewer?.permission?.model ?? baseReviewer?.permission?.model ?? 'composer-2.5-fast'
       ),
+      ...((rawReviewer?.permission?.binary ?? baseReviewer?.permission?.binary)
+        ? { binary: String(rawReviewer?.permission?.binary ?? baseReviewer?.permission?.binary) }
+        : {}),
       thinking: rawReviewer?.permission?.thinking ?? baseReviewer?.permission?.thinking ?? 'low',
       reasoningEffort:
         rawReviewer?.permission?.reasoningEffort ??
         baseReviewer?.permission?.reasoningEffort ??
         'low',
+      ...((rawReviewer?.permission?.verbosity ?? baseReviewer?.permission?.verbosity)
+        ? { verbosity: rawReviewer?.permission?.verbosity ?? baseReviewer?.permission?.verbosity }
+        : {}),
+      ...(rawReviewer?.permission?.timeoutMinutes !== undefined ||
+      baseReviewer?.permission?.timeoutMinutes !== undefined
+        ? {
+            timeoutMinutes: Math.max(
+              1,
+              Number(
+                rawReviewer?.permission?.timeoutMinutes ?? baseReviewer?.permission?.timeoutMinutes
+              )
+            )
+          }
+        : {}),
       timeoutSeconds: Math.max(
         5,
         Number(
           rawReviewer?.permission?.timeoutSeconds ?? baseReviewer?.permission?.timeoutSeconds ?? 30
         )
-      )
+      ),
+      ...((rawReviewer?.permission?.contextMode ?? baseReviewer?.permission?.contextMode)
+        ? {
+            contextMode:
+              rawReviewer?.permission?.contextMode ?? baseReviewer?.permission?.contextMode
+          }
+        : {})
     }
   };
 

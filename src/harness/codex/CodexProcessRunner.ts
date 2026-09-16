@@ -95,10 +95,14 @@ export class CodexProcessRunner {
     const recordedEventLines: string[] = [];
 
     try {
+      const timeoutMs =
+        options.timeoutSeconds && options.timeoutSeconds > 0
+          ? options.timeoutSeconds * 1000
+          : options.timeoutMinutes * 60_000;
       const r = await runProcess(options.binary, args, {
         cwd: reviewerCwd,
         stdinText: options.prompt,
-        timeoutMs: options.timeoutMinutes * 60_000,
+        timeoutMs,
         onStdoutLine: (line: string) => {
           recordedEventLines.push(line);
           appendBounded(eventsFile, line, CONFIG.runLogMaxBytes);

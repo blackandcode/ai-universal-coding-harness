@@ -43,43 +43,101 @@ export class CodexReviewerHarness implements ReviewerHarness {
     model: 'gpt-6-astra',
     reasoningEffort: 'low',
     verbosity: 'low',
-    timeoutMinutes: 8
+    timeoutMinutes: 8,
+    timeoutSeconds: 0
   };
 
   private seq = 0;
-  private binary = harnessString('codex', 'binary', CodexReviewerHarness.defaults.binary);
-  private model = harnessString('codex', 'model', CodexReviewerHarness.defaults.model);
-  private reasoningEffort = harnessString(
-    'codex',
-    'reasoningEffort',
-    CodexReviewerHarness.defaults.reasoningEffort
-  );
-  private verbosity = harnessString('codex', 'verbosity', CodexReviewerHarness.defaults.verbosity);
-  private timeoutMinutes = harnessNumber(
-    'codex',
-    'timeoutMinutes',
-    CodexReviewerHarness.defaults.timeoutMinutes
-  );
-  private contextMode = harnessString('codex', 'contextMode', 'evidence_only') as
-    | 'evidence_only'
-    | 'project_readonly';
+  private binary: string;
+  private model: string;
+  private reasoningEffort: string;
+  private verbosity: string;
+  private timeoutMinutes: number;
+  private timeoutSeconds: number;
+  private contextMode: 'evidence_only' | 'project_readonly';
 
-  info: HarnessInfo = {
-    id: 'codex',
-    label: `${this.model} reviewer`,
-    role: 'reviewer',
-    model: this.model
-  };
+  info: HarnessInfo;
 
   /**
-   * Applies harness context overrides for binary, model, and display labels.
+   * Applies harness context overrides following normative precedence:
+   * role context value ?? harnesses.codex.* ?? adapter static defaults.
    *
-   * @param ctx - Run-scoped harness context containing workspace paths, stage context, and logger.
+   * @param ctx - Run-scoped harness context containing workspace paths, stage context, and reviewer overrides.
    */
   constructor(private ctx: HarnessContext = {}) {
-    this.binary = ctx?.reviewerBinary || this.binary;
-    this.model = ctx?.reviewerModel || this.model;
-    this.info = { ...this.info, model: this.model, label: `${this.model} reviewer` };
+    this.binary =
+      ctx?.reviewerBinary || harnessString('codex', 'binary', CodexReviewerHarness.defaults.binary);
+
+    this.model =
+      ctx?.reviewerModel || harnessString('codex', 'model', CodexReviewerHarness.defaults.model);
+
+    this.reasoningEffort =
+      typeof ctx?.reasoningEffort === 'string' && ctx.reasoningEffort.trim()
+        ? ctx.reasoningEffort.trim()
+        : harnessString('codex', 'reasoningEffort', CodexReviewerHarness.defaults.reasoningEffort);
+
+    this.verbosity =
+      typeof ctx?.verbosity === 'string' && ctx.verbosity.trim()
+        ? ctx.verbosity.trim()
+        : harnessString('codex', 'verbosity', CodexReviewerHarness.defaults.verbosity);
+
+    this.timeoutMinutes =
+      typeof ctx?.timeoutMinutes === 'number' && ctx.timeoutMinutes > 0
+        ? ctx.timeoutMinutes
+        : harnessNumber('codex', 'timeoutMinutes', CodexReviewerHarness.defaults.timeoutMinutes);
+
+    this.timeoutSeconds =
+      typeof ctx?.timeoutSeconds === 'number' && ctx.timeoutSeconds > 0
+        ? ctx.timeoutSeconds
+        : CodexReviewerHarness.defaults.timeoutSeconds;
+
+    const rawContextMode =
+      typeof ctx?.contextMode === 'string' && ctx.contextMode.trim()
+        ? ctx.contextMode.trim()
+        : harnessString('codex', 'contextMode', 'evidence_only');
+    this.contextMode = rawContextMode === 'project_readonly' ? 'project_readonly' : 'evidence_only';
+
+    this.info = {
+      id: 'codex',
+      label: `${this.model} reviewer`,
+      role: 'reviewer',
+      model: this.model
+    };
+  }
+
+  /** Effective binary name or path resolved for this harness instance. */
+  get effectiveBinary(): string {
+    return this.binary;
+  }
+
+  /** Effective model identifier resolved for this harness instance. */
+  get effectiveModel(): string {
+    return this.model;
+  }
+
+  /** Effective reasoning effort resolved for this harness instance. */
+  get effectiveReasoningEffort(): string {
+    return this.reasoningEffort;
+  }
+
+  /** Effective output verbosity resolved for this harness instance. */
+  get effectiveVerbosity(): string {
+    return this.verbosity;
+  }
+
+  /** Effective timeout in minutes resolved for this harness instance. */
+  get effectiveTimeoutMinutes(): number {
+    return this.timeoutMinutes;
+  }
+
+  /** Effective timeout in seconds resolved for this harness instance. */
+  get effectiveTimeoutSeconds(): number {
+    return this.timeoutSeconds;
+  }
+
+  /** Effective context isolation mode resolved for this harness instance. */
+  get effectiveContextMode(): 'evidence_only' | 'project_readonly' {
+    return this.contextMode;
   }
 
   /**
@@ -134,6 +192,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
       reasoningEffort: this.reasoningEffort,
       verbosity: this.verbosity,
       timeoutMinutes: this.timeoutMinutes,
+      timeoutSeconds: this.timeoutSeconds,
       contextMode: this.contextMode,
       runDir: this.ctx.runDir || '',
       stageName: this.ctx.stageName || '_run',

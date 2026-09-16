@@ -65,16 +65,17 @@
     "cursor": {
       "binary": "agent",
       "model": "gemini-3.8-flash",
-      "thinking": "high",
       "turnTimeoutMinutes": 60
+      // "thinking": "high"
     },
     "codex": {
       "binary": "codex",
-      "model": "gpt-6-astra",
-      "reasoningEffort": "medium",
-      "verbosity": "high",
-      "timeoutMinutes": 8,
-      "contextMode": "evidence_only"
+      "model": "gpt-6-astra"
+      // Global fallback defaults when omitted by reviewer roles:
+      // "reasoningEffort": "low",
+      // "verbosity": "low",
+      // "timeoutMinutes": 8,
+      // "contextMode": "evidence_only"
     }
   }
 }

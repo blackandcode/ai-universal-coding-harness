@@ -75,11 +75,12 @@ export function configTemplate(): string {
     },
     "codex": {
       "binary": "codex",
-      "model": "gpt-6-astra",
-      "reasoningEffort": "low",
-      "verbosity": "low",
-      "timeoutMinutes": 8,
-      "contextMode": "evidence_only"
+      "model": "gpt-6-astra"
+      // Global fallback defaults when omitted by reviewer roles:
+      // "reasoningEffort": "low",
+      // "verbosity": "low",
+      // "timeoutMinutes": 8,
+      // "contextMode": "evidence_only"
     }
   }
 }

@@ -8,6 +8,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import {
   CursorReviewerHarness,
   extractJsonFromText
@@ -28,6 +31,17 @@ test('CursorReviewerHarness: initializes harness metadata and handles overrides'
   assert.equal(harness.info.role, 'reviewer');
   assert.equal(harness.info.model, 'gemini-3.8-flash');
   assert.ok(harness.info.label.includes('gemini-3.8-flash'));
+  assert.equal(harness.effectiveBinary, 'custom-agent');
+  assert.equal(harness.effectiveModel, 'gemini-3.8-flash');
+  assert.equal(harness.effectiveThinking, 'high');
+  assert.equal(harness.effectiveTimeoutMinutes, 12);
+  assert.equal(harness.effectiveTimeoutSeconds, 45);
+
+  const defaults = new CursorReviewerHarness({});
+  assert.equal(defaults.effectiveBinary, CursorReviewerHarness.defaults.binary);
+  assert.equal(defaults.effectiveModel, CursorReviewerHarness.defaults.model);
+  assert.equal(defaults.effectiveThinking, CursorReviewerHarness.defaults.thinking);
+  assert.equal(defaults.effectiveTimeoutSeconds, 0);
 });
 
 test('CursorReviewerHarness: preflight fails cleanly when binary is missing', async () => {
@@ -227,5 +241,54 @@ test('CursorReviewerHarness: throws ProcessExecutionError on non-zero exit', asy
     );
   } finally {
     CursorReviewerHarness.runner = origRunner;
+  }
+});
+
+test('CursorReviewerHarness: respects timeoutSeconds in decide runner call', async () => {
+  const harness = new CursorReviewerHarness({
+    reviewerBinary: 'agent',
+    reviewerModel: 'test-gemini',
+    timeoutSeconds: 30,
+    runDir: '/tmp/test-run-seconds',
+    stageName: 'stage-01'
+  });
+
+  const origRunner = CursorReviewerHarness.runner;
+  let capturedTimeoutMs = 0;
+  try {
+    CursorReviewerHarness.runner = (async (
+      _bin: string,
+      _args: string[],
+      opts?: ProcessOptions
+    ): Promise<ProcessResult> => {
+      capturedTimeoutMs = opts?.timeoutMs || 0;
+      return {
+        code: 0,
+        exitCode: 0,
+        stdout: JSON.stringify({ verdict: 'APPROVE', summary: 'Timeout OK' }),
+        stderr: '',
+        signal: null,
+        timedOut: false
+      };
+    }) as typeof CursorReviewerHarness.runner;
+
+    await harness.reviewPlan({ plan: 'Test Plan' });
+    assert.equal(capturedTimeoutMs, 30_000);
+  } finally {
+    CursorReviewerHarness.runner = origRunner;
+  }
+});
+
+test('CursorReviewerHarness: preflight handles empty version output fallback', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-empty-v-'));
+  const scriptPath = path.join(tmpDir, 'mock-empty-v.mjs');
+  fs.writeFileSync(scriptPath, '#!/usr/bin/env node\nprocess.exit(0);\n', { mode: 0o755 });
+  try {
+    const harness = new CursorReviewerHarness({ reviewerBinary: scriptPath });
+    const preflight = await harness.preflight();
+    assert.equal(preflight.ok, true);
+    assert.ok(preflight.details.some((d) => d.includes('Cursor agent available')));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

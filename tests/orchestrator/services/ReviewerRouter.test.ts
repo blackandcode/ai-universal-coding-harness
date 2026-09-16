@@ -393,3 +393,85 @@ test('ReviewerRouter: routes questions to primary reviewer', async () => {
   assert.equal(res.verdict, 'ANSWER');
   assert.equal(questionAnswered, true);
 });
+
+test('ReviewerRouter: passes all role-specific tunables into HarnessContext for primary and permission roles', () => {
+  const customConfig: ReviewerRouterConfig = {
+    primary: {
+      harness: 'mock-custom-primary',
+      model: 'gpt-6-astra',
+      binary: '/opt/custom/codex',
+      reasoningEffort: 'high',
+      verbosity: 'medium',
+      timeoutMinutes: 15,
+      contextMode: 'project_readonly'
+    },
+    fallback: {
+      enabled: true,
+      harness: 'mock-custom-fallback',
+      model: 'gemini-3.8-flash',
+      thinking: 'high',
+      triggers: ['usage_limit']
+    },
+    largeDiff: {
+      thresholdChars: 300000,
+      harness: 'mock-custom-large',
+      model: 'gemini-3.8-flash'
+    },
+    permission: {
+      harness: 'mock-custom-perm',
+      model: 'composer-2.5-fast',
+      binary: '/opt/custom/perm-agent',
+      thinking: 'low',
+      reasoningEffort: 'low',
+      timeoutSeconds: 45
+    }
+  };
+
+  let capturedPrimaryContext: HarnessContext | undefined;
+  let capturedPermContext: HarnessContext | undefined;
+
+  const registry = new HarnessRegistry();
+  registry.registerReviewer('mock-custom-primary', (ctx) => {
+    capturedPrimaryContext = ctx;
+    return createMockReviewer(
+      {
+        id: 'mock-custom-primary',
+        label: 'Primary',
+        role: 'reviewer',
+        model: ctx.reviewerModel || ''
+      },
+      {}
+    );
+  });
+  registry.registerReviewer('mock-custom-perm', (ctx) => {
+    capturedPermContext = ctx;
+    return createMockReviewer(
+      { id: 'mock-custom-perm', label: 'Perm', role: 'reviewer', model: ctx.reviewerModel || '' },
+      {}
+    );
+  });
+
+  const router = new ReviewerRouter({
+    config: customConfig,
+    registry,
+    context: { stageName: 'stage-04-test', attempt: 1 }
+  });
+
+  router.resolveHarness('primary');
+  assert.ok(capturedPrimaryContext);
+  assert.equal(capturedPrimaryContext.reviewerModel, 'gpt-6-astra');
+  assert.equal(capturedPrimaryContext.reviewerBinary, '/opt/custom/codex');
+  assert.equal(capturedPrimaryContext.reasoningEffort, 'high');
+  assert.equal(capturedPrimaryContext.verbosity, 'medium');
+  assert.equal(capturedPrimaryContext.timeoutMinutes, 15);
+  assert.equal(capturedPrimaryContext.contextMode, 'project_readonly');
+  assert.equal(capturedPrimaryContext.stageName, 'stage-04-test');
+
+  router.resolveHarness('permission');
+  assert.ok(capturedPermContext);
+  assert.equal(capturedPermContext.reviewerModel, 'composer-2.5-fast');
+  assert.equal(capturedPermContext.reviewerBinary, '/opt/custom/perm-agent');
+  assert.equal(capturedPermContext.thinking, 'low');
+  assert.equal(capturedPermContext.reasoningEffort, 'low');
+  assert.equal(capturedPermContext.timeoutSeconds, 45);
+});

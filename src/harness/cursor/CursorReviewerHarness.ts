@@ -128,23 +128,49 @@ export class CursorReviewerHarness implements ReviewerHarness {
   };
 
   /**
-   * Applies harness context overrides for binary, model, thinking, and timeout settings.
+   * Applies harness context overrides following normative precedence:
+   * role context value ?? harnesses.cursor.* ?? adapter static defaults.
    *
    * @param ctx - Run-scoped harness context (run dir, stage text, events, reviewer overrides).
    */
   constructor(private ctx: HarnessContext = {}) {
     this.binary = ctx.reviewerBinary || this.binary;
     this.model = ctx.reviewerModel || this.model;
-    if (typeof ctx.thinking === 'string') {
-      this.thinking = ctx.thinking;
+    if (typeof ctx.thinking === 'string' && ctx.thinking.trim()) {
+      this.thinking = ctx.thinking.trim();
     }
-    if (typeof ctx.timeoutMinutes === 'number') {
+    if (typeof ctx.timeoutMinutes === 'number' && ctx.timeoutMinutes > 0) {
       this.timeoutMinutes = ctx.timeoutMinutes;
     }
-    if (typeof ctx.timeoutSeconds === 'number') {
+    if (typeof ctx.timeoutSeconds === 'number' && ctx.timeoutSeconds > 0) {
       this.timeoutSeconds = ctx.timeoutSeconds;
     }
     this.info = { ...this.info, model: this.model, label: `${this.model} reviewer` };
+  }
+
+  /** Effective binary name or path resolved for this harness instance. */
+  get effectiveBinary(): string {
+    return this.binary;
+  }
+
+  /** Effective model identifier resolved for this harness instance. */
+  get effectiveModel(): string {
+    return this.model;
+  }
+
+  /** Effective thinking level resolved for this harness instance. */
+  get effectiveThinking(): string {
+    return this.thinking;
+  }
+
+  /** Effective timeout in minutes resolved for this harness instance. */
+  get effectiveTimeoutMinutes(): number {
+    return this.timeoutMinutes;
+  }
+
+  /** Effective timeout in seconds resolved for this harness instance. */
+  get effectiveTimeoutSeconds(): number {
+    return this.timeoutSeconds;
   }
 
   /**

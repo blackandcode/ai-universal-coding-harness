@@ -137,6 +137,7 @@ test('CodexProcessRunner: supports evidence_only mode with default stageName fal
       reasoningEffort: 'low',
       verbosity: 'low',
       timeoutMinutes: 2,
+      timeoutSeconds: 45,
       contextMode: 'evidence_only',
       runDir,
       stageName: '',

@@ -159,3 +159,71 @@ test('CodexReviewerHarness: executes decision flows through runner delegation', 
     CodexProcessRunner.run = origRun;
   }
 });
+
+test('CodexReviewerHarness: respects role context overrides following normative precedence', () => {
+  // 1. With explicit context overrides: role context wins
+  const overridden = new CodexReviewerHarness({
+    reviewerBinary: '/custom/bin/codex',
+    reviewerModel: 'gpt-custom-preview',
+    reasoningEffort: 'high',
+    verbosity: 'medium',
+    timeoutMinutes: 12,
+    timeoutSeconds: 45,
+    contextMode: 'project_readonly'
+  });
+
+  assert.equal(overridden.effectiveBinary, '/custom/bin/codex');
+  assert.equal(overridden.effectiveModel, 'gpt-custom-preview');
+  assert.equal(overridden.effectiveReasoningEffort, 'high');
+  assert.equal(overridden.effectiveVerbosity, 'medium');
+  assert.equal(overridden.effectiveTimeoutMinutes, 12);
+  assert.equal(overridden.effectiveTimeoutSeconds, 45);
+  assert.equal(overridden.effectiveContextMode, 'project_readonly');
+  assert.equal(overridden.info.model, 'gpt-custom-preview');
+
+  // 2. Without context overrides: falls back to global harnesses.codex or static defaults
+  const defaults = new CodexReviewerHarness({});
+  assert.equal(defaults.effectiveBinary, CodexReviewerHarness.defaults.binary);
+  assert.equal(defaults.effectiveModel, CodexReviewerHarness.defaults.model);
+  assert.equal(defaults.effectiveTimeoutSeconds, 0);
+  assert.equal(defaults.effectiveContextMode, 'evidence_only');
+});
+
+test('CodexReviewerHarness: passes timeoutSeconds and all tunables to CodexProcessRunner', async () => {
+  const harness = new CodexReviewerHarness({
+    reviewerBinary: 'codex',
+    reviewerModel: 'gpt-custom-runner-test',
+    reasoningEffort: 'high',
+    verbosity: 'medium',
+    timeoutMinutes: 10,
+    timeoutSeconds: 30,
+    contextMode: 'project_readonly',
+    runDir: '/tmp/test-run-codex',
+    stageName: 'stage-04-runner-test'
+  });
+
+  const origRun = CodexProcessRunner.run;
+  let capturedOptions: CodexExecutionOptions | undefined;
+
+  try {
+    CodexProcessRunner.run = (async <T>(opts: CodexExecutionOptions) => {
+      capturedOptions = opts;
+      return {
+        result: { verdict: 'APPROVE', summary: 'Runner OK' } as T,
+        eventsFilePath: '',
+        decisionDir: ''
+      };
+    }) as typeof CodexProcessRunner.run;
+
+    await harness.reviewPlan({ plan: 'Test Plan' });
+    assert.ok(capturedOptions);
+    assert.equal(capturedOptions.model, 'gpt-custom-runner-test');
+    assert.equal(capturedOptions.reasoningEffort, 'high');
+    assert.equal(capturedOptions.verbosity, 'medium');
+    assert.equal(capturedOptions.timeoutMinutes, 10);
+    assert.equal(capturedOptions.timeoutSeconds, 30);
+    assert.equal(capturedOptions.contextMode, 'project_readonly');
+  } finally {
+    CodexProcessRunner.run = origRun;
+  }
+});

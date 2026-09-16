@@ -4,7 +4,7 @@ This document tracks the authoritative implementation status, architectural mile
 
 ## 1. Project & Release Baseline
 
-- **Current Release**: `2.1.7`
+- **Current Release**: `2.2.0`
 - **Node Runtime Target**: `>=24.18.0` (specified in `package.json`, `.nvmrc`, and enforced by runtime checks)
 - **TypeScript Baseline**: TypeScript 7 (`ES2024`, `NodeNext` modules, strict mode)
 - **Linting & Formatting**: Oxlint (with invariant rules) and Oxfmt
@@ -30,12 +30,12 @@ The codebase enforces strict harness-neutral orchestration boundaries:
 
 ## 3. Modernization Gap Closure Roadmap
 
-| Stage        | Focus Area                                    | Status        | Key Deliverables                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ------------ | --------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Stage 01** | Complete Type and Protocol Boundaries         | **Completed** | ADR-0001, `CursorAcpTransport`, `AcpEventDecoder`, zero production `any`, strict JSON-RPC session handling.                                                                                                                                                                                                                                                                                                      |
-| **Stage 02** | Evidence, State, and Recovery Trust Hardening | **Completed** | ADR-0002, durable `quality_epoch_id` markers, unified corroboration standards without resume bypass, strict patch fingerprint matching, deep recursive state validation, `tests/quality/stage-02-hardening.test.ts`.                                                                                                                                                                                             |
-| **Stage 03** | Quality Gates, CI, and Governance Closure     | **Completed** | Independent critical subsystem coverage gates (`permissions`, `evidence`, `recovery` >= 85% branch, >= 90% lines/funcs), complete verification chain (`npm run verify` running 9 distinct gates), cross-platform script test runner, explicit CI minimum-runtime matrix (`24.18.0` on Ubuntu/Windows/macOS), relative documentation link checking (`scripts/check-doc-links.mjs`), authoritative `DECISIONS.md`. |
-| **Stage 04** | Configuration Contract Fidelity               | **Pending**   | Plan question budgets (`maxUniqueQuestionsPerStage`), Codex role tuning precedence (`reviewer.<role>`), and comprehensive configuration contract test suite (Findings F-12, F-13, F-14).                                                                                                                                                                                                                         |
+| Stage        | Focus Area                                    | Status        | Key Deliverables                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------ | --------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stage 01** | Complete Type and Protocol Boundaries         | **Completed** | ADR-0001, `CursorAcpTransport`, `AcpEventDecoder`, zero production `any`, strict JSON-RPC session handling.                                                                                                                                                                                                                                                                                                           |
+| **Stage 02** | Evidence, State, and Recovery Trust Hardening | **Completed** | ADR-0002, durable `quality_epoch_id` markers, unified corroboration standards without resume bypass, strict patch fingerprint matching, deep recursive state validation, `tests/quality/stage-02-hardening.test.ts`.                                                                                                                                                                                                  |
+| **Stage 03** | Quality Gates, CI, and Governance Closure     | **Completed** | Independent critical subsystem coverage gates (`permissions`, `evidence`, `recovery` >= 85% branch, >= 90% lines/funcs), complete verification chain (`npm run verify` running 9 distinct gates), cross-platform script test runner, explicit CI minimum-runtime matrix (`24.18.0` on Ubuntu/Windows/macOS), relative documentation link checking (`scripts/check-doc-links.mjs`), authoritative `DECISIONS.md`.      |
+| **Stage 04** | Configuration Contract Fidelity               | **Completed** | ADR-0003, Decision 17, distinct question budget cap (`maxUniqueQuestionsPerStage`) with autonomous fallback and `executor.question.budget` event emission (F-12), reviewer role precedence hierarchy (`reviewer.<role>` overrides `harnesses.<adapter>`) across `ReviewerRouter` and reviewer harnesses (F-13), configuration contract and validation test suites, and reconciled templates and documentation (F-14). |
 
 ---
 
@@ -79,11 +79,7 @@ Enforces 95% line, 95% function, and 85% branch coverage on touched files while 
 
 ## 6. Known Deferred Work
 
-The following items are deliberately deferred to **Stage 04: Configuration Contract Fidelity** to avoid cross-stage scope leakage:
-
-- **F-12**: Non-blocking `maxUniqueQuestionsPerStage` question budget enforcement.
-- **F-13**: Codex reviewer configuration precedence hierarchy (`reviewer.<role>` overrides).
-- **F-14**: Full configuration contract specification and test coverage.
+All findings identified in the Modernization Audit (F-01 through F-14) across Stages 01, 02, 03, and 04 are now closed. No modernization gaps remain open.
 
 ---
 
@@ -100,3 +96,7 @@ The following items are deliberately deferred to **Stage 04: Configuration Contr
 ### Stage 03: Quality Gates, CI, and Governance Closure
 
 - **Delivered**: Independent critical subsystem coverage runner ([scripts/run-critical-coverage.mjs](scripts/run-critical-coverage.mjs)), centralized coverage configuration ([scripts/coverage-config.mjs](scripts/coverage-config.mjs)), cross-platform script test runner ([scripts/run-script-tests.mjs](scripts/run-script-tests.mjs)), complete 9-step `npm run verify` quality chain, explicit CI minimum-runtime matrix ([.github/workflows/ci.yml](.github/workflows/ci.yml)), relative documentation link validator ([scripts/check-doc-links.mjs](scripts/check-doc-links.mjs)), authoritative [DECISIONS.md](DECISIONS.md) with Decision 16, root [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md), and packaging invariant enforcement in [scripts/package-check.mjs](scripts/package-check.mjs).
+
+### Stage 04: Configuration Contract Fidelity
+
+- **Delivered**: [ADR-0003](docs/adr/0003-configuration-contract-fidelity-and-role-precedence.md), Decision 17 recorded in [DECISIONS.md](DECISIONS.md), non-blocking stage distinct question budget cap (`maxUniqueQuestionsPerStage`) with autonomous fallback and `executor.question.budget` event emission (Finding F-12), normative reviewer role configuration precedence hierarchy (`reviewer.<role>` overrides `harnesses.<adapter>`) across `ReviewerRouter`, `CodexReviewerHarness`, and `CursorReviewerHarness` (Finding F-13), comprehensive configuration contract test suite in [tests/config/contract.test.ts](tests/config/contract.test.ts) and [tests/config/validation.test.ts](tests/config/validation.test.ts) (Finding F-14), and reconciled templates and documentation in [config.example.jsonc](config.example.jsonc), [src/config/templates.ts](src/config/templates.ts), and [docs/configuration.md](docs/configuration.md).
