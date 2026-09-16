@@ -9,7 +9,8 @@ import {
   execSyncText,
   runProcess,
   runShellCommand,
-  commandExists
+  commandExists,
+  normalizeSpawnArgs
 } from '../../src/core/process.js';
 import { ProcessExecutionError } from '../../src/errors.js';
 
@@ -75,6 +76,29 @@ test('runShellCommand executes command in shell and returns result', async () =>
   assert.equal(res.exitCode, 0);
   assert.equal(res.code, 0);
   assert.equal(res.stdout.trim(), 'shell-ok');
+});
+
+test('normalizeSpawnArgs routes script paths through node on Windows only', () => {
+  const script = 'C:\\tmp\\mock-codex.mjs';
+  const originalPlatform = process.platform;
+
+  try {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
+    const win = normalizeSpawnArgs(script, ['exec', '--help']);
+    assert.equal(win.cmd, process.execPath);
+    assert.deepEqual(win.args, [script, 'exec', '--help']);
+
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' });
+    const unix = normalizeSpawnArgs('/tmp/mock-codex.mjs', ['exec', '--help']);
+    assert.equal(unix.cmd, '/tmp/mock-codex.mjs');
+    assert.deepEqual(unix.args, ['exec', '--help']);
+
+    const passthrough = normalizeSpawnArgs('codex', ['exec']);
+    assert.equal(passthrough.cmd, 'codex');
+    assert.deepEqual(passthrough.args, ['exec']);
+  } finally {
+    Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform });
+  }
 });
 
 test('commandExists returns true for node and false for nonexistent binary', () => {

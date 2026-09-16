@@ -19,7 +19,12 @@ import type {
 } from '../types.js';
 import type { CommandObservation, HarnessContext } from '../../types.js';
 import { CONFIG, harnessNumber, harnessString } from '../../core/config.js';
-import { execSyncText, commandExists, runShellCommand } from '../../core/process.js';
+import {
+  execSyncText,
+  commandExists,
+  runShellCommand,
+  normalizeSpawnArgs
+} from '../../core/process.js';
 import { appendBounded, ensureDir, rotateFile } from '../../core/fs.js';
 import { iso } from '../../core/time.js';
 import type { PermissionRequest } from '../../permissions/PermissionEngine.js';
@@ -314,7 +319,8 @@ export class CursorAcpSession implements ExecutorSession {
 
   /** Spawns the Cursor ACP subprocess, negotiates protocol, and creates or resumes a session. */
   async start() {
-    this.child = spawn(this.o.binary, ['--model', this.o.model, 'acp'], {
+    const spawnTarget = normalizeSpawnArgs(this.o.binary, ['--model', this.o.model, 'acp']);
+    this.child = spawn(spawnTarget.cmd, spawnTarget.args, {
       cwd: this.o.workspace,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: process.env

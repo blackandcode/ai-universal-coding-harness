@@ -164,6 +164,7 @@ export {
   runProcess,
   runShellCommand,
   execSyncText,
+  normalizeSpawnArgs,
   commandExists,
   createProcessResult,
   type ProcessResult,

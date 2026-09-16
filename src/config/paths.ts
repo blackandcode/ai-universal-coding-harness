@@ -27,11 +27,13 @@ export const PROJECT_ROOT = path.resolve(
 /**
  * Resolves the cross-platform global configuration directory for this tool.
  *
- * Honors `AI_HARNESS_CONFIG_HOME` / `AI_STAGE_CONFIG_HOME`, then OS-specific defaults.
+ * Honors `AI_HARNESS_CONFIG_HOME` / `AI_STAGE_CONFIG_HOME`, then `XDG_CONFIG_HOME`, then OS-specific defaults.
  */
 export function globalConfigDir(): string {
   if (process.env.AI_HARNESS_CONFIG_HOME) return path.resolve(process.env.AI_HARNESS_CONFIG_HOME);
   if (process.env.AI_STAGE_CONFIG_HOME) return path.resolve(process.env.AI_STAGE_CONFIG_HOME);
+  if (process.env.XDG_CONFIG_HOME)
+    return path.join(process.env.XDG_CONFIG_HOME, 'ai-universal-coding-harness');
   const home = os.homedir();
   if (process.platform === 'win32')
     return path.join(
@@ -40,10 +42,7 @@ export function globalConfigDir(): string {
     );
   if (process.platform === 'darwin')
     return path.join(home, 'Library', 'Application Support', 'ai-universal-coding-harness');
-  return path.join(
-    process.env.XDG_CONFIG_HOME || path.join(home, '.config'),
-    'ai-universal-coding-harness'
-  );
+  return path.join(home, '.config', 'ai-universal-coding-harness');
 }
 
 /** Absolute path to the user-global `config.jsonc` file. */

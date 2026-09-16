@@ -66,6 +66,7 @@ test('public API exports process and CLI helpers', () => {
   assert.equal(typeof PublicApi.runShellCommand, 'function');
   assert.equal(typeof PublicApi.execSyncText, 'function');
   assert.equal(typeof PublicApi.commandExists, 'function');
+  assert.equal(typeof PublicApi.normalizeSpawnArgs, 'function');
   assert.equal(typeof PublicApi.parseCliArgs, 'function');
   assert.equal(typeof PublicApi.dispatchCliCommand, 'function');
   assert.equal(typeof PublicApi.runCli, 'function');

@@ -740,6 +740,56 @@ test('AcpToolAccumulator: merges primitive rawOutput and defers observation unti
   assert.equal(done.observation?.exit_code, 0);
 });
 
+test('AcpToolAccumulator: extracts detail from pattern, glob, and run title heuristics', () => {
+  const acc = new AcpToolAccumulator();
+
+  const pattern = acc.processUpdate(
+    {
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tool-pattern',
+      title: 'Search',
+      status: 'completed',
+      rawInput: { pattern: 'src/**/*.ts' }
+    },
+    { defaultSessionId: 'sess-1', workspace: '/tmp' }
+  );
+  assert.equal(pattern.state.detail, 'src/**/*.ts');
+
+  const glob = acc.processUpdate(
+    {
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tool-glob',
+      title: 'Find',
+      status: 'completed',
+      rawInput: { glob: '*.md' }
+    },
+    { defaultSessionId: 'sess-1', workspace: '/tmp' }
+  );
+  assert.equal(glob.state.detail, '*.md');
+
+  const runTitle = acc.processUpdate(
+    {
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tool-run-title',
+      title: 'run npm ci',
+      status: 'completed'
+    },
+    { defaultSessionId: 'sess-1', workspace: '/tmp' }
+  );
+  assert.equal(runTitle.state.detail, 'npm ci');
+
+  const backtickTitle = acc.processUpdate(
+    {
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tool-backtick-title',
+      title: '`npm test`',
+      status: 'completed'
+    },
+    { defaultSessionId: 'sess-1', workspace: '/tmp' }
+  );
+  assert.equal(backtickTitle.observation?.command, 'npm test');
+});
+
 test('AcpToolAccumulator and ObservationJournal: unit test methods and persistence', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acc-journal-test-'));
   const journalFile = path.join(tmpDir, 'journal.jsonl');

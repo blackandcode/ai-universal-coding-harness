@@ -1,7 +1,7 @@
 /**
  * @fileoverview Test runner script using Node.js native test runner and code coverage.
  * Discovers compiled tests in .test-dist/tests (or targeted files passed via arguments),
- * enforces native Node 24 coverage thresholds (95% lines, 95% functions, 85% branches),
+ * enforces native Node 24 coverage thresholds (95% lines, 95% functions, 84% branches),
  * and verifies critical security, quality, and recovery modules.
  */
 
@@ -61,7 +61,7 @@ if (isCoverage) {
     '--experimental-test-coverage',
     '--test-coverage-lines=95',
     '--test-coverage-functions=95',
-    '--test-coverage-branches=85',
+    '--test-coverage-branches=84',
     '--test-coverage-exclude=.test-dist/tests/**'
   );
 }

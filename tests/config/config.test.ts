@@ -74,6 +74,61 @@ test('globalConfigDir honors AI_HARNESS_CONFIG_HOME, AI_STAGE_CONFIG_HOME, and X
   }
 });
 
+test('globalConfigDir uses platform defaults when override env vars are unset', () => {
+  const home = os.homedir();
+  const prevHarness = process.env.AI_HARNESS_CONFIG_HOME;
+  const prevStage = process.env.AI_STAGE_CONFIG_HOME;
+  const prevXdg = process.env.XDG_CONFIG_HOME;
+  const prevAppData = process.env.APPDATA;
+  const originalPlatform = process.platform;
+
+  const withPlatform = (platform: NodeJS.Platform, fn: () => void) => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: platform });
+    fn();
+    Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform });
+  };
+
+  try {
+    delete process.env.AI_HARNESS_CONFIG_HOME;
+    delete process.env.AI_STAGE_CONFIG_HOME;
+    delete process.env.XDG_CONFIG_HOME;
+
+    withPlatform('darwin', () => {
+      assert.equal(
+        globalConfigDir(),
+        path.join(home, 'Library', 'Application Support', 'ai-universal-coding-harness')
+      );
+    });
+
+    withPlatform('win32', () => {
+      process.env.APPDATA = path.join(home, 'AppData', 'Roaming');
+      assert.equal(
+        globalConfigDir(),
+        path.join(process.env.APPDATA, 'ai-universal-coding-harness')
+      );
+      delete process.env.APPDATA;
+      assert.equal(
+        globalConfigDir(),
+        path.join(home, 'AppData', 'Roaming', 'ai-universal-coding-harness')
+      );
+    });
+
+    withPlatform('linux', () => {
+      assert.equal(globalConfigDir(), path.join(home, '.config', 'ai-universal-coding-harness'));
+    });
+  } finally {
+    if (prevHarness === undefined) delete process.env.AI_HARNESS_CONFIG_HOME;
+    else process.env.AI_HARNESS_CONFIG_HOME = prevHarness;
+    if (prevStage === undefined) delete process.env.AI_STAGE_CONFIG_HOME;
+    else process.env.AI_STAGE_CONFIG_HOME = prevStage;
+    if (prevXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = prevXdg;
+    if (prevAppData === undefined) delete process.env.APPDATA;
+    else process.env.APPDATA = prevAppData;
+    Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform });
+  }
+});
+
 test('environment mapping layer maps AI_HARNESS_* and AI_STAGE_*', () => {
   const env1 = envLayer({
     AI_HARNESS_EXECUTOR_HARNESS: 'custom-exec',
@@ -213,10 +268,13 @@ test('configuration templates generate valid template strings', () => {
 });
 
 test('harness helper functions return typed fallbacks', () => {
-  assert.equal(harnessString('cursor', 'binary', 'default-bin'), 'agent');
-  assert.equal(harnessString('nonexistent', 'binary', 'default-bin'), 'default-bin');
-  assert.equal(harnessNumber('cursor', 'turnTimeoutMinutes', 10), 45);
-  assert.equal(harnessNumber('nonexistent', 'turnTimeoutMinutes', 10), 10);
+  assert.equal(harnessString('cursor', 'binary', 'default-bin', DEFAULT_CONFIG), 'agent');
+  assert.equal(
+    harnessString('nonexistent', 'binary', 'default-bin', DEFAULT_CONFIG),
+    'default-bin'
+  );
+  assert.equal(harnessNumber('cursor', 'turnTimeoutMinutes', 10, DEFAULT_CONFIG), 45);
+  assert.equal(harnessNumber('nonexistent', 'turnTimeoutMinutes', 10, DEFAULT_CONFIG), 10);
 });
 
 test('loadEffectiveConfig reads legacy .ai-stage-orchestrator.jsonc', () => {

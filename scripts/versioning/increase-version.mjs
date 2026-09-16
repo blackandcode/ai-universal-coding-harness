@@ -18,7 +18,7 @@ Synchronizes the package version across project files, package manifests,
 TypeScript constants, and creates a CHANGELOG.md release entry (promoting unreleased changes).
 
 Arguments:
-  [version|bump]                 Target version (e.g. 2.1.5) or bump type (patch, minor, major).
+  [version|bump]                 Target version (e.g. 2.1.6) or bump type (patch, minor, major).
 
 Options:
   -v, --target-version <X.Y.Z>   Explicit target semantic version.

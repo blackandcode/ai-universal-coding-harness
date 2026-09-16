@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { CONFIG, DEFAULT_CONFIG } from '../../src/core/config.js';
 import { PlanCoordinator } from '../../src/stages/PlanCoordinator.js';
 import type { ReviewerHarness, PlanDecision } from '../../src/harness/types.js';
 import type { RunStateStore } from '../../src/state/RunStateStore.js';
@@ -90,24 +91,33 @@ test('duplicate REPLAN hash returns needs_revision before duplicate consolidatio
 });
 
 test('three regular reviews plus one final consolidation always proceeds', async () => {
-  const f = fixture();
-  const p = new PlanCoordinator({
-    runId: 'r',
-    stage: f.stage,
-    stageContext: 'all frozen specs',
-    reviewer: f.reviewer,
-    store: f.store
-  });
-  let d: PlanDecision | null = null;
-  for (let i = 1; i <= 4; i++) {
-    d = await p.submit(`complete plan revision ${i}`);
+  const origMaxPlanReviews = CONFIG.maxPlanReviews;
+  const origFinalPlanReview = CONFIG.finalPlanReview;
+  CONFIG.maxPlanReviews = DEFAULT_CONFIG.maxPlanReviews;
+  CONFIG.finalPlanReview = DEFAULT_CONFIG.finalPlanReview;
+  try {
+    const f = fixture();
+    const p = new PlanCoordinator({
+      runId: 'r',
+      stage: f.stage,
+      stageContext: 'all frozen specs',
+      reviewer: f.reviewer,
+      store: f.store
+    });
+    let d: PlanDecision | null = null;
+    for (let i = 1; i <= 4; i++) {
+      d = await p.submit(`complete plan revision ${i}`);
+    }
+    assert.equal(f.calls, 4);
+    assert.ok(d);
+    assert.equal(d.accepted, true);
+    assert.equal(d.outcome, 'accepted_with_notes');
+    assert.match(d.status || '', /APPROVE/);
+    assert.ok(fs.existsSync(path.join(f.root, 'approved-plan.md')));
+  } finally {
+    CONFIG.maxPlanReviews = origMaxPlanReviews;
+    CONFIG.finalPlanReview = origFinalPlanReview;
   }
-  assert.equal(f.calls, 4);
-  assert.ok(d);
-  assert.equal(d.accepted, true);
-  assert.equal(d.outcome, 'accepted_with_notes');
-  assert.match(d.status || '', /APPROVE/);
-  assert.ok(fs.existsSync(path.join(f.root, 'approved-plan.md')));
 });
 
 test('review budget is advisory and never produces a blocked plan state', async () => {

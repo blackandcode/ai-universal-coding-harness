@@ -81,13 +81,29 @@ export interface ProcessOptions {
   onStderrLine?: (line: string) => void;
 }
 
+const WIN_SCRIPT_EXT = /\.(m?[jt]s)$/i;
+
+/**
+ * On Windows, `.js`/`.mjs` paths are executed via `node` because shebang scripts are not directly executable.
+ */
+export function normalizeSpawnArgs(
+  cmd: string,
+  args: string[] = []
+): { cmd: string; args: string[] } {
+  if (process.platform === 'win32' && WIN_SCRIPT_EXT.test(cmd)) {
+    return { cmd: process.execPath, args: [cmd, ...args] };
+  }
+  return { cmd, args };
+}
+
 /** Synchronously spawns a subprocess and captures stdout/stderr as UTF-8 text. */
 export function execSyncText(
   cmd: string,
   args: string[] = [],
   opts: SyncProcessOptions = {}
 ): ProcessResult {
-  const r = spawnSync(cmd, args, {
+  const normalized = normalizeSpawnArgs(cmd, args);
+  const r = spawnSync(normalized.cmd, normalized.args, {
     encoding: 'utf8',
     windowsHide: true,
     cwd: opts.cwd,
@@ -122,8 +138,10 @@ export async function runProcess(
     });
   }
 
+  const normalized = normalizeSpawnArgs(cmd, args);
+
   return await new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, {
+    const child = spawn(normalized.cmd, normalized.args, {
       cwd: opts.cwd,
       env: opts.env || process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
