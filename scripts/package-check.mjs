@@ -91,8 +91,13 @@ if (pkg.repository?.url !== 'git+https://github.com/blackandcode/ai-universal-co
   process.exit(2);
 }
 
-if (!pkg.bin?.['ai-harness'] || !pkg.bin?.['ai-universal-coding-harness']) {
-  console.error('Required CLI bin aliases are missing.');
+if (
+  pkg.bin?.['ai-harness'] !== 'dist/bin.js' ||
+  pkg.bin?.['ai-universal-coding-harness'] !== 'dist/bin.js'
+) {
+  console.error(
+    'Required CLI bin aliases must point directly to dist/bin.js (without leading ./) to avoid npm publish auto-correction warnings.'
+  );
   process.exit(2);
 }
 
@@ -302,6 +307,7 @@ const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-consumer-'));
 try {
   const cleanEnv = { ...process.env };
   delete cleanEnv.npm_config_dry_run;
+  delete cleanEnv.npm_config_devdir;
 
   const packDestRes = spawnNpm(
     ['pack', '--pack-destination', fixtureDir, '--ignore-scripts', '--dry-run=false'],

@@ -1,6 +1,6 @@
 {
   "name": "ai-universal-coding-harness",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "A cross-platform CLI that orchestrates autonomous coding harnesses through structured stages, review, quality gates, and clean Git history.",
   "keywords": [
     "agents",
@@ -24,8 +24,8 @@
     "url": "git+https://github.com/blackandcode/ai-universal-coding-harness.git"
   },
   "bin": {
-    "ai-harness": "./dist/bin.js",
-    "ai-universal-coding-harness": "./dist/bin.js"
+    "ai-harness": "dist/bin.js",
+    "ai-universal-coding-harness": "dist/bin.js"
   },
   "files": [
     "dist/",

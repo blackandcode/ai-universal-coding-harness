@@ -38,18 +38,24 @@ export function findNpmCli() {
  */
 export function spawnNpm(args, options = {}) {
   const npmCli = findNpmCli();
+  const env = { ...(options.env || process.env) };
+  delete env.npm_config_devdir;
+  const mergedOptions = {
+    ...options,
+    env
+  };
   let result;
   if (npmCli) {
     result = spawnSync(process.execPath, [npmCli, ...args], {
       windowsHide: true,
-      ...options
+      ...mergedOptions
     });
   } else {
     const isWindows = process.platform === 'win32';
     result = spawnSync(isWindows ? 'npm.cmd' : 'npm', args, {
       shell: isWindows,
       windowsHide: true,
-      ...options
+      ...mergedOptions
     });
   }
   return result;

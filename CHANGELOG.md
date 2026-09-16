@@ -4,9 +4,13 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-09-16
+
 ### Fixed
 
 - Fixed trailing commas in config template and isolated CLI init tests from mutating tracked configuration
+- Fixed `package.json` bin paths by removing leading `./` to prevent npm publish auto-correction warnings and enforce lockfile alignment
+- Sanitized ambient `npm_config_devdir` in `scripts/lib/npm-invoke.mjs` and `scripts/package-check.mjs` to prevent npm 11 configuration warnings
 
 ## [2.1.1] - 2026-09-16
 
