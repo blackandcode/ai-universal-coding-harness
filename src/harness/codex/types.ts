@@ -11,6 +11,21 @@
  */
 
 import type { HarnessEventEmitter } from '../cursor/types.js';
+import type {
+  PlanReviewInput,
+  QuestionReviewInput,
+  PermissionReviewInput,
+  FinalReviewInput
+} from '../types.js';
+
+/**
+ * Union of strongly typed domain payloads evaluated by Codex reviewer.
+ */
+export type CodexReviewPayload =
+  | PlanReviewInput
+  | QuestionReviewInput
+  | PermissionReviewInput
+  | FinalReviewInput;
 
 /**
  * Categorical type of reviewer decision being requested from Codex.
@@ -36,7 +51,7 @@ export interface PromptBuilderOptions {
   /** Concatenated text of relevant agent skills. */
   skillsText: string;
   /** Domain payload under evaluation (plan, questions, permission request, or final diff). */
-  payload: unknown;
+  payload: CodexReviewPayload;
   /** Additional instructional prompt text appended to the review prompt. */
   extraPromptText?: string;
   /** Whether the target repository should be exposed in read-only mode to the reviewer. */

@@ -360,3 +360,36 @@ test('ReviewerRouter: re-throws non-trigger errors immediately without invoking 
   );
   assert.equal(fallbackInvoked, false);
 });
+
+test('ReviewerRouter: routes questions to primary reviewer', async () => {
+  const registry = new HarnessRegistry();
+  let questionAnswered = false;
+  registry.registerReviewer('mock-primary', () =>
+    createMockReviewer(
+      { id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'gpt-6-astra' },
+      {
+        answerQuestions: async () => {
+          questionAnswered = true;
+          return { verdict: 'ANSWER', answers: [{ question_id: '1', selected_option_ids: ['a'] }] };
+        }
+      }
+    )
+  );
+  registry.registerReviewer('mock-large', () =>
+    createMockReviewer(
+      { id: 'mock-large', label: 'Large', role: 'reviewer', model: 'gemini-1.5-pro' },
+      {}
+    )
+  );
+  registry.registerReviewer('mock-permission', () =>
+    createMockReviewer(
+      { id: 'mock-permission', label: 'Perm', role: 'reviewer', model: 'claude-3.5-haiku' },
+      {}
+    )
+  );
+
+  const router = new ReviewerRouter({ config: mockRouterConfig, registry });
+  const res = await router.answerQuestions({ questions: [{ id: '1', prompt: 'test' }] });
+  assert.equal(res.verdict, 'ANSWER');
+  assert.equal(questionAnswered, true);
+});

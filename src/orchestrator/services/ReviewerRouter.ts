@@ -104,9 +104,7 @@ export class ReviewerRouter implements ReviewerHarness {
     const mergedContext: HarnessContext = {
       ...this.baseContext,
       reviewerModel: roleConfig.model,
-      reviewerBinary: (roleConfig as unknown as Record<string, unknown>).binary as
-        | string
-        | undefined,
+      reviewerBinary: roleConfig.binary,
       thinking: roleConfig.thinking,
       reasoningEffort: roleConfig.reasoningEffort,
       timeoutMinutes: roleConfig.timeoutMinutes,
@@ -184,7 +182,7 @@ export class ReviewerRouter implements ReviewerHarness {
 
         this.events?.emit('reviewer.fallback', {
           stage: this.baseContext.stageName,
-          attempt: (this.baseContext as Record<string, unknown>).attempt as number | undefined,
+          attempt: this.baseContext.attempt,
           decision_type: kind,
           failed_harness: primaryHarness.info.id,
           failed_model: primaryHarness.info.model,

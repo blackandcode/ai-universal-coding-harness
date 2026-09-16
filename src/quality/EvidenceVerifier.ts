@@ -8,7 +8,14 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ExecutionEvidence, CommandObservation, ObservedQuality } from '../types.js';
+import type {
+  ExecutionEvidence,
+  CommandObservation,
+  ObservedQuality,
+  QualityEvidenceStatus,
+  FocusedTestResult
+} from '../types.js';
+import { isRecord } from '../harness/cursor/types.js';
 
 /**
  * Contextual metadata required to corroborate execution evidence against
@@ -32,14 +39,14 @@ export interface VerificationContext {
  * status enums (`PASS` | `FAIL`), and numeric exit codes before evidence can be corroborated.
  *
  * @param file - Absolute filesystem path to `evidence.json`.
- * @param stage - Expected canonical stage name.
- * @param attempt - Expected attempt counter.
+ * @param stage - Optional expected canonical stage name. If omitted, any string stage name is accepted.
+ * @param attempt - Optional expected attempt counter.
  * @returns Result object containing `ok` flag, diagnostic failure reason, and parsed {@link ExecutionEvidence}.
  */
 export function validateEvidence(
   file: string,
-  stage: string,
-  attempt: number
+  stage?: string,
+  attempt?: number
 ): { ok: boolean; reason: string; e?: ExecutionEvidence } {
   if (!fs.existsSync(file)) return { ok: false, reason: 'evidence.json missing' };
   let parsed: unknown;
@@ -48,24 +55,55 @@ export function validateEvidence(
   } catch {
     return { ok: false, reason: 'evidence.json invalid JSON' };
   }
-  const record =
-    typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
+  if (!isRecord(parsed)) {
+    return { ok: false, reason: 'evidence.json missing/invalid required fields' };
+  }
+
   const ok =
-    record !== null &&
-    record.stage === stage &&
-    Number(record.attempt) === attempt &&
-    typeof record.status === 'string' &&
-    ['PASS', 'FAIL'].includes(record.status) &&
-    Number.isInteger(Number(record.quality_exit_code)) &&
-    Number.isInteger(Number(record.git_diff_check_exit_code)) &&
-    Array.isArray(record.changed_files) &&
-    Array.isArray(record.unresolved);
+    (!stage || parsed.stage === stage) &&
+    typeof parsed.stage === 'string' &&
+    (attempt != null
+      ? Number(parsed.attempt) === attempt
+      : Number.isInteger(Number(parsed.attempt))) &&
+    typeof parsed.status === 'string' &&
+    ['PASS', 'FAIL'].includes(parsed.status) &&
+    Number.isInteger(Number(parsed.quality_exit_code)) &&
+    Number.isInteger(Number(parsed.git_diff_check_exit_code)) &&
+    Array.isArray(parsed.changed_files) &&
+    Array.isArray(parsed.unresolved);
+
+  if (!ok) {
+    return { ok: false, reason: 'evidence.json missing/invalid required fields' };
+  }
+
+  const evidence: ExecutionEvidence = {
+    stage: String(parsed.stage),
+    attempt: Number(parsed.attempt),
+    status: parsed.status as QualityEvidenceStatus,
+    quality_command: typeof parsed.quality_command === 'string' ? parsed.quality_command : '',
+    quality_exit_code: Number(parsed.quality_exit_code),
+    git_diff_check_exit_code: Number(parsed.git_diff_check_exit_code),
+    focused_tests: Array.isArray(parsed.focused_tests)
+      ? (parsed.focused_tests as FocusedTestResult[])
+      : [],
+    quality_summary: typeof parsed.quality_summary === 'string' ? parsed.quality_summary : '',
+    changed_files: (parsed.changed_files as unknown[]).map(String),
+    unresolved: (parsed.unresolved as unknown[]).map(String),
+    observed_quality: isRecord(parsed.observed_quality)
+      ? (parsed.observed_quality as ObservedQuality)
+      : parsed.observed_quality === null
+        ? null
+        : undefined,
+    patch_fingerprint:
+      typeof parsed.patch_fingerprint === 'string' ? parsed.patch_fingerprint : undefined,
+    quality_epoch_id:
+      typeof parsed.quality_epoch_id === 'string' ? parsed.quality_epoch_id : undefined
+  };
+
   return {
-    ok,
-    reason: ok ? '' : 'evidence.json missing/invalid required fields',
-    e: ok ? (record as unknown as ExecutionEvidence) : undefined
+    ok: true,
+    reason: '',
+    e: evidence
   };
 }
 
@@ -242,10 +280,30 @@ export function verifyEvidenceAgainstObserved(
     issues.push(diag);
   }
 
+  function toObservedQuality(
+    cmd?: CommandObservation | { command: string; exit_code: number | null; [key: string]: unknown }
+  ): ObservedQuality | null {
+    if (!cmd) return null;
+    const quality: ObservedQuality = {
+      command: cmd.command,
+      exit_code: cmd.exit_code
+    };
+    if ('timestamp' in cmd && typeof cmd.timestamp === 'string') {
+      quality.timestamp = cmd.timestamp;
+    }
+    if ('duration_ms' in cmd && typeof cmd.duration_ms === 'number') {
+      quality.duration_ms = cmd.duration_ms;
+    }
+    if ('output' in cmd && typeof cmd.output === 'string') {
+      quality.output = cmd.output;
+    }
+    return quality;
+  }
+
   return {
     ok: issues.length === 0,
     issues,
-    observed_quality: (q as unknown as ObservedQuality) || null,
-    observed_diff_check: (d as unknown as ObservedQuality) || null
+    observed_quality: toObservedQuality(q),
+    observed_diff_check: toObservedQuality(d)
   };
 }

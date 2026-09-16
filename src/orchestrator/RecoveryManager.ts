@@ -15,7 +15,7 @@ import { iso } from '../core/time.js';
 import { writeJson } from '../core/fs.js';
 import { RunStateStore } from '../state/RunStateStore.js';
 import { GitRepository } from '../git/GitRepository.js';
-import { verifyEvidenceAgainstObserved } from '../quality/EvidenceVerifier.js';
+import { verifyEvidenceAgainstObserved, validateEvidence } from '../quality/EvidenceVerifier.js';
 import { parseAcpEvents } from '../harness/cursor/CursorExecutorHarness.js';
 import type { ExecutionEvidence, StagePhase } from '../types.js';
 import { errorMessage } from '../errors.js';
@@ -212,9 +212,10 @@ export class RecoveryManager {
 
     let evidence: ExecutionEvidence | null = null;
     if (fs.existsSync(evidencePath)) {
-      try {
-        evidence = JSON.parse(fs.readFileSync(evidencePath, 'utf8'));
-      } catch {}
+      const validation = validateEvidence(evidencePath, stageName);
+      if (validation.ok && validation.e) {
+        evidence = validation.e;
+      }
     }
 
     // 4. Decision branch: Can we recover to REVIEW or must we recover to QUALITY?

@@ -483,6 +483,16 @@ export interface HarnessContext {
   reviewerBinary?: string;
   /** Model identifier configured for the reviewer harness. */
   reviewerModel?: string;
+  /** Thinking budget / level configured for models supporting explicit thinking controls. */
+  thinking?: string;
+  /** Reasoning effort configured for reasoning models. */
+  reasoningEffort?: string;
+  /** Timeout in minutes configured for operations in this role. */
+  timeoutMinutes?: number;
+  /** Timeout in seconds configured for operations in this role. */
+  timeoutSeconds?: number;
+  /** Active attempt counter for the current stage. */
+  attempt?: number;
   [key: string]: unknown;
 }
 

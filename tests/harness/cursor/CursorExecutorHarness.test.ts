@@ -204,11 +204,43 @@ if (args[0] === 'models') {
 
 if (args.includes('acp')) {
   const rl = readline.createInterface({ input: process.stdin });
+  let pendingPromptId = null;
+  let pendingPromptTimer = null;
+
+  function completePendingPrompt() {
+    if (pendingPromptTimer) {
+      clearTimeout(pendingPromptTimer);
+      pendingPromptTimer = null;
+    }
+    if (pendingPromptId !== null) {
+      const idToComplete = pendingPromptId;
+      pendingPromptId = null;
+      console.log(JSON.stringify({
+        jsonrpc: '2.0',
+        id: idToComplete,
+        result: { status: 'completed' }
+      }));
+    }
+  }
+
+  function registerPendingPrompt(promptId) {
+    pendingPromptId = promptId;
+    if (pendingPromptTimer) clearTimeout(pendingPromptTimer);
+    pendingPromptTimer = setTimeout(() => {
+      completePendingPrompt();
+    }, 10000);
+  }
+
   rl.on('line', (line) => {
     let msg;
     try {
       msg = JSON.parse(line);
     } catch {
+      return;
+    }
+
+    if (msg.id !== undefined && (msg.result !== undefined || msg.error !== undefined)) {
+      completePendingPrompt();
       return;
     }
 
@@ -287,9 +319,7 @@ if (args.includes('acp')) {
           method: 'cursor/create_plan',
           params: { name: 'plan-01', plan: 'Step 1: Test plan' }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-empty-plan') {
         console.log(JSON.stringify({
@@ -298,9 +328,7 @@ if (args.includes('acp')) {
           method: 'cursor/create_plan',
           params: { name: 'empty-plan', plan: '' }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-question') {
         console.log(JSON.stringify({
@@ -309,9 +337,7 @@ if (args.includes('acp')) {
           method: 'cursor/ask_question',
           params: { title: 'Q', questions: [{ prompt: 'Which option?' }] }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-replan') {
         console.log(JSON.stringify({
@@ -320,9 +346,7 @@ if (args.includes('acp')) {
           method: 'cursor/create_plan',
           params: { name: 'plan-replan', plan: 'Plan needing changes' }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-question-err') {
         console.log(JSON.stringify({
@@ -331,9 +355,7 @@ if (args.includes('acp')) {
           method: 'cursor/ask_question',
           params: { title: 'Q err', questions: [{ prompt: 'Question throwing' }] }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-perm-err') {
         console.log(JSON.stringify({
@@ -345,9 +367,7 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-deny', name: 'reject' }]
           }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-permission-allow') {
         console.log(JSON.stringify({
@@ -362,9 +382,7 @@ if (args.includes('acp')) {
             ]
           }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-permission-deny') {
         console.log(JSON.stringify({
@@ -376,9 +394,7 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-deny', name: 'reject' }]
           }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-permission-broker-git') {
         console.log(JSON.stringify({
@@ -390,13 +406,7 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-deny-only', name: 'reject' }]
           }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: { status: 'completed' }
-          }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-plan-throw') {
         console.log(JSON.stringify({
@@ -405,13 +415,7 @@ if (args.includes('acp')) {
           method: 'cursor/create_plan',
           params: { name: 'bad-plan', plan: 'Plan that throws' }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: { status: 'completed' }
-          }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-allow-always') {
         console.log(JSON.stringify({
@@ -423,13 +427,7 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-aa', name: 'allow_always' }]
           }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: { status: 'completed' }
-          }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-allow-session') {
         console.log(JSON.stringify({
@@ -441,13 +439,7 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-as', name: 'allow_session' }]
           }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: { status: 'completed' }
-          }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-perm-cancel') {
         console.log(JSON.stringify({
@@ -459,13 +451,7 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-x', name: 'unrelated' }]
           }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: { status: 'completed' }
-          }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-broker-fail') {
         console.log(JSON.stringify({
@@ -477,13 +463,7 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-deny-only', name: 'reject' }]
           }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: { status: 'completed' }
-          }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else if (promptText === 'trigger-hang') {
         // don't respond, let it time out
@@ -525,13 +505,7 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-deny-only', name: 'reject' }]
           }
         }));
-        setTimeout(() => {
-          console.log(JSON.stringify({
-            jsonrpc: '2.0',
-            id: msg.id,
-            result: { status: 'completed' }
-          }));
-        }, 50);
+        registerPendingPrompt(msg.id);
         return;
       } else {
         console.log(JSON.stringify({
@@ -561,6 +535,7 @@ if (args.includes('acp')) {
     }
 
     if (msg.method === 'session/cancel') {
+      completePendingPrompt();
       console.log(JSON.stringify({
         jsonrpc: '2.0',
         id: msg.id,
@@ -636,8 +611,11 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
     events: eventsBus
   });
 
+  let session: import('../../../src/harness/types.js').ExecutorSession | null = null;
+  let resumedSession: import('../../../src/harness/types.js').ExecutorSession | null = null;
+
   try {
-    const session = await harness.createSession({
+    session = await harness.createSession({
       workspace: tmpDir,
       runLog: path.join(tmpDir, 'run.log'),
       eventsFile: path.join(tmpDir, 'events.jsonl'),
@@ -750,11 +728,12 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
     const observed = session.observedCommands();
     assert.ok(observed.some((o) => o.command.includes('broker-executed')));
 
-    await session.cancel();
+    await session.cancel?.();
     await session.stop();
+    session = null;
 
     // 8. Resume session test and historical event replay
-    const resumedSession = await harness.createSession({
+    resumedSession = await harness.createSession({
       workspace: tmpDir,
       runLog: path.join(tmpDir, 'run.log'),
       eventsFile: path.join(tmpDir, 'events.jsonl'),
@@ -768,7 +747,18 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
     });
     assert.equal(resumedSession.id, 'resumed-sess-99');
     await resumedSession.stop();
+    resumedSession = null;
   } finally {
+    if (session) {
+      try {
+        await (session as import('../../../src/harness/types.js').ExecutorSession).stop();
+      } catch {}
+    }
+    if (resumedSession) {
+      try {
+        await (resumedSession as import('../../../src/harness/types.js').ExecutorSession).stop();
+      } catch {}
+    }
     eventsBus.close();
     safeRm(tmpDir);
   }
@@ -967,16 +957,20 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
   const busAuth = new EventBus(path.join(authDir, 'bus.jsonl'), true);
   const busLoad = new EventBus(path.join(loadDir, 'bus.jsonl'), true);
 
+  let authSession: CursorAcpSession | null = null;
+  let loadSession: CursorAcpSession | null = null;
+
   try {
     process.env.TEST_CURSOR_AUTH_FAIL = '1';
-    const authSession = new CursorAcpSession(baseSessionOptions(authDir, mockAuth, busAuth));
+    authSession = new CursorAcpSession(baseSessionOptions(authDir, mockAuth, busAuth));
     await authSession.start();
     await authSession.stop();
+    authSession = null;
     delete process.env.TEST_CURSOR_AUTH_FAIL;
 
     process.env.TEST_CURSOR_LOAD_FAIL = '1';
     const loadRunLog = path.join(loadDir, 'run.log');
-    const loadSession = new CursorAcpSession(
+    loadSession = new CursorAcpSession(
       baseSessionOptions(loadDir, mockLoad, busLoad, {
         runLog: loadRunLog,
         resumeSessionId: 'resume-load-fail'
@@ -985,14 +979,16 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
     await loadSession.start();
     assert.ok(fs.readFileSync(loadRunLog, 'utf8').includes('[executor session/load failed]'));
     await loadSession.stop();
+    loadSession = null;
     delete process.env.TEST_CURSOR_LOAD_FAIL;
 
     // Test loadSession with agentCapabilities having snake_case load_session: true
     const loadSnakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-load-snake-'));
     const mockSnake = createMockCursorBinary(loadSnakeDir);
     const busSnake = new EventBus(path.join(loadSnakeDir, 'bus.jsonl'), true);
+    let snakeSession: CursorAcpSession | null = null;
     try {
-      const snakeSession = new CursorAcpSession(
+      snakeSession = new CursorAcpSession(
         baseSessionOptions(loadSnakeDir, mockSnake, busSnake, {
           resumeSessionId: 'sess-snake-load'
         })
@@ -1013,7 +1009,13 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
       await snakeSession.start();
       assert.equal(snakeSession.id, 'sess-snake-load');
       await snakeSession.stop();
+      snakeSession = null;
     } finally {
+      if (snakeSession) {
+        try {
+          await (snakeSession as CursorAcpSession).stop();
+        } catch {}
+      }
       busSnake.close();
       safeRm(loadSnakeDir);
     }
@@ -1022,8 +1024,9 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
     const loadFallbackDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-load-fb-'));
     const mockFb = createMockCursorBinary(loadFallbackDir);
     const busFb = new EventBus(path.join(loadFallbackDir, 'bus.jsonl'), true);
+    let fbSession: CursorAcpSession | null = null;
     try {
-      const fbSession = new CursorAcpSession(
+      fbSession = new CursorAcpSession(
         baseSessionOptions(loadFallbackDir, mockFb, busFb, {
           resumeSessionId: 'sess-fb-load'
         })
@@ -1039,7 +1042,13 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
       await fbSession.start();
       assert.equal(fbSession.id, 'sess-new-created');
       await fbSession.stop();
+      fbSession = null;
     } finally {
+      if (fbSession) {
+        try {
+          await (fbSession as CursorAcpSession).stop();
+        } catch {}
+      }
       busFb.close();
       safeRm(loadFallbackDir);
     }
@@ -1048,28 +1057,58 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
     const thinkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-think-'));
     const mockThink = createMockCursorBinary(thinkDir);
     const busThink = new EventBus(path.join(thinkDir, 'bus.jsonl'), true);
-    const noThink = new CursorAcpSession(baseSessionOptions(thinkDir, mockThink, busThink));
-    await noThink.start();
-    await noThink.stop();
-    delete process.env.TEST_CURSOR_NO_THINKING;
-    busThink.close();
-    safeRm(thinkDir);
+    let noThink: CursorAcpSession | null = null;
+    try {
+      noThink = new CursorAcpSession(baseSessionOptions(thinkDir, mockThink, busThink));
+      await noThink.start();
+      await noThink.stop();
+      noThink = null;
+    } finally {
+      if (noThink) {
+        try {
+          await (noThink as CursorAcpSession).stop();
+        } catch {}
+      }
+      delete process.env.TEST_CURSOR_NO_THINKING;
+      busThink.close();
+      safeRm(thinkDir);
+    }
 
     process.env.TEST_CURSOR_CONFIG_FAIL = '1';
     const cfgDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-cfg-'));
     const mockCfg = createMockCursorBinary(cfgDir);
     const busCfg = new EventBus(path.join(cfgDir, 'bus.jsonl'), true);
-    const cfgFail = new CursorAcpSession(baseSessionOptions(cfgDir, mockCfg, busCfg));
-    await cfgFail.start();
-    await cfgFail.stop();
-    delete process.env.TEST_CURSOR_CONFIG_FAIL;
-    busCfg.close();
-    safeRm(cfgDir);
+    let cfgFail: CursorAcpSession | null = null;
+    try {
+      cfgFail = new CursorAcpSession(baseSessionOptions(cfgDir, mockCfg, busCfg));
+      await cfgFail.start();
+      await cfgFail.stop();
+      cfgFail = null;
+    } finally {
+      if (cfgFail) {
+        try {
+          await (cfgFail as CursorAcpSession).stop();
+        } catch {}
+      }
+      delete process.env.TEST_CURSOR_CONFIG_FAIL;
+      busCfg.close();
+      safeRm(cfgDir);
+    }
   } finally {
     delete process.env.TEST_CURSOR_AUTH_FAIL;
     delete process.env.TEST_CURSOR_LOAD_FAIL;
     delete process.env.TEST_CURSOR_NO_THINKING;
     delete process.env.TEST_CURSOR_CONFIG_FAIL;
+    if (authSession) {
+      try {
+        await (authSession as CursorAcpSession).stop();
+      } catch {}
+    }
+    if (loadSession) {
+      try {
+        await (loadSession as CursorAcpSession).stop();
+      } catch {}
+    }
     busAuth.close();
     busLoad.close();
     safeRm(authDir);
@@ -1081,24 +1120,40 @@ test('CursorAcpSession: prompt timeout and child exit reject in-flight requests'
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-timeout-exit-'));
   const mockBinary = createMockCursorBinary(tmpDir);
   const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  let hangSession: CursorAcpSession | null = null;
+  let exitSession: CursorAcpSession | null = null;
 
   try {
-    const hangSession = new CursorAcpSession(
+    hangSession = new CursorAcpSession(
       baseSessionOptions(tmpDir, mockBinary, eventsBus, { turnTimeoutMinutes: 0.0001 })
     );
     await hangSession.start();
-    await assert.rejects(() => hangSession.prompt('trigger-hang'), /timed out/i);
+    await assert.rejects(() => hangSession!.prompt('trigger-hang'), /timed out/i);
     // Explicitly kill the child before stop
-    (hangSession as unknown as { child: import('node:child_process').ChildProcess }).child.kill(
-      'SIGKILL'
-    );
+    try {
+      (hangSession as unknown as { child: import('node:child_process').ChildProcess }).child.kill(
+        'SIGKILL'
+      );
+    } catch {}
     await hangSession.stop();
+    hangSession = null;
 
-    const exitSession = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    exitSession = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
     await exitSession.start();
-    await assert.rejects(() => exitSession.prompt('trigger-exit'), /exited/i);
+    await assert.rejects(() => exitSession!.prompt('trigger-exit'), /exited/i);
     await exitSession.stop();
+    exitSession = null;
   } finally {
+    if (hangSession) {
+      try {
+        await (hangSession as CursorAcpSession).stop();
+      } catch {}
+    }
+    if (exitSession) {
+      try {
+        await (exitSession as CursorAcpSession).stop();
+      } catch {}
+    }
     eventsBus.close();
     safeRm(tmpDir);
   }
@@ -1124,9 +1179,10 @@ test('CursorAcpSession: replays historical SERVER tool observations on start', a
     }
   });
   fs.writeFileSync(eventsFile, `SERVER ${toolLine}\n`);
+  let session: CursorAcpSession | null = null;
 
   try {
-    const session = new CursorAcpSession(
+    session = new CursorAcpSession(
       baseSessionOptions(tmpDir, mockBinary, eventsBus, {
         eventsFile,
         resumeSessionId: 'sess-replay'
@@ -1136,7 +1192,13 @@ test('CursorAcpSession: replays historical SERVER tool observations on start', a
     const obs = session.observedCommands();
     assert.ok(obs.some((o) => o.command === 'npm run test'));
     await session.stop();
+    session = null;
   } finally {
+    if (session) {
+      try {
+        await (session as CursorAcpSession).stop();
+      } catch {}
+    }
     eventsBus.close();
     safeRm(tmpDir);
   }
@@ -1146,9 +1208,10 @@ test('CursorAcpSession: setQualityEpoch rebuilds normalizer and records epoch on
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-quality-epoch-'));
   const mockBinary = createMockCursorBinary(tmpDir);
   const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  let session: CursorAcpSession | null = null;
 
   try {
-    const session = new CursorAcpSession(
+    session = new CursorAcpSession(
       baseSessionOptions(tmpDir, mockBinary, eventsBus, {
         runId: 'run-epoch',
         stageName: 'stage-01',
@@ -1161,7 +1224,13 @@ test('CursorAcpSession: setQualityEpoch rebuilds normalizer and records epoch on
     const obs = session.observedCommands();
     assert.ok(obs.some((o) => o.quality_epoch_id === 'quality-epoch-42'));
     await session.stop();
+    session = null;
   } finally {
+    if (session) {
+      try {
+        await (session as CursorAcpSession).stop();
+      } catch {}
+    }
     eventsBus.close();
     safeRm(tmpDir);
   }
@@ -1171,9 +1240,10 @@ test('CursorAcpSession: handles post-epoch normalizer callbacks and session quer
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-epoch-callbacks-'));
   const mockBinary = createMockCursorBinary(tmpDir);
   const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  let session: CursorAcpSession | null = null;
 
   try {
-    const session = new CursorAcpSession(
+    session = new CursorAcpSession(
       baseSessionOptions(tmpDir, mockBinary, eventsBus, {
         runId: 'run-post-epoch',
         stageName: 'stage-01',
@@ -1203,6 +1273,10 @@ test('CursorAcpSession: handles post-epoch normalizer callbacks and session quer
     assert.ok(Array.isArray(session.observedCommands()));
 
     // Stdin error handling: both non-EPIPE and EPIPE
+    const origChild = session.child;
+    session.child = null;
+    assert.equal(session.child, null);
+    session.child = origChild;
     const childStdin = (
       session as unknown as { child: { stdin: import('node:events').EventEmitter } }
     ).child.stdin;
@@ -1341,7 +1415,13 @@ test('CursorAcpSession: handles post-epoch normalizer callbacks and session quer
     );
 
     await session.stop();
+    session = null;
   } finally {
+    if (session) {
+      try {
+        await (session as CursorAcpSession).stop();
+      } catch {}
+    }
     eventsBus.close();
     safeRm(tmpDir);
   }
@@ -1351,21 +1431,34 @@ test('CursorAcpSession: stop gracefully handles child.kill error', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-stop-err-'));
   const mockBinary = createMockCursorBinary(tmpDir);
   const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  let session: CursorAcpSession | null = null;
+  let origKill: ((sig?: NodeJS.Signals) => boolean) | null = null;
 
   try {
-    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
     await session.start();
     const child = (session as unknown as { child: import('node:child_process').ChildProcess })
       .child;
-    const origKill = child.kill.bind(child);
+    origKill = child.kill.bind(child);
     child.kill = () => {
       throw new Error('kill failed');
     };
     await session.stop();
+    session = null;
     try {
       origKill('SIGKILL');
     } catch {}
   } finally {
+    if (session) {
+      try {
+        await (session as CursorAcpSession).stop();
+      } catch {}
+      if (origKill) {
+        try {
+          origKill('SIGKILL');
+        } catch {}
+      }
+    }
     eventsBus.close();
     safeRm(tmpDir);
   }
@@ -1379,9 +1472,10 @@ test('CursorAcpSession: routes stderr lines to event logger and run log', async 
   eventsBus.emitter.on('event', (ev: { payload?: { message?: string } }) => {
     if (ev.payload?.message?.includes('test stderr line')) warned = true;
   });
+  let session: CursorAcpSession | null = null;
 
   try {
-    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
     await session.start();
     const childStderr = (
       session as unknown as { child: { stderr: import('node:events').EventEmitter } }
@@ -1390,7 +1484,13 @@ test('CursorAcpSession: routes stderr lines to event logger and run log', async 
     await new Promise((r) => setTimeout(r, 50));
     assert.equal(warned, true);
     await session.stop();
+    session = null;
   } finally {
+    if (session) {
+      try {
+        await (session as CursorAcpSession).stop();
+      } catch {}
+    }
     eventsBus.close();
     safeRm(tmpDir);
   }
@@ -1404,9 +1504,10 @@ test('CursorAcpSession: setMode logs warning when session/set_mode rejects', asy
   eventsBus.emitter.on('event', (ev: { payload?: { message?: string } }) => {
     if (ev.payload?.message?.includes('Unable to set executor mode')) modeWarned = true;
   });
+  let session: CursorAcpSession | null = null;
 
   try {
-    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
     await session.start();
     const origRequest = (
       session as unknown as { request: (...args: unknown[]) => Promise<unknown> }
@@ -1422,7 +1523,13 @@ test('CursorAcpSession: setMode logs warning when session/set_mode rejects', asy
     await session.setMode('plan');
     assert.equal(modeWarned, true);
     await session.stop();
+    session = null;
   } finally {
+    if (session) {
+      try {
+        await (session as CursorAcpSession).stop();
+      } catch {}
+    }
     eventsBus.close();
     safeRm(tmpDir);
   }
@@ -1453,9 +1560,10 @@ test('CursorAcpSession: stop finishes immediately when child exits cleanly', asy
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-stop-clean-'));
   const mockBinary = createMockCursorBinary(tmpDir);
   const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  let session: CursorAcpSession | null = null;
 
   try {
-    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
     await session.start();
     const child = (session as unknown as { child: import('node:child_process').ChildProcess })
       .child;
@@ -1466,7 +1574,13 @@ test('CursorAcpSession: stop finishes immediately when child exits cleanly', asy
       return origKill(sig);
     };
     await session.stop();
+    session = null;
   } finally {
+    if (session) {
+      try {
+        await (session as CursorAcpSession).stop();
+      } catch {}
+    }
     eventsBus.close();
     safeRm(tmpDir);
   }
@@ -1494,9 +1608,10 @@ test('CursorAcpSession: stop times out SIGTERM and issues SIGKILL', async () => 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-stop-kill-'));
   const mockBinary = createMockCursorBinary(tmpDir);
   const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  let session: CursorAcpSession | null = null;
 
   try {
-    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
     await session.start();
 
     // Fast resolution: simulate immediate exit on kill
@@ -1509,7 +1624,13 @@ test('CursorAcpSession: stop times out SIGTERM and issues SIGKILL', async () => 
     };
 
     await session.stop();
+    session = null;
   } finally {
+    if (session) {
+      try {
+        await (session as CursorAcpSession).stop();
+      } catch {}
+    }
     eventsBus.close();
     safeRm(tmpDir);
   }
@@ -1519,9 +1640,11 @@ test('CursorAcpSession: handleLine appends agentText when onAgentText callback r
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-agent-text-'));
   const mockBinary = createMockCursorBinary(tmpDir);
   const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  let session: CursorAcpSession | null = null;
+  let realChild: import('node:child_process').ChildProcess | null = null;
 
   try {
-    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
     await session.start();
     const handleLine = (
       session as unknown as { handleLine: (line: string) => Promise<void> }
@@ -1545,13 +1668,21 @@ test('CursorAcpSession: handleLine appends agentText when onAgentText callback r
     assert.equal(agentText, 'accumulated test agent text');
 
     // Test cancel without child: store child first so we can stop it cleanly afterwards
-    const realChild = (session as unknown as { child: import('node:child_process').ChildProcess })
-      .child;
+    realChild = (session as unknown as { child: import('node:child_process').ChildProcess }).child;
     (session as unknown as { child: unknown }).child = null;
     await session.cancel();
     (session as unknown as { child: unknown }).child = realChild;
     await session.stop();
+    session = null;
   } finally {
+    if (session) {
+      if (realChild && !(session as unknown as { child: unknown }).child) {
+        (session as unknown as { child: unknown }).child = realChild;
+      }
+      try {
+        await (session as CursorAcpSession).stop();
+      } catch {}
+    }
     eventsBus.close();
     safeRm(tmpDir);
   }

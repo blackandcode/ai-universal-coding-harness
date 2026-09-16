@@ -166,19 +166,17 @@ export class EvidenceService {
     if (
       (runtime.phase === 'quality' || runtime.phase === 'review') &&
       runtime.evidence_file &&
-      runtime.patch_fingerprint === currentPatchFingerprint &&
-      fs.existsSync(runtime.evidence_file)
+      runtime.patch_fingerprint === currentPatchFingerprint
     ) {
-      try {
-        const parsed = JSON.parse(fs.readFileSync(runtime.evidence_file, 'utf8'));
+      const validation = validateEvidence(runtime.evidence_file, undefined, runtime.attempt);
+      if (validation.ok && validation.e) {
         return {
           ok: true,
-          e: parsed,
+          e: validation.e,
           resumed: true
         };
-      } catch {
-        return null;
       }
+      return null;
     }
     return null;
   }

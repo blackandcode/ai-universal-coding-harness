@@ -8,8 +8,6 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
-import readline from 'node:readline';
 import type {
   ExecutorHarness,
   ExecutorSession,
@@ -19,12 +17,7 @@ import type {
 } from '../types.js';
 import type { CommandObservation, HarnessContext } from '../../types.js';
 import { CONFIG, harnessNumber, harnessString } from '../../core/config.js';
-import {
-  execSyncText,
-  commandExists,
-  runShellCommand,
-  normalizeSpawnArgs
-} from '../../core/process.js';
+import { execSyncText, commandExists, runShellCommand } from '../../core/process.js';
 import { appendBounded, ensureDir, rotateFile } from '../../core/fs.js';
 import { iso } from '../../core/time.js';
 import type { PermissionRequest } from '../../permissions/PermissionEngine.js';
@@ -32,17 +25,20 @@ import { VERSION } from '../../version.js';
 import { AcpToolAccumulator } from './AcpToolAccumulator.js';
 import { ObservationJournal } from './ObservationJournal.js';
 import { AcpEventNormalizer } from './AcpEventNormalizer.js';
+import { CursorAcpTransport } from './CursorAcpTransport.js';
 import {
   errorMessage,
-  isRecord,
+  narrowAcpNewSessionResult,
   type AcpConfigOptionGroup,
   type AcpConfigOptionItem,
   type AcpNewSessionResult,
+  type AcpPlanRequest,
+  type AcpQuestionRequest,
+  type AcpPermissionRequest,
   type AcpQuestionParams,
+  type CursorSessionCapabilities,
   type HarnessEventEmitter,
-  type JsonRpcId,
-  type JsonRpcRequest,
-  type PendingJsonRpcRequest
+  type JsonRpcId
 } from './types.js';
 
 /**
@@ -175,13 +171,9 @@ export class CursorExecutorHarness implements ExecutorHarness {
  */
 export class CursorAcpSession implements ExecutorSession {
   id = '';
-  private child: ChildProcess | null = null;
-  private rl: readline.Interface | null = null;
-  private er: readline.Interface | null = null;
-  private nextId = 1;
-  private pending = new Map<number, PendingJsonRpcRequest<unknown>>();
+  private transport: CursorAcpTransport;
   private agentText = '';
-  private capabilities: Record<string, unknown> = {};
+  private capabilities: CursorSessionCapabilities = {};
   private externalResults: Array<{ command: string; code: number; output: string }> = [];
   private qualityEpochId = '';
   private accumulator: AcpToolAccumulator;
@@ -214,7 +206,37 @@ export class CursorAcpSession implements ExecutorSession {
       onQuestionRequest: (m) => this.handleQuestion(m),
       onPermissionRequest: (m) => this.handlePermission(m)
     });
+    this.transport = new CursorAcpTransport({
+      binary: o.binary,
+      args: ['--model', o.model, 'acp'],
+      workspace: o.workspace,
+      eventsFile: o.eventsFile,
+      runLog: o.runLog,
+      turnTimeoutMinutes: o.turnTimeoutMinutes,
+      events: o.events,
+      onMessage: async (rawMsg, decoded) => {
+        this.accumulator.stepSequence();
+        await this.normalizer.handleMessage(rawMsg);
+        if (
+          decoded.kind === 'request' &&
+          !['cursor/create_plan', 'cursor/ask_question', 'session/request_permission'].includes(
+            decoded.method
+          )
+        ) {
+          this.respond(decoded.id, { outcome: { outcome: 'cancelled' } });
+        }
+      }
+    });
     if (!fs.existsSync(o.focusFile)) fs.writeFileSync(o.focusFile, '');
+  }
+
+  /** Subprocess handle managed by the transport (exposed for test observability). */
+  get child(): import('node:child_process').ChildProcessWithoutNullStreams | null {
+    return this.transport.childProcess;
+  }
+
+  set child(val: import('node:child_process').ChildProcessWithoutNullStreams | null) {
+    this.transport.childProcess = val;
   }
 
   /** Monotonic ACP event sequence from the tool accumulator (for corroboration). */
@@ -289,15 +311,9 @@ export class CursorAcpSession implements ExecutorSession {
     this.o.events?.emit(type, payload);
   }
 
-  /** Writes a JSON-RPC line to the ACP subprocess and mirrors it in the events log. */
-  private raw(obj: unknown) {
-    const line = JSON.stringify(obj);
-    this.child?.stdin?.write(line + '\n');
-    fs.appendFileSync(this.o.eventsFile, `CLIENT ${line}\n`);
-  }
   /** Sends a JSON-RPC response for a server-initiated request id. */
   private respond(id: JsonRpcId, result: unknown) {
-    this.raw({ jsonrpc: '2.0', id, result });
+    this.transport.respond(id, result);
   }
   /** Issues a JSON-RPC request and resolves when the matching response arrives or times out. */
   private request<T = unknown>(
@@ -305,48 +321,12 @@ export class CursorAcpSession implements ExecutorSession {
     params: Record<string, unknown>,
     timeoutMs = this.o.turnTimeoutMinutes * 60_000
   ): Promise<T> {
-    const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        if (method === 'session/prompt') this.cancel().catch(() => {});
-        reject(new Error(`Cursor ACP request timed out: ${method}`));
-      }, timeoutMs);
-      this.pending.set(id, { resolve: resolve as (val: unknown) => void, reject, timer, method });
-      this.raw({ jsonrpc: '2.0', id, method, params });
-    });
+    return this.transport.request<T>(method, params, timeoutMs);
   }
 
   /** Spawns the Cursor ACP subprocess, negotiates protocol, and creates or resumes a session. */
   async start() {
-    const spawnTarget = normalizeSpawnArgs(this.o.binary, ['--model', this.o.model, 'acp']);
-    this.child = spawn(spawnTarget.cmd, spawnTarget.args, {
-      cwd: this.o.workspace,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: process.env
-    });
-    this.child.stdin?.on?.('error', (e: unknown) => {
-      const err = isRecord(e) ? e : {};
-      if (err.code !== 'EPIPE')
-        this.emit('log', {
-          level: 'warn',
-          message: `Executor stdin: ${errorMessage(e)}`
-        });
-    });
-    this.rl = readline.createInterface({ input: this.child.stdout! });
-    this.rl.on('line', (l: string) => this.handleLine(l));
-    this.er = readline.createInterface({ input: this.child.stderr! });
-    this.er.on('line', (l: string) => {
-      appendBounded(this.o.runLog, `[executor-stderr] ${l}`, CONFIG.runLogMaxBytes);
-      this.emit('log', { level: 'warn', message: `Executor: ${l}` });
-    });
-    this.child.on('exit', (code: number) => {
-      for (const [, p] of this.pending) {
-        clearTimeout(p.timer);
-        p.reject(new Error(`Cursor ACP exited ${code}`));
-      }
-      this.pending.clear();
-    });
+    await this.transport.start();
     const init = await this.request<Record<string, unknown>>(
       'initialize',
       {
@@ -356,10 +336,9 @@ export class CursorAcpSession implements ExecutorSession {
       },
       60_000
     );
-    this.capabilities = (init?.agentCapabilities || init?.agent_capabilities || {}) as Record<
-      string,
-      unknown
-    >;
+    this.capabilities = (init?.agentCapabilities ||
+      init?.agent_capabilities ||
+      {}) as CursorSessionCapabilities;
     try {
       await this.request('authenticate', { methodId: 'cursor_login' }, 60_000);
     } catch {}
@@ -369,11 +348,12 @@ export class CursorAcpSession implements ExecutorSession {
       (this.capabilities.loadSession === true || this.capabilities.load_session === true)
     ) {
       try {
-        ns = await this.request<AcpNewSessionResult>(
+        const raw = await this.request<unknown>(
           'session/load',
           { sessionId: this.o.resumeSessionId, cwd: this.o.workspace, mcpServers: [] },
           60_000
         );
+        ns = narrowAcpNewSessionResult(raw);
         this.id = this.o.resumeSessionId;
         this.emit('log', {
           level: 'info',
@@ -388,11 +368,12 @@ export class CursorAcpSession implements ExecutorSession {
       }
     }
     if (!this.id) {
-      ns = await this.request<AcpNewSessionResult>(
+      const raw = await this.request<unknown>(
         'session/new',
         { cwd: this.o.workspace, mcpServers: [] },
         60_000
       );
+      ns = narrowAcpNewSessionResult(raw);
       this.id = ns?.sessionId || '';
     }
     this.normalizer = new AcpEventNormalizer({
@@ -479,102 +460,17 @@ export class CursorAcpSession implements ExecutorSession {
 
   /** Requests cancellation of the in-flight ACP prompt without tearing down the subprocess. */
   async cancel() {
-    if (this.child && this.id)
-      try {
-        this.raw({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId: this.id } });
-      } catch {}
+    await this.transport.cancel(this.id);
   }
 
   /** Cancels, closes streams, and terminates the ACP child process. */
   async stop() {
-    try {
-      await this.cancel();
-    } catch {}
-    try {
-      this.rl?.close();
-    } catch {}
-    try {
-      this.er?.close();
-    } catch {}
-    try {
-      this.child?.stdin?.destroy();
-    } catch {}
-    try {
-      this.child?.stdout?.destroy();
-    } catch {}
-    try {
-      this.child?.stderr?.destroy();
-    } catch {}
-
-    const child = this.child;
-    if (child && child.exitCode === null && child.signalCode === null) {
-      await new Promise<void>((resolve) => {
-        let settled = false;
-        const finish = () => {
-          if (!settled) {
-            settled = true;
-            resolve();
-          }
-        };
-        const timer = setTimeout(() => {
-          try {
-            child.kill('SIGKILL');
-          } catch {}
-          finish();
-        }, 3000);
-
-        child.once('exit', () => {
-          clearTimeout(timer);
-          finish();
-        });
-        child.once('close', () => {
-          clearTimeout(timer);
-          finish();
-        });
-
-        try {
-          child.kill('SIGTERM');
-        } catch {
-          clearTimeout(timer);
-          finish();
-        }
-      });
-    }
-
-    this.pending.clear();
+    await this.transport.stop();
   }
 
   /** Parses one ACP stdout line, completes pending RPCs, and delegates events to the normalizer. */
-  private async handleLine(line: string) {
-    this.accumulator.stepSequence();
-    fs.appendFileSync(this.o.eventsFile, `SERVER ${line}\n`);
-    let m: unknown;
-    try {
-      m = JSON.parse(line);
-    } catch {
-      return;
-    }
-    if (!isRecord(m)) return;
-
-    if (m.id != null && (Object.hasOwn(m, 'result') || Object.hasOwn(m, 'error'))) {
-      const id = typeof m.id === 'number' ? m.id : Number(m.id);
-      const p = this.pending.get(id);
-      if (!p) return;
-      clearTimeout(p.timer);
-      this.pending.delete(id);
-      if (m.error) {
-        p.reject(new Error(JSON.stringify(m.error)));
-      } else {
-        p.resolve(m.result);
-      }
-      return;
-    }
-
-    await this.normalizer.handleMessage(m);
-
-    if (m.id != null) {
-      this.respond(m.id as JsonRpcId, { outcome: { outcome: 'cancelled' } });
-    }
+  async handleLine(line: string): Promise<void> {
+    await this.transport.handleLine(line);
   }
 
   /** Appends streamed focus text to the focus log and emits a debounced UI delta event. */
@@ -586,7 +482,7 @@ export class CursorAcpSession implements ExecutorSession {
   }
 
   /** Bridges ACP plan submissions to orchestrator {@link PlanCoordinator} via callbacks. */
-  private async handlePlan(m: JsonRpcRequest) {
+  private async handlePlan(m: AcpPlanRequest) {
     const p = (m.params || {}) as {
       plan?: string;
       name?: string;
@@ -637,7 +533,7 @@ export class CursorAcpSession implements ExecutorSession {
   }
 
   /** Forwards executor multiple-choice questions to the reviewer decision callback. */
-  private async handleQuestion(m: JsonRpcRequest) {
+  private async handleQuestion(m: AcpQuestionRequest) {
     const p = (m.params || {}) as AcpQuestionParams;
     const questions = p.questions || [];
     this.emit('executor.question', {
@@ -704,7 +600,7 @@ export class CursorAcpSession implements ExecutorSession {
    * Resolves permission prompts via orchestrator policy; may broker approved shell commands
    * when ACP exposes no direct allow option.
    */
-  private async handlePermission(m: JsonRpcRequest) {
+  private async handlePermission(m: AcpPermissionRequest) {
     const p = (m.params || {}) as Record<string, unknown>;
     const req = this.permissionRequest(p);
     this.emit('executor.permission', {
@@ -797,47 +693,21 @@ export function parseAcpEvents(
 
   const accumulator = new AcpToolAccumulator();
   const journal = new ObservationJournal();
+  const normalizer = new AcpEventNormalizer({
+    accumulator,
+    journal,
+    defaultSessionId: 'default',
+    runId: opts?.runId,
+    stageName: opts?.stageName,
+    attempt: opts?.attempt,
+    workspace: opts?.workspace,
+    isReplay: true
+  });
 
   for (const line of lines) {
     if (!line.startsWith('SERVER ')) continue;
-    let m: unknown;
-    try {
-      m = JSON.parse(line.slice(7));
-    } catch {
-      continue;
-    }
-    if (!isRecord(m)) continue;
-
-    if (m.method === 'session/update' && isRecord(m.params)) {
-      const u = m.params.update;
-      if (!isRecord(u)) continue;
-
-      const isToolUpdate =
-        u.sessionUpdate === 'tool_call' ||
-        u.sessionUpdate === 'tool_call_update' ||
-        Boolean(u.toolCallId) ||
-        Boolean(u.toolCall);
-      if (!isToolUpdate) {
-        continue;
-      }
-
-      const sid = String(m.params.sessionId || u.sessionId || 'default');
-      const result = accumulator.processUpdate(
-        { ...u, sessionId: sid },
-        {
-          defaultSessionId: sid,
-          runId: opts?.runId,
-          stageName: opts?.stageName,
-          attempt: opts?.attempt,
-          workspace: opts?.workspace,
-          isReplay: true
-        }
-      );
-
-      if (result.observation) {
-        journal.record(result.observation, true);
-      }
-    }
+    accumulator.stepSequence();
+    void normalizer.handleMessage(line.slice(7));
   }
 
   return journal.getObservations();

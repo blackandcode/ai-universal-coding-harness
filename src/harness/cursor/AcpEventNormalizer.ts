@@ -15,7 +15,15 @@
 
 import type { AcpToolAccumulator } from './AcpToolAccumulator.js';
 import type { ObservationJournal } from './ObservationJournal.js';
-import { isRecord, type HarnessEventEmitter, type JsonRpcRequest } from './types.js';
+import { AcpEventDecoder } from './AcpEventDecoder.js';
+import {
+  type HarnessEventEmitter,
+  type AcpPlanRequest,
+  type AcpQuestionRequest,
+  type AcpPermissionRequest,
+  type AcpQuestionParams,
+  type AcpPermissionParams
+} from './types.js';
 
 /**
  * Callbacks and context options wired into ACP message normalization.
@@ -39,16 +47,18 @@ export interface AcpEventNormalizerOptions {
   workspace?: string;
   /** Quality epoch identifier if currently executing quality checks. */
   qualityEpochId?: string;
+  /** Whether the normalizer is operating in historical replay mode. */
+  isReplay?: boolean;
   /** Callback invoked when new agent thoughts or progress deltas arrive. */
   onFocusDelta?: (text: string) => void;
   /** Callback invoked when streaming agent text chunks arrive. */
   onAgentText?: (text: string) => void;
   /** Callback invoked when the agent requests plan evaluation. */
-  onPlanRequest?: (payload: JsonRpcRequest) => Promise<void>;
+  onPlanRequest?: (payload: AcpPlanRequest) => Promise<void>;
   /** Callback invoked when the agent asks blocking questions. */
-  onQuestionRequest?: (payload: JsonRpcRequest) => Promise<void>;
+  onQuestionRequest?: (payload: AcpQuestionRequest) => Promise<void>;
   /** Callback invoked when the agent requests command or file permissions. */
-  onPermissionRequest?: (payload: JsonRpcRequest) => Promise<void>;
+  onPermissionRequest?: (payload: AcpPermissionRequest) => Promise<void>;
 }
 
 /**
@@ -70,99 +80,132 @@ export class AcpEventNormalizer {
    * @param message - Untrusted parsed JSON object received from Cursor ACP stdout.
    */
   async handleMessage(message: unknown): Promise<void> {
-    if (!isRecord(message)) return;
+    const decoded = AcpEventDecoder.decode(message);
+    if (decoded.kind === 'invalid') return;
 
-    if (message.method === 'session/update' && isRecord(message.params)) {
-      const u = message.params.update;
-      if (isRecord(u)) {
-        if (message.params.sessionId && !u.sessionId) {
-          u.sessionId = message.params.sessionId;
-        }
-        this.handleSessionUpdate(u);
+    if (decoded.kind === 'notification') {
+      if (decoded.method === 'session/update' && decoded.update) {
+        this.handleSessionUpdate(decoded.update);
+        return;
+      }
+
+      if (this.options.isReplay) return;
+
+      if (decoded.method === 'cursor/update_todos') {
+        const p = decoded.params || {};
+        this.options.events?.emit?.('executor.todos', {
+          todos: Array.isArray(p.todos) ? p.todos : [],
+          merge: Boolean(p.merge)
+        });
+        return;
+      }
+
+      if (decoded.method === 'cursor/task') {
+        const p = decoded.params || {};
+        this.options.events?.emit?.('executor.task', {
+          title: typeof p.title === 'string' ? p.title : '',
+          summary: typeof p.summary === 'string' ? p.summary : ''
+        });
+        return;
       }
       return;
     }
 
-    if (message.method === 'cursor/update_todos') {
-      const p = isRecord(message.params) ? message.params : {};
-      this.options.events?.emit?.('executor.todos', {
-        todos: p.todos || [],
-        merge: Boolean(p.merge)
-      });
-      return;
-    }
+    if (this.options.isReplay) return;
 
-    if (message.method === 'cursor/task') {
-      const p = isRecord(message.params) ? message.params : {};
-      this.options.events?.emit?.('executor.task', {
-        title: p.title || '',
-        summary: p.summary || ''
-      });
-      return;
-    }
+    if (decoded.kind === 'request') {
+      if (decoded.method === 'cursor/create_plan' && this.options.onPlanRequest) {
+        const planReq: AcpPlanRequest = {
+          jsonrpc: typeof decoded.raw.jsonrpc === 'string' ? decoded.raw.jsonrpc : '2.0',
+          id: decoded.id,
+          method: 'cursor/create_plan',
+          params: decoded.params,
+          ...decoded.raw
+        };
+        await this.options.onPlanRequest(planReq);
+        return;
+      }
 
-    if (message.method === 'cursor/create_plan' && this.options.onPlanRequest) {
-      await this.options.onPlanRequest(message as JsonRpcRequest);
-      return;
-    }
+      if (decoded.method === 'cursor/ask_question' && this.options.onQuestionRequest) {
+        const questionReq: AcpQuestionRequest = {
+          jsonrpc: typeof decoded.raw.jsonrpc === 'string' ? decoded.raw.jsonrpc : '2.0',
+          id: decoded.id,
+          method: 'cursor/ask_question',
+          params: decoded.params as AcpQuestionParams | undefined,
+          ...decoded.raw
+        };
+        await this.options.onQuestionRequest(questionReq);
+        return;
+      }
 
-    if (message.method === 'cursor/ask_question' && this.options.onQuestionRequest) {
-      await this.options.onQuestionRequest(message as JsonRpcRequest);
-      return;
-    }
-
-    if (message.method === 'session/request_permission' && this.options.onPermissionRequest) {
-      await this.options.onPermissionRequest(message as JsonRpcRequest);
-      return;
+      if (decoded.method === 'session/request_permission' && this.options.onPermissionRequest) {
+        const permReq: AcpPermissionRequest = {
+          jsonrpc: typeof decoded.raw.jsonrpc === 'string' ? decoded.raw.jsonrpc : '2.0',
+          id: decoded.id,
+          method: 'session/request_permission',
+          params: decoded.params as AcpPermissionParams | undefined,
+          ...decoded.raw
+        };
+        await this.options.onPermissionRequest(permReq);
+        return;
+      }
     }
   }
 
   /**
    * Dispatches updates within a `session/update` notification.
    *
-   * @param u - Untrusted session update payload containing message chunks or tool call structures.
+   * @param u - Untrusted or decoded session update payload containing message chunks or tool call structures.
    */
   private handleSessionUpdate(u: unknown): void {
-    if (!isRecord(u)) return;
+    const update = AcpEventDecoder.decodeSessionUpdate(u, this.options.defaultSessionId);
 
-    const t = String(u.sessionUpdate || u.type || '');
-    if (t === 'agent_message_chunk') {
-      const content = isRecord(u.content) ? u.content : {};
-      const text = String(content.text || u.text || '');
+    if (update.sessionUpdate === 'agent_message_chunk') {
+      if (this.options.isReplay) return;
+      const text = update.text;
       this.options.onAgentText?.(text);
       this.options.events?.emit?.('executor.message', { text, stream: true });
       return;
     }
 
-    if (t === 'agent_thought_chunk' || t === 'agent_progress_chunk') {
-      const content = isRecord(u.content) ? u.content : {};
-      const text = String(content.text || u.text || '');
+    if (
+      update.sessionUpdate === 'agent_thought_chunk' ||
+      update.sessionUpdate === 'agent_progress_chunk'
+    ) {
+      if (this.options.isReplay) return;
+      const text = update.text;
       this.options.onFocusDelta?.(text);
       return;
     }
 
-    if (t === 'tool_call' || t === 'tool_call_update' || u.toolCallId || u.toolCall) {
-      const result = this.options.accumulator.processUpdate(u, {
-        defaultSessionId: this.options.defaultSessionId,
+    if (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') {
+      const payload = update.sessionId
+        ? { ...update.raw, sessionId: update.sessionId }
+        : update.raw;
+      const result = this.options.accumulator.processUpdate(payload, {
+        defaultSessionId: update.sessionId || this.options.defaultSessionId,
         runId: this.options.runId,
         stageName: this.options.stageName,
         attempt: this.options.attempt,
         workspace: this.options.workspace,
-        qualityEpochId: this.options.qualityEpochId
+        qualityEpochId: this.options.qualityEpochId,
+        isReplay: this.options.isReplay
       });
 
-      this.options.events?.emit?.('executor.tool', {
-        id: result.state.id,
-        title: result.state.title,
-        kind: result.state.kind,
-        detail: result.state.detail,
-        status: result.state.status,
-        exit_code: result.state.exit_code,
-        updatedAt: result.state.updatedAt
-      });
+      if (!this.options.isReplay) {
+        this.options.events?.emit?.('executor.tool', {
+          id: result.state.id,
+          title: result.state.title,
+          kind: result.state.kind,
+          detail: result.state.detail,
+          status: result.state.status,
+          exit_code: result.state.exit_code,
+          updatedAt: result.state.updatedAt
+        });
+      }
 
       if (result.observation) {
-        this.options.journal.record(result.observation);
+        this.options.journal.record(result.observation, Boolean(this.options.isReplay));
       }
     }
   }

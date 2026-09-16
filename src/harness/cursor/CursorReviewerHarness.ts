@@ -9,7 +9,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import type { ReviewerHarness, HarnessInfo, HarnessPreflightResult } from '../types.js';
+import type {
+  ReviewerHarness,
+  HarnessInfo,
+  HarnessPreflightResult,
+  PlanReviewInput,
+  QuestionReviewInput,
+  PermissionReviewInput,
+  FinalReviewInput
+} from '../types.js';
 import type {
   PlanReviewVerdict,
   QuestionVerdict,
@@ -127,14 +135,14 @@ export class CursorReviewerHarness implements ReviewerHarness {
   constructor(private ctx: HarnessContext = {}) {
     this.binary = ctx.reviewerBinary || this.binary;
     this.model = ctx.reviewerModel || this.model;
-    if (typeof (ctx as Record<string, unknown>).thinking === 'string') {
-      this.thinking = (ctx as Record<string, unknown>).thinking as string;
+    if (typeof ctx.thinking === 'string') {
+      this.thinking = ctx.thinking;
     }
-    if (typeof (ctx as Record<string, unknown>).timeoutMinutes === 'number') {
-      this.timeoutMinutes = (ctx as Record<string, unknown>).timeoutMinutes as number;
+    if (typeof ctx.timeoutMinutes === 'number') {
+      this.timeoutMinutes = ctx.timeoutMinutes;
     }
-    if (typeof (ctx as Record<string, unknown>).timeoutSeconds === 'number') {
-      this.timeoutSeconds = (ctx as Record<string, unknown>).timeoutSeconds as number;
+    if (typeof ctx.timeoutSeconds === 'number') {
+      this.timeoutSeconds = ctx.timeoutSeconds;
     }
     this.info = { ...this.info, model: this.model, label: `${this.model} reviewer` };
   }
@@ -288,7 +296,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
    * @param opts - When `finalConsolidation` is set, accepts carryover findings instead of replan.
    */
   async reviewPlan(
-    input: unknown,
+    input: PlanReviewInput,
     opts?: { finalConsolidation?: boolean }
   ): Promise<PlanReviewVerdict> {
     const extra = opts?.finalConsolidation
@@ -302,7 +310,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
    *
    * @param input - Question payload including options and executor context.
    */
-  async answerQuestions(input: unknown): Promise<QuestionVerdict> {
+  async answerQuestions(input: QuestionReviewInput): Promise<QuestionVerdict> {
     return this.decide<QuestionVerdict>('question', input, 'question-verdict.schema.json');
   }
 
@@ -311,7 +319,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
    *
    * @param input - Permission request describing the proposed operation.
    */
-  async decidePermission(input: unknown): Promise<PermissionVerdict> {
+  async decidePermission(input: PermissionReviewInput): Promise<PermissionVerdict> {
     return this.decide<PermissionVerdict>('permission', input, 'permission-verdict.schema.json');
   }
 
@@ -320,7 +328,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
    *
    * @param input - Final review payload including diff, evidence, and plan carryover.
    */
-  async reviewImplementation(input: unknown): Promise<FinalVerdict> {
+  async reviewImplementation(input: FinalReviewInput): Promise<FinalVerdict> {
     return this.decide<FinalVerdict>('final-review', input, 'final-verdict.schema.json');
   }
 }

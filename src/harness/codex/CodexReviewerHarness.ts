@@ -32,7 +32,7 @@ import { harnessNumber, harnessString } from '../../core/config.js';
 import { execSyncText, commandExists } from '../../core/process.js';
 import { CodexPromptBuilder } from './CodexPromptBuilder.js';
 import { CodexProcessRunner } from './CodexProcessRunner.js';
-import type { CodexDecisionKind } from './types.js';
+import type { CodexDecisionKind, CodexReviewPayload } from './types.js';
 
 /**
  * OpenAI Codex CLI adapter implementing the reviewer harness contract.
@@ -112,7 +112,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
    */
   private async decide<T>(
     kind: CodexDecisionKind,
-    payload: unknown,
+    payload: CodexReviewPayload,
     schemaFile: string,
     extra = ''
   ): Promise<T> {

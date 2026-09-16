@@ -158,7 +158,63 @@ test('validateEvidence asserts schema and required fields of evidence.json', () 
     const valid = validateEvidence(validFile, 'stage-01', 1);
     assert.equal(valid.ok, true);
     assert.equal(valid.e?.stage, 'stage-01');
+
+    // validateEvidence with optional attempt omitted
+    const validNoAttempt = validateEvidence(validFile, 'stage-01');
+    assert.equal(validNoAttempt.ok, true);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('verifyEvidenceAgainstObserved covers edge cases: null exits, mismatch, directory checks', () => {
+  // 1. Observed quality command with null exit code
+  const rNullQ = verifyEvidenceAgainstObserved(evidence, [
+    { command: 'npm run check', exit_code: null, status: 'in_progress', tool_id: '1' },
+    { command: 'git diff --check', exit_code: 0, status: 'completed', tool_id: '2' }
+  ]);
+  assert.equal(rNullQ.ok, false);
+  assert.ok(rNullQ.issues.some((i) => i.includes('has no exit code')));
+
+  // 2. Observed quality exit mismatch
+  const rExitMismatch = verifyEvidenceAgainstObserved(evidence, [
+    { command: 'npm run check', exit_code: 1, status: 'completed', tool_id: '1' },
+    { command: 'git diff --check', exit_code: 0, status: 'completed', tool_id: '2' }
+  ]);
+  assert.equal(rExitMismatch.ok, false);
+  assert.ok(rExitMismatch.issues.some((i) => i.includes('Quality exit mismatch')));
+
+  // 3. Observed git diff --check with null exit code
+  const rNullD = verifyEvidenceAgainstObserved(evidence, [
+    { command: 'npm run check', exit_code: 0, status: 'completed', tool_id: '1' },
+    { command: 'git diff --check', exit_code: null, status: 'in_progress', tool_id: '2' }
+  ]);
+  assert.equal(rNullD.ok, false);
+  assert.ok(rNullD.issues.some((i) => i.includes('git diff --check has no exit code')));
+
+  // 4. Observed git diff --check exit mismatch
+  const rDiffMismatch = verifyEvidenceAgainstObserved(evidence, [
+    { command: 'npm run check', exit_code: 0, status: 'completed', tool_id: '1' },
+    { command: 'git diff --check', exit_code: 1, status: 'completed', tool_id: '2' }
+  ]);
+  assert.equal(rDiffMismatch.ok, false);
+  assert.ok(rDiffMismatch.issues.some((i) => i.includes('git diff --check exit mismatch')));
+
+  // 5. Wrong directory check
+  const rWrongDir = verifyEvidenceAgainstObserved(
+    evidence,
+    [
+      {
+        command: 'npm run check',
+        exit_code: 0,
+        status: 'completed',
+        tool_id: '1',
+        cwd: '/wrong/path'
+      },
+      { command: 'git diff --check', exit_code: 0, status: 'completed', tool_id: '2' }
+    ],
+    { workspace: '/expected/path' }
+  );
+  assert.equal(rWrongDir.ok, false);
+  assert.ok(rWrongDir.issues.some((i) => i.includes('wrong directory')));
 });

@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { HarnessRegistry } from '../../src/harness/registry.js';
+import { HarnessRegistry, type ExternalHarnessModule } from '../../src/harness/registry.js';
 
 test('default harness registry exposes Cursor executor and Codex/Cursor reviewers through generic contracts', () => {
   const r = new HarnessRegistry();
@@ -89,6 +89,47 @@ test('HarnessRegistry: registers custom harness and dynamically loads modules', 
     const badMod = path.join(tmpDir, 'bad-plugin.mjs');
     fs.writeFileSync(badMod, `export const notAFunction = true;`);
     await assert.rejects(() => r.loadModule(badMod), /must export registerHarnesses/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('HarnessRegistry: supports default export plugins conforming to ExternalHarnessModule (Criterion 9)', async () => {
+  const r = new HarnessRegistry();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-default-mod-'));
+
+  try {
+    const defaultModFile = path.join(tmpDir, 'default-plugin.mjs');
+    fs.writeFileSync(
+      defaultModFile,
+      `export default function(reg) {
+  reg.registerReviewer('default-rev', () => ({
+    info: { id: 'default-rev', label: 'Default Plugin', role: 'reviewer', model: 'def-model' },
+    preflight: async () => ({ ok: true, details: [] }),
+    reviewPlan: async () => ({ verdict: 'APPROVE', summary: '', missing_items: [] }),
+    answerQuestions: async () => ({ verdict: 'ANSWER', answers: [] }),
+    decidePermission: async () => ({ verdict: 'ALLOW' }),
+    reviewImplementation: async () => ({ verdict: 'APPROVE', summary: '' })
+  }));
+}`
+    );
+
+    // Type compatibility compile assertion
+    const typedMod: ExternalHarnessModule = {
+      default: (reg: HarnessRegistry) => {
+        assert.ok(reg);
+      }
+    };
+    assert.equal(typeof typedMod.default, 'function');
+
+    await r.loadModule(defaultModFile);
+    assert.ok(r.list().reviewers.includes('default-rev'));
+    assert.equal(r.reviewer('default-rev', {}).info.id, 'default-rev');
+
+    // Test loadConfigured with custom module array
+    const r2 = new HarnessRegistry();
+    await r2.loadConfigured([defaultModFile]);
+    assert.ok(r2.list().reviewers.includes('default-rev'));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

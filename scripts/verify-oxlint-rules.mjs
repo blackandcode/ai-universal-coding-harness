@@ -47,6 +47,12 @@ try {
   // Fixture 8: no-unused-vars
   fs.writeFileSync(path.join(tmpDir, 'unused-vars.ts'), 'const unusedVariable = 42;\n');
 
+  // Fixture 9: typescript/no-explicit-any
+  fs.writeFileSync(
+    path.join(tmpDir, 'explicit-any.ts'),
+    'export function compute(value: any): any { return value; }\n'
+  );
+
   const configPath = path.resolve('.oxlintrc.json');
   const oxlintBin = path.resolve('node_modules/.bin/oxlint');
 
@@ -70,7 +76,8 @@ try {
     'eqeqeq',
     'no-self-compare',
     'jsx-key',
-    'no-unused-vars'
+    'no-unused-vars',
+    'no-explicit-any'
   ];
 
   const missingRules = expectedRules.filter((rule) => !output.includes(rule));

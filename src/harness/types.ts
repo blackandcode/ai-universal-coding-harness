@@ -403,6 +403,8 @@ export interface ReviewerModelConfig {
   harness: string;
   /** Underlying model identifier (e.g. `'gpt-6-astra'`, `'gemini-3.8-flash'`). */
   model: string;
+  /** Path or command name of the executable binary for this reviewer. */
+  binary?: string;
   /** Thinking budget / level for models supporting explicit thinking controls. */
   thinking?: 'low' | 'medium' | 'high';
   /** Reasoning effort for OpenAI reasoning models. */

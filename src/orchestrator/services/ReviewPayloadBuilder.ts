@@ -8,6 +8,7 @@
 
 import { CONFIG } from '../../core/config.js';
 import type { FinalReviewInput } from '../../harness/types.js';
+import type { ExecutionEvidence } from '../../types.js';
 
 /** Minimal git surface required to assemble a final review payload. */
 export interface GitReviewProvider {
@@ -40,11 +41,11 @@ export interface BuildReviewPayloadOptions {
   /** Repository provider supplying git status, diff_stat, and diff text. */
   git: GitReviewProvider;
   /** Approved stage implementation plan. */
-  approvedPlan?: unknown;
+  approvedPlan?: string | Record<string, unknown> | null;
   /** Carry-over findings and instructions from plan review rounds. */
-  planReviewerCarryover?: unknown;
+  planReviewerCarryover?: string | null;
   /** Corroborated execution evidence and quality command outputs. */
-  evidence?: unknown;
+  evidence?: ExecutionEvidence | Partial<ExecutionEvidence> | null;
   /** Maximum allowable diff character count (defaults to configured limit). */
   maxDiffChars?: number;
   /** File paths explicitly requested by reviewer in a prior NEEDS_CONTEXT verdict. */
@@ -56,11 +57,11 @@ export interface BuildReviewPayloadOptions {
  */
 export interface FinalReviewPayload extends FinalReviewInput {
   /** Approved stage implementation plan. */
-  approved_plan: unknown;
+  approved_plan?: string | Record<string, unknown> | null;
   /** Carryover instructions from plan reviews. */
-  plan_reviewer_carryover: unknown;
+  plan_reviewer_carryover?: string | null;
   /** Corroborated quality evidence claims. */
-  evidence: unknown;
+  evidence?: ExecutionEvidence | Partial<ExecutionEvidence> | null;
   /** Short git status output showing modified and untracked files. */
   git_status: string;
   /** Git diffstat summary. */

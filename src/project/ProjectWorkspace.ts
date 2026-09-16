@@ -25,6 +25,10 @@ function ensureDir(p: string): void {
   fs.mkdirSync(p, { recursive: true });
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 function git(args: string[]) {
   return spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
@@ -158,7 +162,8 @@ export class ProjectWorkspace {
       .map((x) => {
         const file = path.join(RUNS_ROOT, x.name, 'run.json');
         try {
-          const j = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+          const raw: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+          const j = isRecord(raw) ? raw : {};
           return {
             id: x.name,
             status: typeof j.status === 'string' ? j.status : undefined,
@@ -179,13 +184,14 @@ export class ProjectWorkspace {
   assertNoActiveRun(): void {
     if (!fs.existsSync(LOCK_FILE)) return;
     try {
-      const lock = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8')) as Record<string, unknown>;
-      const pid = Number(lock.pid);
+      const raw: unknown = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8'));
+      if (!isRecord(raw)) return;
+      const pid = Number(raw.pid);
       if (pid > 0) {
         try {
           process.kill(pid, 0);
           throw new LockConflictError(
-            `Another orchestrator process is active (PID ${pid}, run ${String(lock.run_id || 'unknown')}).`
+            `Another orchestrator process is active (PID ${pid}, run ${String(raw.run_id || 'unknown')}).`
           );
         } catch (e: unknown) {
           if (e instanceof LockConflictError) throw e;

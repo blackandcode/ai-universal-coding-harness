@@ -4,11 +4,33 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+### Added
+
+- Accepted ADR-0001 (`docs/adr/0001-protocol-and-transport-boundary-separation.md`) codifying transport decoupling, centralized protocol parsing, and static `any` elimination.
+- Implemented `CursorAcpTransport` in `src/harness/cursor/CursorAcpTransport.ts` decoupling ACP subprocess lifecycle, stdio line framing, pending JSON-RPC request correlation, and stderr streaming from higher-level session orchestration.
+- Implemented `AcpEventDecoder` in `src/harness/cursor/AcpEventDecoder.ts` providing pure deterministic decoding and validation of untrusted JSON-RPC wire envelopes and session updates across live sessions and log replays.
+- Added AST invariant check in `scripts/verify-oxlint-rules.mjs` verifying that `typescript/no-explicit-any` errors halt CI.
+- Added protocol test suites in `tests/harness/cursor/AcpEventDecoder.test.ts`, `tests/harness/cursor/CursorAcpTransport.test.ts`, `tests/harness/cursor/AcpLiveReplayEquivalence.test.ts`, and `tests/harness/codex/CodexMalformedEvents.test.ts`.
+- Added protocol aliases `AcpToolUpdate` and `PendingRpcRequest` in `src/harness/cursor/types.ts`.
+- Documented Decision 14 ("Protocol and Transport Boundary Separation") in `DECISIONS.md`.
+
+### Changed
+
+- Refactored `CursorAcpSession` and `parseAcpEvents` in `src/harness/cursor/CursorExecutorHarness.ts` to delegate subprocess transport to `CursorAcpTransport` and share `AcpEventNormalizer` and `AcpEventDecoder`.
+- Refactored `AcpEventNormalizer` in `src/harness/cursor/AcpEventNormalizer.ts` to support `isReplay` mode and use `AcpEventDecoder` with strongly typed `AcpPlanRequest`, `AcpQuestionRequest`, and `AcpPermissionRequest` contracts.
+- Strongly typed reviewer input parameters in `CursorReviewerHarness` using `PlanReviewInput`, `QuestionReviewInput`, `PermissionReviewInput`, and `FinalReviewInput`.
+- Replaced unvalidated `JSON.parse` assertions with runtime guards (`isRecord` and `validateEvidence`) across `src/quality/EvidenceService.ts`, `src/project/ProjectWorkspace.ts`, and `src/harness/ReviewerErrorClassifier.ts`.
+- Eliminated redundant type cast in `AcpEventDecoder.decodeSessionUpdate` via `isDecodedSessionUpdate` type predicate.
+- Tightened adapter and orchestrator typing across `src/orchestrator/services/ReviewerRouter.ts`, `src/orchestrator/services/ReviewPayloadBuilder.ts`, `src/harness/cursor/CursorReviewerHarness.ts`, `src/harness/codex/CodexReviewerHarness.ts`, `src/quality/EvidenceVerifier.ts`, and `src/orchestrator/RecoveryManager.ts` to eliminate broad `Record<string, unknown>` and `any` assertions.
+
 ### Fixed
 
 - Fixed external binary execution and scope leak in test coverage by hermetically mocking `Orchestrator` preflight in CLI tests and scoping default Node test coverage to `.test-dist/src/**`
 - Silenced incidental CLI stderr and stdout from dispatch unit tests during test runs and migrated test mock.module options to exports.
 - Hermetic orchestrator preflight unit test no longer calls real cursor/codex preflight on CI
+- Synchronized mock Cursor agent prompt completion with harness JSON-RPC replies in `tests/harness/cursor/CursorExecutorHarness.test.ts` to prevent race conditions during child process execution on Windows runners.
+- Ensured all `session.stop()` calls in `tests/harness/cursor/CursorExecutorHarness.test.ts` and `transport.stop()` calls in `tests/harness/cursor/CursorAcpTransport.test.ts` are guarded within `finally` blocks to prevent orphaned ACP subprocesses upon test failure.
+- Added `--test-timeout=60000` to `scripts/run-tests.mjs` as a deterministic test runner timeout safety net on CI.
 
 ## [2.1.7] - 2026-09-16
 

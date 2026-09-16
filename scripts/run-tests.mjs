@@ -102,7 +102,7 @@ if (isCoverage) {
     args.push('--test-coverage-include=.test-dist/src/**');
   }
 }
-args.push('--experimental-test-module-mocks', '--test', ...testFiles);
+args.push('--test-timeout=60000', '--experimental-test-module-mocks', '--test', ...testFiles);
 
 const result = spawnSync(process.execPath, args, {
   stdio: 'inherit',

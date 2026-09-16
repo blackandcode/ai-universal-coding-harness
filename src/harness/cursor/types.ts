@@ -92,6 +92,11 @@ export interface PendingJsonRpcRequest<T = unknown> {
 }
 
 /**
+ * Protocol alias for {@link PendingJsonRpcRequest}.
+ */
+export type PendingRpcRequest<T = unknown> = PendingJsonRpcRequest<T>;
+
+/**
  * An individual option entry within an ACP config option group.
  */
 export interface AcpConfigOptionItem {
@@ -120,6 +125,43 @@ export interface AcpNewSessionResult {
   config_options?: AcpConfigOptionGroup[];
   capabilities?: Record<string, unknown>;
   [key: string]: unknown;
+}
+
+/**
+ * Session capabilities reported or supported by Cursor ACP sessions.
+ */
+export interface CursorSessionCapabilities {
+  /** Whether the ACP server supports resuming sessions via `session/load`. */
+  loadSession?: boolean;
+  /** Snake_case variant of `loadSession` reported by some Cursor ACP versions. */
+  load_session?: boolean;
+  [key: string]: unknown;
+}
+
+/**
+ * Safely validates and narrows an untrusted payload into {@link AcpNewSessionResult}.
+ *
+ * @param val - Untrusted value received from `session/new` or `session/load`.
+ * @returns Validated session result with safe typed properties.
+ */
+export function narrowAcpNewSessionResult(val: unknown): AcpNewSessionResult {
+  if (!isRecord(val)) {
+    return {};
+  }
+  const result: AcpNewSessionResult = { ...val };
+  if (typeof val.sessionId === 'string') {
+    result.sessionId = val.sessionId;
+  }
+  if (Array.isArray(val.configOptions)) {
+    result.configOptions = val.configOptions.filter(isRecord) as AcpConfigOptionGroup[];
+  }
+  if (Array.isArray(val.config_options)) {
+    result.config_options = val.config_options.filter(isRecord) as AcpConfigOptionGroup[];
+  }
+  if (isRecord(val.capabilities)) {
+    result.capabilities = val.capabilities;
+  }
+  return result;
 }
 
 /**
@@ -174,6 +216,148 @@ export interface AcpPermissionParams {
   options?: AcpPermissionOption[];
   [key: string]: unknown;
 }
+
+/**
+ * Server-initiated request for implementation plan review.
+ */
+export interface AcpPlanRequest {
+  jsonrpc?: string;
+  id: JsonRpcId;
+  method: 'cursor/create_plan';
+  params?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/**
+ * Server-initiated request asking a blocking question.
+ */
+export interface AcpQuestionRequest {
+  jsonrpc?: string;
+  id: JsonRpcId;
+  method: 'cursor/ask_question';
+  params?: AcpQuestionParams;
+  [key: string]: unknown;
+}
+
+/**
+ * Server-initiated request for command or resource permissions.
+ */
+export interface AcpPermissionRequest {
+  jsonrpc?: string;
+  id: JsonRpcId;
+  method: 'session/request_permission';
+  params?: AcpPermissionParams;
+  [key: string]: unknown;
+}
+
+/**
+ * Agent message chunk payload within a session update.
+ */
+export interface AcpAgentMessageChunkUpdate {
+  sessionUpdate: 'agent_message_chunk';
+  text: string;
+  sessionId?: string;
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Agent thought or progress chunk payload within a session update.
+ */
+export interface AcpThoughtChunkUpdate {
+  sessionUpdate: 'agent_thought_chunk' | 'agent_progress_chunk';
+  text: string;
+  sessionId?: string;
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Tool call creation or status update payload within a session update.
+ */
+export interface AcpToolCallUpdate {
+  sessionUpdate: 'tool_call' | 'tool_call_update';
+  toolCallId?: string;
+  sessionId?: string;
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Protocol alias for {@link AcpToolCallUpdate}.
+ */
+export type AcpToolUpdate = AcpToolCallUpdate;
+
+/**
+ * Unhandled or vendor-specific payload within a session update.
+ */
+export interface AcpUnhandledUpdate {
+  sessionUpdate: 'unhandled';
+  updateType?: string;
+  sessionId?: string;
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Discriminated union of typed session updates decoded from `session/update` params.
+ */
+export type AcpSessionUpdate =
+  | AcpAgentMessageChunkUpdate
+  | AcpThoughtChunkUpdate
+  | AcpToolCallUpdate
+  | AcpUnhandledUpdate;
+
+/**
+ * Decoded JSON-RPC response message.
+ */
+export interface DecodedAcpResponse {
+  kind: 'response';
+  id: JsonRpcId;
+  result?: unknown;
+  error?: {
+    code?: number;
+    message?: string;
+    data?: unknown;
+  };
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Decoded server-initiated JSON-RPC request message.
+ */
+export interface DecodedAcpRequest {
+  kind: 'request';
+  id: JsonRpcId;
+  method: string;
+  params?: Record<string, unknown>;
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Decoded JSON-RPC notification message.
+ */
+export interface DecodedAcpNotification {
+  kind: 'notification';
+  method: string;
+  params?: Record<string, unknown>;
+  update?: AcpSessionUpdate;
+  raw: Record<string, unknown>;
+}
+
+/**
+ * Invalid or unparseable JSON-RPC message envelope.
+ */
+export interface DecodedAcpInvalid {
+  kind: 'invalid';
+  reason: string;
+  raw?: unknown;
+}
+
+/**
+ * Discriminated union of all decoded ACP protocol messages.
+ */
+export type DecodedAcpMessage =
+  | DecodedAcpResponse
+  | DecodedAcpRequest
+  | DecodedAcpNotification
+  | DecodedAcpInvalid;
 
 /**
  * Status lifecycle of a tool invocation received over the ACP protocol.

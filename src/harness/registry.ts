@@ -21,6 +21,17 @@ import { CodexReviewerHarness } from './codex/CodexReviewerHarness.js';
 import { PROJECT_ROOT, CONFIG } from '../core/config.js';
 
 /**
+ * Contract expected from an externally loaded harness plugin module.
+ */
+export interface ExternalHarnessModule {
+  /** Optional named hook to register harnesses. */
+  registerHarnesses?: (registry: HarnessRegistry) => void | Promise<void>;
+  /** Optional default export hook to register harnesses. */
+  default?: (registry: HarnessRegistry) => void | Promise<void>;
+  [key: string]: unknown;
+}
+
+/**
  * Registry managing factory constructors for executor and reviewer harnesses.
  *
  * @remarks
@@ -138,7 +149,7 @@ export class HarnessRegistry {
       const req = createRequire(path.join(PROJECT_ROOT, 'package.json'));
       target = pathToFileURL(req.resolve(spec)).href;
     }
-    const mod = (await import(target)) as Record<string, unknown>;
+    const mod = (await import(target)) as ExternalHarnessModule;
     const register = mod.registerHarnesses || mod.default;
     if (typeof register !== 'function') {
       throw new Error(

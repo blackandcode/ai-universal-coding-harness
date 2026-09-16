@@ -180,6 +180,75 @@ test('RecoveryManager error cases: missing run, invalid stage, and corrupted run
     const noStage = await rm.recover({ runId: emptyRunId, stageName: 'nonexistent-stage' });
     assert.equal(noStage.ok, false);
     assert.equal(noStage.error, 'Could not determine stage to recover.');
+
+    // 4. Recovery dry-run without evidence resumes at quality
+    const stageName = 'stage-01';
+    const stageDir = store.stageDir(emptyRunId, stageName);
+    fs.mkdirSync(stageDir, { recursive: true });
+    store.save({
+      version: 1,
+      run_id: emptyRunId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      status: 'failed',
+      workspace: tmpDir,
+      base_ref: 'HEAD',
+      base_commit: git.head(),
+      branch: 'ai-harness/test',
+      branch_created: true,
+      original_branch: 'main',
+      original_head: git.head(),
+      stage_source: 'test',
+      feature: null,
+      stages: [
+        {
+          name: stageName,
+          selector: '01',
+          status: 'failed',
+          manifest: {
+            name: stageName,
+            selector: '01',
+            source: 'test',
+            relative_path: stageName,
+            sha256: {}
+          }
+        }
+      ],
+      executor_harness: 'cursor',
+      reviewer_harness: 'codex',
+      quality_cmd: 'npm test',
+      current_stage_index: 0
+    });
+
+    const dryRunRes = await rm.recover({ runId: emptyRunId, apply: false });
+    assert.equal(dryRunRes.ok, true);
+    assert.equal(dryRunRes.dryRun, true);
+    assert.equal(dryRunRes.resumePhase, 'quality');
+
+    // Apply mode without evidence
+    const applyRes = await rm.recover({ runId: emptyRunId, apply: true });
+    assert.equal(applyRes.ok, true);
+    assert.equal(applyRes.dryRun, false);
+    assert.equal(applyRes.resumePhase, 'quality');
+
+    // 5. Discovery of evidence-attempt-N.json when evidence.json is not present
+    const attemptFile = path.join(stageDir, 'evidence-attempt-2.json');
+    fs.writeFileSync(
+      attemptFile,
+      JSON.stringify({
+        stage: stageName,
+        attempt: 2,
+        status: 'FAIL',
+        quality_command: 'npm test',
+        quality_exit_code: 1,
+        git_diff_check_exit_code: 0,
+        changed_files: [],
+        unresolved: []
+      })
+    );
+    const discoveredRes = await rm.recover({ runId: emptyRunId, apply: false });
+    assert.equal(discoveredRes.ok, true);
+    assert.equal(discoveredRes.resumePhase, 'quality');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

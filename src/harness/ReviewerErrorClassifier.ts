@@ -23,19 +23,28 @@ export interface ReviewerClassificationResult {
   reason: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * Extracts a human-readable error message from a raw JSON wire line if parseable.
  */
 function extractErrorMessage(line: string): string | null {
   try {
-    const parsed = JSON.parse(line.trim());
-    if (typeof parsed?.message === 'string' && parsed.message) {
+    const parsed: unknown = JSON.parse(line.trim());
+    if (!isRecord(parsed)) return null;
+    if (typeof parsed.message === 'string' && parsed.message) {
       return parsed.message;
     }
-    if (typeof parsed?.error?.message === 'string' && parsed.error.message) {
+    if (
+      isRecord(parsed.error) &&
+      typeof parsed.error.message === 'string' &&
+      parsed.error.message
+    ) {
       return parsed.error.message;
     }
-    if (typeof parsed?.error === 'string' && parsed.error) {
+    if (typeof parsed.error === 'string' && parsed.error) {
       return parsed.error;
     }
   } catch {}
