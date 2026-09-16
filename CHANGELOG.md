@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed external binary execution and scope leak in test coverage by hermetically mocking `Orchestrator` preflight in CLI tests and scoping default Node test coverage to `.test-dist/src/**`
+
 ## [2.1.7] - 2026-09-16
 
 ### Added

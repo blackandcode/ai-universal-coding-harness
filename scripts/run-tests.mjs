@@ -89,10 +89,17 @@ if (isCoverage) {
     '--test-coverage-lines=95',
     '--test-coverage-functions=95',
     '--test-coverage-branches=85',
-    '--test-coverage-exclude=.test-dist/tests/**'
+    '--test-coverage-exclude=.test-dist/tests/**',
+    '--test-coverage-exclude=**/node_modules/**',
+    '--test-coverage-exclude=**/.local/**',
+    '--test-coverage-exclude=**/.git/**'
   );
-  for (const inc of includes) {
-    args.push(`--test-coverage-include=${inc}`);
+  if (includes.length > 0) {
+    for (const inc of includes) {
+      args.push(`--test-coverage-include=${inc}`);
+    }
+  } else {
+    args.push('--test-coverage-include=.test-dist/src/**');
   }
 }
 args.push('--experimental-test-module-mocks', '--test', ...testFiles);

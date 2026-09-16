@@ -308,14 +308,25 @@ test('dispatchCliCommand: tail invokes followInkUi when stdout is TTY', async (t
 
     // Also test preflight with stageSource and empty stages array
     const tmpStageFixture = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-stage-'));
+    const origPreflight = Orchestrator.prototype.preflight;
+    Orchestrator.prototype.preflight = async function () {
+      return {
+        executor: { ok: true, details: ['mock executor ready'] },
+        reviewer: { ok: true, details: ['mock reviewer ready'] }
+      };
+    };
     try {
-      const preflightCode = await dispatchCliCommand({
-        kind: 'preflight',
-        stageSource: tmpStageFixture,
-        stages: []
+      const logs = await captureLog(async () => {
+        const preflightCode = await dispatchCliCommand({
+          kind: 'preflight',
+          stageSource: tmpStageFixture,
+          stages: []
+        });
+        assert.equal(preflightCode, 0);
       });
-      assert.equal(preflightCode, 0);
+      assert.ok(logs.some((l) => l.includes('Preflight OK')));
     } finally {
+      Orchestrator.prototype.preflight = origPreflight;
       removeTree(tmpStageFixture);
     }
   } finally {
