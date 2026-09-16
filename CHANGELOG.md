@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced root `prepare` with `npm run setup` so `npm i -g` and `npm link` avoid npm `allow-scripts` warnings; updated development and publishing setup docs.
+
 ## [2.1.4] - 2026-09-16
 
 ### Added

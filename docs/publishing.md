@@ -26,6 +26,7 @@ Install dependencies and create/commit `package-lock.json`:
 
 ```bash
 npm install
+npm run setup
 npm run verify
 git add package-lock.json
 git commit -m "build: lock npm dependencies"

@@ -11,16 +11,16 @@ Harness integration development additionally requires the corresponding CLIs.
 
 ```bash
 npm install
-npm run build
+npm run setup
 npm test
 npm run verify
 ```
 
+`npm run setup` compiles `dist/` and configures Git hooks (`.githooks`). This replaces a root `prepare` script so `npm i -g`, `npm i -g .`, and `npm link` do not trigger npm 11.16+ `allow-scripts` warnings for this package’s own lifecycle scripts.
+
 ### npm install scripts (`allowScripts`)
 
-Local development uses the root `prepare` script (`npm run build` and Git hooks setup). npm 11.16+ tracks which packages may run install-related lifecycle scripts via the committed `allowScripts` field in `package.json`. After `npm install` in a clone, that policy covers this project’s `prepare` hook.
-
-When you add or upgrade dependencies that run `preinstall`, `install`, `postinstall`, or native builds, re-check with:
+npm 11.16+ tracks which **dependencies** may run install-related lifecycle scripts via an `allowScripts` field in the **install root** `package.json`. After adding or upgrading packages with `preinstall`, `install`, `postinstall`, or native builds, re-check with:
 
 ```bash
 npm approve-scripts --allow-scripts-pending
@@ -28,11 +28,7 @@ npm approve-scripts --allow-scripts-pending
 
 Approve only packages you trust, then commit the updated `allowScripts` entries. npm 12 blocks unlisted dependency scripts by default. See [npm approve-scripts](https://docs.npmjs.com/cli/v12/commands/npm-approve-scripts/).
 
-**Global CLI from this repository** (`npm i -g` with no project root) does not read this repo’s `package.json`. Use one of:
-
-- `npm link` after `npm run build` in a clone
-- `npm i -g --allow-scripts=ai-universal-coding-harness`
-- `npm config set allow-scripts=ai-universal-coding-harness --location=user` for repeated global installs
+**Global CLI from a clone:** run `npm run setup` (or `npm run build`), then `npm i -g .` or `npm link`. Registry installs (`npm i -g ai-universal-coding-harness`) ship prebuilt `dist/` and do not need a local build.
 
 ## Commands
 
@@ -42,6 +38,7 @@ npm run format:check   # Verify formatting with Oxfmt
 npm run lint           # Run Oxlint
 npm run typecheck      # TypeScript compilation check (--noEmit)
 npm run check:changed  # Fast incremental quality check on touched files (default for day-to-day work)
+npm run setup          # Build dist/ and configure Git hooks (after npm install in a clone)
 npm run build          # Clean, compile production code to dist/, and postbuild
 npm run build:tests    # Compile tests and src to .test-dist/
 npm run test:unit      # Build and run unit tests from .test-dist/tests/
