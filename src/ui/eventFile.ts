@@ -37,7 +37,7 @@ export interface EventFileWatcher {
 export function readRecentEvents(
   filePath: string,
   maxBytes: number = DEFAULT_READ_MAX_BYTES,
-  maxCount: number = DEFAULT_MAX_EVENTS_COUNT,
+  maxCount: number = DEFAULT_MAX_EVENTS_COUNT
 ): UiEvent[] {
   if (!fs.existsSync(filePath)) {
     return [];
@@ -108,7 +108,7 @@ export function readRecentEvents(
 export function followEventFile(
   filePath: string,
   onEvent: (event: UiEvent) => void,
-  pollIntervalMs: number = DEFAULT_POLL_INTERVAL_MS,
+  pollIntervalMs: number = DEFAULT_POLL_INTERVAL_MS
 ): EventFileWatcher {
   let position = 0;
   let lineBuffer = '';
@@ -186,6 +186,6 @@ export function followEventFile(
     stop() {
       stopped = true;
       clearInterval(intervalId);
-    },
+    }
   };
 }

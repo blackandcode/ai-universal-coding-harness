@@ -15,7 +15,7 @@ import type {
   QuestionVerdict,
   PermissionVerdict,
   FinalVerdict,
-  HarnessContext,
+  HarnessContext
 } from '../../types.js';
 import { SCHEMA_DIR } from '../../core/paths.js';
 import { harnessNumber, harnessString, CONFIG } from '../../core/config.js';
@@ -88,7 +88,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
     model: 'gemini-3.8-flash',
     thinking: 'high',
     timeoutMinutes: 8,
-    timeoutSeconds: 0,
+    timeoutSeconds: 0
   };
 
   private seq = 0;
@@ -98,7 +98,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
   private timeoutMinutes = harnessNumber(
     'cursor',
     'timeoutMinutes',
-    CursorReviewerHarness.defaults.timeoutMinutes,
+    CursorReviewerHarness.defaults.timeoutMinutes
   );
   private timeoutSeconds = 0;
 
@@ -106,7 +106,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
     id: 'cursor',
     label: `${this.model} reviewer`,
     role: 'reviewer',
-    model: this.model,
+    model: this.model
   };
 
   constructor(private ctx: HarnessContext = {}) {
@@ -145,7 +145,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
     kind: 'plan-review' | 'question' | 'permission' | 'final-review',
     payload: unknown,
     schemaFile: string,
-    extra = '',
+    extra = ''
   ): Promise<T> {
     this.seq++;
 
@@ -155,7 +155,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
       runDir,
       'reviewer-decisions',
       stageName,
-      `${String(this.seq).padStart(3, '0')}-${kind}`,
+      `${String(this.seq).padStart(3, '0')}-${kind}`
     );
     ensureDir(decisionDir);
 
@@ -201,7 +201,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
       this.model,
       '--trust',
       '--workspace',
-      isolated,
+      isolated
     ];
 
     const timeoutMs =
@@ -223,10 +223,10 @@ export class CursorReviewerHarness implements ReviewerHarness {
             appendBounded(
               this.ctx.runLog,
               `[cursor-reviewer-stderr] ${line}`,
-              CONFIG.runLogMaxBytes,
+              CONFIG.runLogMaxBytes
             );
           }
-        },
+        }
       });
 
       if (r.code !== 0) {
@@ -235,11 +235,11 @@ export class CursorReviewerHarness implements ReviewerHarness {
           signal: r.signal,
           stdout: r.stdout,
           stderr: r.stderr,
-          timedOut: r.timedOut,
+          timedOut: r.timedOut
         });
         Object.assign(err, {
           eventLines: recordedEventLines,
-          resultFileExists: false,
+          resultFileExists: false
         });
         throw err;
       }
@@ -248,7 +248,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
       const validation = validateReviewerVerdict(kind, parsed);
       if (!validation.ok) {
         throw new Error(
-          validation.error || `Cursor reviewer ${kind} returned invalid verdict payload`,
+          validation.error || `Cursor reviewer ${kind} returned invalid verdict payload`
         );
       }
 
@@ -266,7 +266,7 @@ export class CursorReviewerHarness implements ReviewerHarness {
    */
   async reviewPlan(
     input: unknown,
-    opts?: { finalConsolidation?: boolean },
+    opts?: { finalConsolidation?: boolean }
   ): Promise<PlanReviewVerdict> {
     const extra = opts?.finalConsolidation
       ? 'PLAN BUDGET EXHAUSTION NOTICE: This is the final consolidation review round. Accept the plan with notes or approve with carryover findings.'

@@ -18,7 +18,7 @@ Synchronizes the package version across project files, package manifests,
 TypeScript constants, and creates a CHANGELOG.md release entry (promoting unreleased changes).
 
 Arguments:
-  [version|bump]                 Target version (e.g. 2.1.0) or bump type (patch, minor, major).
+  [version|bump]                 Target version (e.g. 2.1.1) or bump type (patch, minor, major).
 
 Options:
   -v, --target-version <X.Y.Z>   Explicit target semantic version.
@@ -46,10 +46,10 @@ const { values, positionals } = parseArgs({
     'dry-run': { type: 'boolean', default: false },
     'allow-downgrade': { type: 'boolean', default: false },
     'check-php': { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
+    help: { type: 'boolean', short: 'h', default: false }
   },
   allowPositionals: true,
-  strict: true,
+  strict: true
 });
 
 if (values.help) {
@@ -80,12 +80,12 @@ try {
     date: values.date,
     dryRun: values['dry-run'],
     allowDowngrade: values['allow-downgrade'],
-    checkPhp: values['check-php'],
+    checkPhp: values['check-php']
   });
 
   if (summary.alreadyImplemented) {
     console.log(
-      `Target version ${summary.targetVersion} is already implemented in ${summary.currentVersion}. No version changes needed.`,
+      `Target version ${summary.targetVersion} is already implemented in ${summary.currentVersion}. No version changes needed.`
     );
     process.exit(0);
   }
@@ -93,7 +93,7 @@ try {
   console.log(
     `${summary.dryRun ? 'Planned' : 'Updated'} package version ${
       summary.currentVersion
-    } -> ${summary.targetVersion}`,
+    } -> ${summary.targetVersion}`
   );
   console.log(`Release date: ${summary.date}`);
   console.log(`Scanned text files: ${summary.scannedFiles}`);

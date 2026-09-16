@@ -112,7 +112,7 @@ interface Mailer {
 class Invoice {
   constructor(
     private readonly recipient: string,
-    private readonly bodyText: string,
+    private readonly bodyText: string
   ) {}
 
   recipientEmail(): string {
@@ -187,7 +187,7 @@ interface TaxPolicy {
 class CartPricing {
   constructor(
     private readonly discountPolicy: DiscountPolicy,
-    private readonly taxPolicy: TaxPolicy,
+    private readonly taxPolicy: TaxPolicy
   ) {}
 
   total(subtotal: Money): Money {
@@ -212,7 +212,7 @@ class Booking {
     private readonly seats: number,
     private readonly amount: Money,
     private readonly inventory: SeatInventory,
-    private readonly payments: PaymentService,
+    private readonly payments: PaymentService
   ) {}
 
   confirm(): void {
@@ -334,7 +334,7 @@ class Score {
 class Report {
   constructor(
     private readonly reportTitle: string,
-    private readonly content: string,
+    private readonly content: string
   ) {}
 
   title(): string {
@@ -354,7 +354,7 @@ class Report {
 class Report {
   constructor(
     private readonly reportTitle: string,
-    private readonly content: string,
+    private readonly content: string
   ) {}
 
   title(): string {
@@ -761,7 +761,7 @@ function formatItem(item: OrderItem): string {
 class Rectangle {
   constructor(
     private width: number,
-    private height: number,
+    private height: number
   ) {}
 
   getWidth(): number {
@@ -782,7 +782,7 @@ const perimeter = 2 * (rect.getWidth() + rect.getHeight());
 class Rectangle {
   constructor(
     private readonly width: number,
-    private readonly height: number,
+    private readonly height: number
   ) {}
 
   area(): number {

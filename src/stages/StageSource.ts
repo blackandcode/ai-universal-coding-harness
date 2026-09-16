@@ -14,7 +14,7 @@ import { StageSourceError } from '../errors.js';
 export const REQUIRED_STAGE_FILES = [
   'functional-spec.md',
   'technical-spec.md',
-  'prompt.md',
+  'prompt.md'
 ] as const;
 
 export type RequiredStageFile = (typeof REQUIRED_STAGE_FILES)[number];
@@ -39,7 +39,7 @@ export function selectorNum(sel: string): string {
   const m = sel.match(/^stage-([0-9]{2})-[a-z0-9][a-z0-9-]*$/);
   if (m && m[1]) return m[1];
   throw new StageSourceError(
-    `Invalid stage selector '${sel}'. Use 6, 06, or exact stage-NN-kebab-name.`,
+    `Invalid stage selector '${sel}'. Use 6, 06, or exact stage-NN-kebab-name.`
   );
 }
 
@@ -72,7 +72,7 @@ function validateEntries(zip: AdmZip): void {
     const mode = (Number(entry.attr || 0) >>> 16) & 0o170000;
     if (mode === 0o120000) {
       throw new StageSourceError(
-        `ZIP symbolic links are not allowed in stage sources: ${entry.entryName}`,
+        `ZIP symbolic links are not allowed in stage sources: ${entry.entryName}`
       );
     }
   }
@@ -110,7 +110,7 @@ export class StageSource {
         (p) =>
           !feature ||
           p.split(path.sep).includes(feature) ||
-          p.includes(`${path.sep}${feature}${path.sep}`),
+          p.includes(`${path.sep}${feature}${path.sep}`)
       )
       .sort();
   }
@@ -126,7 +126,7 @@ export class StageSource {
         stage,
         dir,
         valid: false,
-        issues: [{ level: 'error', message: 'Stage directory does not exist.' }],
+        issues: [{ level: 'error', message: 'Stage directory does not exist.' }]
       };
     }
     if (stat.isSymbolicLink()) {
@@ -138,7 +138,7 @@ export class StageSource {
     if (!stageNameOk(stage)) {
       issues.push({
         level: 'error',
-        message: 'Stage directory must match stage-NN-kebab-case-name.',
+        message: 'Stage directory must match stage-NN-kebab-case-name.'
       });
     }
     for (const file of REQUIRED_STAGE_FILES) {
@@ -152,7 +152,7 @@ export class StageSource {
         issues.push({
           level: 'error',
           file,
-          message: `${file} must be a regular file, not a symbolic link.`,
+          message: `${file} must be a regular file, not a symbolic link.`
         });
         continue;
       }
@@ -171,14 +171,14 @@ export class StageSource {
         issues.push({
           level: 'error',
           file,
-          message: `${file} must contain at least one Markdown heading.`,
+          message: `${file} must contain at least one Markdown heading.`
         });
       }
       if (text.includes('\u0000')) {
         issues.push({
           level: 'error',
           file,
-          message: `${file} contains binary/NUL data instead of Markdown text.`,
+          message: `${file} contains binary/NUL data instead of Markdown text.`
         });
       }
     }
@@ -189,7 +189,7 @@ export class StageSource {
     const report = this.validateDir(dir);
     if (!report.valid) {
       throw new StageSourceError(
-        `Invalid stage package '${report.stage}':\n${report.issues.map((i) => `  - ${i.file ? `${i.file}: ` : ''}${i.message}`).join('\n')}`,
+        `Invalid stage package '${report.stage}':\n${report.issues.map((i) => `  - ${i.file ? `${i.file}: ` : ''}${i.message}`).join('\n')}`
       );
     }
     return report;
@@ -207,12 +207,12 @@ export class StageSource {
     });
     if (!found.length || !found[0]) {
       throw new StageSourceError(
-        `No stage matched '${selector}' under ${this.source}${feature ? ` (feature=${feature})` : ''}.`,
+        `No stage matched '${selector}' under ${this.source}${feature ? ` (feature=${feature})` : ''}.`
       );
     }
     if (found.length > 1) {
       throw new StageSourceError(
-        `Stage '${selector}' is ambiguous:\n${found.map((x) => `  ${x}`).join('\n')}\nUse --feature or the exact stage folder name.`,
+        `Stage '${selector}' is ambiguous:\n${found.map((x) => `  ${x}`).join('\n')}\nUse --feature or the exact stage folder name.`
       );
     }
     return found[0];
@@ -235,7 +235,7 @@ export class StageSource {
       selector,
       source: path.resolve(this.source),
       relative_path: path.relative(this.root, dir),
-      sha256: sha,
+      sha256: sha
     };
   }
 

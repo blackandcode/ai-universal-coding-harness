@@ -50,7 +50,7 @@ const DEFAULT_EXCLUDES = [
   '**/*.woff2',
   '**/*.ttf',
   '**/*.eot',
-  '**/*.pdf',
+  '**/*.pdf'
 ];
 
 const STRUCTURED_FILES = new Set([
@@ -58,7 +58,7 @@ const STRUCTURED_FILES = new Set([
   'package-lock.json',
   'npm-shrinkwrap.json',
   'composer.json',
-  'src/version.ts',
+  'src/version.ts'
 ]);
 
 const HISTORY_FILES = new Set(['CHANGELOG.md']);
@@ -77,7 +77,7 @@ export function parseSemver(value) {
     minor: Number(match[2]),
     patch: Number(match[3]),
     prerelease: match[4] ? match[4].split('.') : [],
-    build: match[5] ? match[5].split('.') : [],
+    build: match[5] ? match[5].split('.') : []
   };
 }
 
@@ -160,9 +160,9 @@ function verifyPhpVersionOrdering(currentVersion, targetVersion) {
       '-r',
       'exit(version_compare($argv[1], $argv[2], ">") ? 0 : 1);',
       targetVersion,
-      currentVersion,
+      currentVersion
     ],
-    { encoding: 'utf8' },
+    { encoding: 'utf8' }
   );
 
   if (php.error?.code === 'ENOENT') {
@@ -173,7 +173,7 @@ function verifyPhpVersionOrdering(currentVersion, targetVersion) {
   }
   if (php.status !== 0) {
     throw new Error(
-      `PHP version_compare() does not consider ${targetVersion} greater than ${currentVersion}.`,
+      `PHP version_compare() does not consider ${targetVersion} greater than ${currentVersion}.`
     );
   }
 
@@ -242,7 +242,7 @@ export function updateChangelog(source, { currentVersion, targetVersion, date, m
     `- ${
       message ||
       `Synchronized package version from \`${currentVersion}\` to \`${targetVersion}\` using \`npm run update-version\`.`
-    }`,
+    }`
   ].join('\n');
 
   const releaseHeading = `## [${targetVersion}] - ${date}`;
@@ -259,7 +259,7 @@ export function updateChangelog(source, { currentVersion, targetVersion, date, m
       releaseHeading,
       '',
       fallbackBody,
-      '',
+      ''
     ].join('\n');
   }
 
@@ -269,9 +269,9 @@ export function updateChangelog(source, { currentVersion, targetVersion, date, m
     const insertionIndex = firstHeadingEnd === -1 ? source.length : firstHeadingEnd + 1;
     return `${source.slice(
       0,
-      insertionIndex,
+      insertionIndex
     )}\n${unreleasedHeading}\n\n${releaseHeading}\n\n${fallbackBody}\n${source.slice(
-      insertionIndex,
+      insertionIndex
     )}`;
   }
 
@@ -300,7 +300,7 @@ export function updateChangelog(source, { currentVersion, targetVersion, date, m
     '\n\n',
     releaseBody,
     '\n',
-    source.slice(bodyEnd).replace(/^\n+/, '\n'),
+    source.slice(bodyEnd).replace(/^\n+/, '\n')
   ].join('');
 }
 
@@ -312,7 +312,7 @@ function addChange(changes, absolutePath, before, after, metadata = {}) {
     before,
     after,
     occurrences: metadata.occurrences ?? 0,
-    kind: metadata.kind ?? 'text',
+    kind: metadata.kind ?? 'text'
   });
 }
 
@@ -328,7 +328,7 @@ async function prepareStructuredChanges(root, currentVersion, targetVersion, cha
   }
   if (packageJson.value.version !== currentVersion) {
     throw new Error(
-      `package.json version changed during execution: expected ${currentVersion}, found ${packageJson.value.version}.`,
+      `package.json version changed during execution: expected ${currentVersion}, found ${packageJson.value.version}.`
     );
   }
   packageJson.value.version = targetVersion;
@@ -339,8 +339,8 @@ async function prepareStructuredChanges(root, currentVersion, targetVersion, cha
     stringifyJson(packageJson.value, packageJson.source),
     {
       kind: 'package-json',
-      occurrences: 1,
-    },
+      occurrences: 1
+    }
   );
 
   for (const filename of ['package-lock.json', 'npm-shrinkwrap.json']) {
@@ -362,7 +362,7 @@ async function prepareStructuredChanges(root, currentVersion, targetVersion, cha
     if (updated) {
       addChange(changes, path, lock.source, stringifyJson(lock.value, lock.source), {
         kind: 'npm-lock-root',
-        occurrences: 1,
+        occurrences: 1
       });
     }
   }
@@ -375,7 +375,7 @@ async function prepareStructuredChanges(root, currentVersion, targetVersion, cha
       const updatedVersionTs = versionTsSource.replace(versionTsRegex, `$1${targetVersion}$2`);
       addChange(changes, versionTsPath, versionTsSource, updatedVersionTs, {
         kind: 'version-ts',
-        occurrences: 1,
+        occurrences: 1
       });
     }
   }
@@ -385,7 +385,7 @@ async function prepareStructuredChanges(root, currentVersion, targetVersion, cha
     const composer = await readJson(composerPath);
     if (composer.value.version !== undefined && composer.value.version !== currentVersion) {
       throw new Error(
-        `composer.json version ${composer.value.version} does not match package.json version ${currentVersion}.`,
+        `composer.json version ${composer.value.version} does not match package.json version ${currentVersion}.`
       );
     }
     if (composer.value.version === currentVersion) {
@@ -397,8 +397,8 @@ async function prepareStructuredChanges(root, currentVersion, targetVersion, cha
         stringifyJson(composer.value, composer.source),
         {
           kind: 'composer-json',
-          occurrences: 1,
-        },
+          occurrences: 1
+        }
       );
     }
   }
@@ -412,7 +412,7 @@ async function prepareTextChanges(root, currentVersion, targetVersion, changes) 
     cwd: root,
     exclude: DEFAULT_EXCLUDES,
     followSymlinks: false,
-    withFileTypes: true,
+    withFileTypes: true
   })) {
     if (!entry.isFile()) {
       continue;
@@ -457,7 +457,7 @@ async function prepareTextChanges(root, currentVersion, targetVersion, changes) 
     const after = source.replace(versionRegex, targetVersion);
     addChange(changes, absolutePath, source, after, {
       kind: 'text',
-      occurrences,
+      occurrences
     });
   }
 
@@ -470,7 +470,7 @@ async function prepareHistoryChanges(
   targetVersion,
   date,
   changelogMessage,
-  changes,
+  changes
 ) {
   const changelogPath = join(root, 'CHANGELOG.md');
   const changelogBefore = (await fileExists(changelogPath))
@@ -480,10 +480,10 @@ async function prepareHistoryChanges(
     currentVersion,
     targetVersion,
     date,
-    message: changelogMessage,
+    message: changelogMessage
   });
   addChange(changes, changelogPath, changelogBefore, changelogAfter, {
-    kind: 'changelog',
+    kind: 'changelog'
   });
 }
 
@@ -497,7 +497,7 @@ async function commitChanges(changes) {
 
       await writeFile(temporaryPath, change.after, {
         encoding: 'utf8',
-        mode,
+        mode
       });
       await chmod(temporaryPath, mode);
       await rename(temporaryPath, path);
@@ -508,7 +508,7 @@ async function commitChanges(changes) {
       if (item.existed) {
         await writeFile(item.path, item.before, {
           encoding: 'utf8',
-          mode: item.mode,
+          mode: item.mode
         });
         await chmod(item.path, item.mode);
       } else {
@@ -524,7 +524,7 @@ async function verifyResult(root, targetVersion) {
   const packageJson = JSON.parse(await readFile(packagePath, 'utf8'));
   if (packageJson.version !== targetVersion) {
     throw new Error(
-      `Verification failed: package.json contains ${packageJson.version}, expected ${targetVersion}.`,
+      `Verification failed: package.json contains ${packageJson.version}, expected ${targetVersion}.`
     );
   }
 
@@ -541,7 +541,7 @@ async function verifyResult(root, targetVersion) {
       !versionTs.includes(`VERSION = "${targetVersion}"`)
     ) {
       throw new Error(
-        `Verification failed: src/version.ts does not contain VERSION = '${targetVersion}'.`,
+        `Verification failed: src/version.ts does not contain VERSION = '${targetVersion}'.`
       );
     }
   }
@@ -552,7 +552,7 @@ async function verifyResult(root, targetVersion) {
     const stableTagRegex = new RegExp(`Stable tag:\\s*${escapeRegex(targetVersion)}`, 'i');
     if (!stableTagRegex.test(readme)) {
       throw new Error(
-        `Verification failed: readme.txt Stable tag does not match ${targetVersion}.`,
+        `Verification failed: readme.txt Stable tag does not match ${targetVersion}.`
       );
     }
   }
@@ -591,7 +591,7 @@ export async function synchronizeVersion({
   date,
   dryRun = false,
   allowDowngrade = false,
-  checkPhp = false,
+  checkPhp = false
 }) {
   const packagePath = join(root, 'package.json');
   if (!(await fileExists(packagePath))) {
@@ -617,7 +617,7 @@ export async function synchronizeVersion({
   }
   if (!targetVersion) {
     throw new Error(
-      'Target version is required. Provide a version (e.g. "2.1.0"), a bump type ("--bump patch|minor|major"), or set TARGET_VERSION in .env.',
+      'Target version is required. Provide a version (e.g. "2.1.1"), a bump type ("--bump patch|minor|major"), or set TARGET_VERSION in .env.'
     );
   }
 
@@ -635,20 +635,20 @@ export async function synchronizeVersion({
       scannedFiles: 0,
       phpVersionOrdering: {
         checked: false,
-        reason: 'Versions are identical.',
-      },
+        reason: 'Versions are identical.'
+      }
     };
   }
 
   if (comparison < 0 && !allowDowngrade) {
     throw new Error(
-      `Target version ${targetVersion} is lower than current version ${currentVersion}. Use --allow-downgrade to proceed.`,
+      `Target version ${targetVersion} is lower than current version ${currentVersion}. Use --allow-downgrade to proceed.`
     );
   }
 
   let phpVersionOrdering = {
     checked: false,
-    reason: 'Not required for Node.js package.',
+    reason: 'Not required for Node.js package.'
   };
   if (checkPhp) {
     phpVersionOrdering = verifyPhpVersionOrdering(currentVersion, targetVersion);
@@ -663,7 +663,7 @@ export async function synchronizeVersion({
     targetVersion,
     effectiveDate,
     changelogMessage,
-    changes,
+    changes
   );
 
   if (!dryRun) {
@@ -683,7 +683,7 @@ export async function synchronizeVersion({
     changes: Array.from(changes.entries()).map(([path, data]) => ({
       path: normalizePath(root, path),
       kind: data.kind,
-      occurrences: data.occurrences,
-    })),
+      occurrences: data.occurrences
+    }))
   };
 }

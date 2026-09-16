@@ -23,11 +23,14 @@ npm run format         # Format codebase with Oxfmt
 npm run format:check   # Verify formatting with Oxfmt
 npm run lint           # Run Oxlint
 npm run typecheck      # TypeScript compilation check (--noEmit)
-npm run build          # Clean, compile, and postbuild
-npm run test:unit      # Build and run unit tests
+npm run check:changed  # Fast incremental quality check on touched files (default for day-to-day work)
+npm run build          # Clean, compile production code to dist/, and postbuild
+npm run build:tests    # Compile tests and src to .test-dist/
+npm run test:unit      # Build and run unit tests from .test-dist/tests/
 npm run test:coverage  # Build and run tests with coverage
 npm run test:cli       # Run CLI smoke test
 npm test               # Run all unit tests
+npm run pre-push       # Run pre-push gate (npm run verify; halts git push on failure)
 npm run verify         # Complete quality gate and package check
 npm run check          # Alias for verify
 npm pack --dry-run     # Test npm package tarball creation

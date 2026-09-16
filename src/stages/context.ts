@@ -31,11 +31,11 @@ export function frozenStageContext(stageDir: string, maxEach = CONFIG.maxContext
  * @returns Array of discovered skill metadata objects containing relative path, title, and content.
  */
 export function skillIndex(
-  workspace: string,
+  workspace: string
 ): Array<{ path: string; title: string; content: string }> {
   const roots = [
     path.join(workspace, '.agents', 'skills'),
-    path.join(workspace, '.cursor', 'skills'),
+    path.join(workspace, '.cursor', 'skills')
   ];
   const out: Array<{ path: string; title: string; content: string }> = [];
   for (const root of roots) {
@@ -49,7 +49,7 @@ export function skillIndex(
           out.push({
             path: path.relative(workspace, p),
             title: (c.match(/^#\s+(.+)$/m) || [])[1] || path.basename(path.dirname(p)),
-            content: c,
+            content: c
           });
         }
       }
@@ -70,20 +70,20 @@ export function skillIndex(
 export function relevantSkills(
   skills: Array<{ path: string; title: string; content: string }>,
   text: string,
-  maxChars = 40000,
+  maxChars = 40000
 ): string {
   const words = new Set(
     text
       .toLowerCase()
       .split(/[^a-z0-9_-]+/)
-      .filter((x) => x.length > 3),
+      .filter((x) => x.length > 3)
   );
   const ranked = skills
     .map((s) => ({
       s,
       score: [...words].filter((w) =>
-        `${s.path} ${s.title} ${s.content.slice(0, 1500)}`.toLowerCase().includes(w),
-      ).length,
+        `${s.path} ${s.title} ${s.content.slice(0, 1500)}`.toLowerCase().includes(w)
+      ).length
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 8)

@@ -17,14 +17,14 @@ import type {
   PlanReviewInput,
   QuestionReviewInput,
   PermissionReviewInput,
-  FinalReviewInput,
+  FinalReviewInput
 } from '../../harness/types.js';
 import type {
   PlanReviewVerdict,
   QuestionVerdict,
   PermissionVerdict,
   FinalVerdict,
-  HarnessContext,
+  HarnessContext
 } from '../../types.js';
 import { HarnessRegistry } from '../../harness/registry.js';
 import { ReviewerErrorClassifier } from '../../harness/ReviewerErrorClassifier.js';
@@ -60,7 +60,7 @@ export class ReviewerRouter implements ReviewerHarness {
       id: 'reviewer-router',
       label: `ReviewerRouter (${this.config.primary.model} -> ${this.config.fallback.model})`,
       role: 'reviewer',
-      model: this.config.primary.model,
+      model: this.config.primary.model
     };
   }
 
@@ -92,7 +92,7 @@ export class ReviewerRouter implements ReviewerHarness {
       thinking: roleConfig.thinking,
       reasoningEffort: roleConfig.reasoningEffort,
       timeoutMinutes: roleConfig.timeoutMinutes,
-      timeoutSeconds: roleConfig.timeoutSeconds,
+      timeoutSeconds: roleConfig.timeoutSeconds
     };
 
     const harness = this.registry.reviewer(roleConfig.harness, mergedContext);
@@ -135,7 +135,7 @@ export class ReviewerRouter implements ReviewerHarness {
 
     return {
       ok: allOk,
-      details,
+      details
     };
   }
 
@@ -146,7 +146,7 @@ export class ReviewerRouter implements ReviewerHarness {
   private async executeWithFallback<T>(
     role: ReviewerRole,
     kind: string,
-    executeFn: (harness: ReviewerHarness) => Promise<T>,
+    executeFn: (harness: ReviewerHarness) => Promise<T>
   ): Promise<T> {
     const primaryHarness = this.resolveHarness(role);
     try {
@@ -173,7 +173,7 @@ export class ReviewerRouter implements ReviewerHarness {
           trigger: classification.trigger,
           fallback_harness: fallbackHarness.info.id,
           fallback_model: fallbackHarness.info.model,
-          reason: classification.reason,
+          reason: classification.reason
         });
 
         const fallbackResult = await executeFn(fallbackHarness);
@@ -182,7 +182,7 @@ export class ReviewerRouter implements ReviewerHarness {
           primaryHarness.info,
           fallbackHarness.info,
           classification.trigger,
-          classification.reason,
+          classification.reason
         );
         return fallbackResult;
       }
@@ -199,7 +199,7 @@ export class ReviewerRouter implements ReviewerHarness {
     failedInfo: HarnessInfo,
     fallbackInfo: HarnessInfo,
     trigger: string,
-    originalError: string,
+    originalError: string
   ): void {
     if (result && typeof result === 'object') {
       const meta: ReviewerFallbackMetadata = {
@@ -207,7 +207,7 @@ export class ReviewerRouter implements ReviewerHarness {
         fallback_from: `${failedInfo.id}:${failedInfo.model}`,
         trigger: trigger as any,
         original_error: originalError,
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toISOString()
       };
       (result as Record<string, unknown>)._orchestrator_meta = meta;
     }
@@ -218,10 +218,10 @@ export class ReviewerRouter implements ReviewerHarness {
    */
   async reviewPlan(
     input: PlanReviewInput,
-    opts?: { finalConsolidation?: boolean },
+    opts?: { finalConsolidation?: boolean }
   ): Promise<PlanReviewVerdict> {
     return this.executeWithFallback('primary', 'plan-review', (harness) =>
-      harness.reviewPlan(input, opts),
+      harness.reviewPlan(input, opts)
     );
   }
 
@@ -230,7 +230,7 @@ export class ReviewerRouter implements ReviewerHarness {
    */
   async answerQuestions(input: QuestionReviewInput): Promise<QuestionVerdict> {
     return this.executeWithFallback('primary', 'question', (harness) =>
-      harness.answerQuestions(input),
+      harness.answerQuestions(input)
     );
   }
 
@@ -239,7 +239,7 @@ export class ReviewerRouter implements ReviewerHarness {
    */
   async decidePermission(input: PermissionReviewInput): Promise<PermissionVerdict> {
     return this.executeWithFallback('permission', 'permission', (harness) =>
-      harness.decidePermission(input),
+      harness.decidePermission(input)
     );
   }
 
@@ -253,7 +253,7 @@ export class ReviewerRouter implements ReviewerHarness {
     const targetRole: ReviewerRole = isLargeDiff ? 'large_diff' : 'primary';
 
     return this.executeWithFallback(targetRole, 'final-review', (harness) =>
-      harness.reviewImplementation(input),
+      harness.reviewImplementation(input)
     );
   }
 }

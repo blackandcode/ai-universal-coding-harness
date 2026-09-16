@@ -28,6 +28,9 @@ Read:
 
 ## Rules
 
+- Agents must use the fast incremental quality gate (`npm run check:changed`) for day-to-day iterative changes on touched files. Reserve full test runs and repository verification (`npm run verify`) for explicit user requests or pre-push/release readiness.
+- Tests reside in `tests/` mirroring `src/` and compile separately to `.test-dist/` via `tsconfig.test.json`.
+- Git pushes are halted by the pre-push gate (`scripts/pre-push.mjs` via `.githooks/pre-push`) if verification or tests fail.
 - Every reliability/security incident gets the smallest regression test that reproduces the failure mechanism.
 - Prefer dependency injection/fakes at real architecture boundaries; do not mock every internal function.
 - Avoid sleep-based tests when fake timers, explicit events, or controllable processes can make them deterministic.

@@ -58,7 +58,7 @@ Use `--force` only when intentionally replacing an existing config file.
       "binary": "agent",
       "model": "gemini-3.8-flash",
       "thinking": "high",
-      "turnTimeoutMinutes": 45,
+      "turnTimeoutMinutes": 45
     },
     "codex": {
       "binary": "codex",
@@ -66,9 +66,9 @@ Use `--force` only when intentionally replacing an existing config file.
       "reasoningEffort": "low",
       "verbosity": "low",
       "timeoutMinutes": 8,
-      "contextMode": "evidence_only",
-    },
-  },
+      "contextMode": "evidence_only"
+    }
+  }
 }
 ```
 

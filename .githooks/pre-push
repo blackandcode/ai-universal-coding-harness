@@ -1,0 +1,3 @@
+#!/bin/sh
+# AI Universal Coding Harness - Pre-push verification hook
+node scripts/pre-push.mjs

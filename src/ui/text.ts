@@ -178,6 +178,6 @@ export function formatProgressBar(ratio: number, totalWidth: number): ProgressBa
   return {
     filled: '█'.repeat(fillCount),
     unfilled: '░'.repeat(unfilledCount),
-    percent: `${Math.round(clampedRatio * 100)}%`,
+    percent: `${Math.round(clampedRatio * 100)}%`
   };
 }

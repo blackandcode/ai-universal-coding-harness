@@ -35,7 +35,7 @@ export interface VerificationContext {
 export function validateEvidence(
   file: string,
   stage: string,
-  attempt: number,
+  attempt: number
 ): { ok: boolean; reason: string; e?: ExecutionEvidence } {
   if (!fs.existsSync(file)) return { ok: false, reason: 'evidence.json missing' };
   let e: any;
@@ -55,7 +55,7 @@ export function validateEvidence(
   return {
     ok,
     reason: ok ? '' : 'evidence.json missing/invalid required fields',
-    e: e as ExecutionEvidence,
+    e: e as ExecutionEvidence
   };
 }
 
@@ -75,7 +75,7 @@ export function normalizeCommand(s: string): string {
     str = str.slice(1, -1).trim();
   }
   const shellWrap = str.match(
-    /^(?:bash|sh|zsh|cmd\.exe|cmd|powershell|pwsh)\s+(?:-c|-Command|\/c|-lc)\s+["']?([^"']+)["']?$/i,
+    /^(?:bash|sh|zsh|cmd\.exe|cmd|powershell|pwsh)\s+(?:-c|-Command|\/c|-lc)\s+["']?([^"']+)["']?$/i
   );
   if (shellWrap && shellWrap[1]) {
     str = shellWrap[1].trim();
@@ -134,7 +134,7 @@ export function verifyEvidenceAgainstObserved(
         workspace?: string;
       }
   >,
-  context?: VerificationContext,
+  context?: VerificationContext
 ) {
   const issues: string[] = [];
 
@@ -149,7 +149,7 @@ export function verifyEvidenceAgainstObserved(
     // A command is only eligible if it belongs to the current attempt or has no attempt recorded.
     // If commands belong to another attempt, they cannot validate the current attempt.
     scopedCommands = scopedCommands.filter(
-      (c) => c.attempt == null || c.attempt === context.attempt,
+      (c) => c.attempt == null || c.attempt === context.attempt
     );
   }
 
@@ -169,7 +169,7 @@ export function verifyEvidenceAgainstObserved(
     const obsWs = ('workspace' in q && q.workspace) || ('cwd' in q && (q as { cwd?: string }).cwd);
     if (obsWs && path.resolve(obsWs) !== expectedWs) {
       issues.push(
-        `Quality command executed in wrong directory: observed=${obsWs}, expected=${context.workspace}`,
+        `Quality command executed in wrong directory: observed=${obsWs}, expected=${context.workspace}`
       );
     }
   }
@@ -180,7 +180,7 @@ export function verifyEvidenceAgainstObserved(
     issues.push('Observed git diff --check has no exit code.');
   } else if (d.exit_code !== Number(e.git_diff_check_exit_code)) {
     issues.push(
-      `git diff --check exit mismatch: evidence=${e.git_diff_check_exit_code}, ACP=${d.exit_code}`,
+      `git diff --check exit mismatch: evidence=${e.git_diff_check_exit_code}, ACP=${d.exit_code}`
     );
   }
 
@@ -188,12 +188,12 @@ export function verifyEvidenceAgainstObserved(
   if (context?.last_mutation_sequence != null) {
     if (q && q.sequence != null && q.sequence <= context.last_mutation_sequence) {
       issues.push(
-        `Quality command ran before file edits were made (mutation sequence ${context.last_mutation_sequence} >= quality sequence ${q.sequence}). Rerun quality command.`,
+        `Quality command ran before file edits were made (mutation sequence ${context.last_mutation_sequence} >= quality sequence ${q.sequence}). Rerun quality command.`
       );
     }
     if (d && d.sequence != null && d.sequence <= context.last_mutation_sequence) {
       issues.push(
-        `git diff --check ran before file edits were made (mutation sequence ${context.last_mutation_sequence} >= diff-check sequence ${d.sequence}). Rerun git diff --check.`,
+        `git diff --check ran before file edits were made (mutation sequence ${context.last_mutation_sequence} >= diff-check sequence ${d.sequence}). Rerun git diff --check.`
       );
     }
   }
@@ -202,7 +202,7 @@ export function verifyEvidenceAgainstObserved(
   if (e.patch_fingerprint && context?.expected_patch_fingerprint) {
     if (e.patch_fingerprint !== context.expected_patch_fingerprint) {
       issues.push(
-        `Evidence patch fingerprint mismatch: evidence=${e.patch_fingerprint}, current=${context.expected_patch_fingerprint}`,
+        `Evidence patch fingerprint mismatch: evidence=${e.patch_fingerprint}, current=${context.expected_patch_fingerprint}`
       );
     }
   }
@@ -228,6 +228,6 @@ export function verifyEvidenceAgainstObserved(
     ok: issues.length === 0,
     issues,
     observed_quality: (q as unknown as ObservedQuality) || null,
-    observed_diff_check: (d as unknown as ObservedQuality) || null,
+    observed_diff_check: (d as unknown as ObservedQuality) || null
   };
 }

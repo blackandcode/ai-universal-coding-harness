@@ -69,7 +69,7 @@ Project config can load additional adapters without modifying the core package:
 ```jsonc
 {
   "harnessModules": ["@my-org/ai-harness-claude"],
-  "executorHarness": "claude",
+  "executorHarness": "claude"
 }
 ```
 

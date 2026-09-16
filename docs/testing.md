@@ -2,18 +2,45 @@
 
 The project uses Node.js's built-in test runner (`node:test`) and native coverage tooling for unit, integration, and end-to-end verification.
 
+## Two-Tier Quality Gate Structure
+
+### 1. Fast Day-to-Day Iterative Gate (`npm run check:changed`)
+
+For day-to-day development iterations and AI agent workflows, run the incremental quality check:
+
 ```bash
-npm run build
-npm run test:unit
-npm run test:coverage
-npm run test:cli
-npm test
+npm run check:changed
+```
+
+- **Scope**: Modifed, staged, and untracked files across the repository.
+- **Workflow**:
+  1. Formats touched files with Oxfmt (`oxfmt --check`).
+  2. Lints touched JS/TS files with Oxlint (`oxlint`).
+  3. Typechecks with TypeScript (`tsc -p tsconfig.json --noEmit` and `tsc -p tsconfig.test.json --noEmit`).
+  4. Resolves and compiles corresponding test suites into `.test-dist/` and runs targeted tests via `scripts/run-tests.mjs <paths...>`.
+- **Default for Agents**: AI agents default to this command for iterative changes and must not run the full test suite unless explicitly requested.
+
+### 2. Pre-Push Verification Gate (`npm run pre-push`)
+
+A Git pre-push hook (`.githooks/pre-push` invoking `scripts/pre-push.mjs`) automatically executes full repository verification (`npm run verify`) prior to pushing to origin.
+
+If any check, lint error, type failure, coverage deficit, CLI smoke failure, or packaging invariant fails, **`git push` is immediately halted** with an exit status of 1.
+
+```bash
 npm run verify
 ```
 
+## Test Organization & Compilation Isolation
+
+All tests reside in a root-level `tests/` directory that mirrors the `src/` directory hierarchy:
+
+- `src/` contains **strictly production code**, compiled to `dist/` via `tsconfig.json`. Emitted test files are prohibited in `dist/`.
+- `tests/` contains all unit, integration, regression, and component tests, mirroring `src/` subdirectories (`tests/cli/`, `tests/config/`, `tests/core/`, `tests/git/`, `tests/harness/`, `tests/orchestrator/`, `tests/permissions/`, `tests/project/`, `tests/quality/`, `tests/stages/`, `tests/state/`, `tests/ui/`).
+- `tests/` and `src/` are compiled together to `.test-dist/` via `tsconfig.test.json` with `rootDir: "."` and `outDir: ".test-dist"`. Relative runtime imports within `.test-dist` resolve seamlessly.
+
 ## Test Discovery
 
-The test runner (`scripts/run-tests.mjs`) discovers all compiled `.test.js` files under `dist/` (compiled from both `.test.ts` and `.test.tsx` source files) and sorts them deterministically by path before execution.
+The test runner (`scripts/run-tests.mjs`) discovers all compiled `.test.js` files under `.test-dist/tests/` (compiled from both `.test.ts` and `.test.tsx` source files) and sorts them deterministically by path before execution. It also supports accepting targeted test files as arguments for selective execution.
 
 ## Native Coverage Gates
 

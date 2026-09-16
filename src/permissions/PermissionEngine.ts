@@ -16,7 +16,7 @@ import {
   knownSafeCommand,
   commandCategory,
   pathInside,
-  normalizeCommand,
+  normalizeCommand
 } from './CommandClassifier.js';
 
 export interface PermissionRequest {
@@ -42,7 +42,7 @@ export class PermissionEngine {
   constructor(
     private workspace: string,
     private mode: PermissionMode,
-    permissionsFile: string,
+    permissionsFile: string
   ) {
     this.load(permissionsFile);
   }
@@ -52,11 +52,11 @@ export class PermissionEngine {
     const errors: ParseError[] = [];
     const doc = parse(fs.readFileSync(file, 'utf8'), errors, {
       allowTrailingComma: true,
-      disallowComments: false,
+      disallowComments: false
     }) as { terminalAllowlist?: unknown[]; terminalDenylist?: unknown[] } | null;
     if (errors.length)
       throw new Error(
-        `Unable to parse permissions file ${file}: ${errors.map((x) => printParseErrorCode(x.error)).join(', ')}`,
+        `Unable to parse permissions file ${file}: ${errors.map((x) => printParseErrorCode(x.error)).join(', ')}`
       );
     this.allowlist = Array.isArray(doc?.terminalAllowlist) ? doc.terminalAllowlist.map(String) : [];
     this.denylist = Array.isArray(doc?.terminalDenylist) ? doc.terminalDenylist.map(String) : [];
@@ -115,7 +115,7 @@ export class PermissionEngine {
         reason:
           'Requested file operation is outside the workspace or targets protected orchestration/Git control data.',
         cache: true,
-        signature: sig,
+        signature: sig
       };
     if (this.mode === 'allow_all')
       return {
@@ -123,7 +123,7 @@ export class PermissionEngine {
         source: 'allow-all',
         reason: 'permissionMode=allow_all; operation is not hard-denied.',
         cache: true,
-        signature: sig,
+        signature: sig
       };
     const command = normalizeCommand(req.command || '');
     if (command && this.denylist.some((p) => commandStartsWith(command, p)))
@@ -132,7 +132,7 @@ export class PermissionEngine {
         source: 'denylist',
         reason: 'Command matched configured denylist.',
         cache: true,
-        signature: sig,
+        signature: sig
       };
     if (this.mode === 'allowlist') {
       const ok = Boolean(command) && this.allowlist.some((p) => commandStartsWith(command, p));
@@ -142,7 +142,7 @@ export class PermissionEngine {
           source: 'allowlist',
           reason: 'Command matched configured allowlist.',
           cache: true,
-          signature: sig,
+          signature: sig
         };
       return null;
     }
@@ -153,7 +153,7 @@ export class PermissionEngine {
           source: 'auto-safe',
           reason: 'Known reversible workspace-scoped development operation.',
           cache: true,
-          signature: sig,
+          signature: sig
         };
       return null;
     }
@@ -184,7 +184,7 @@ export class PermissionEngine {
       source: 'reviewer',
       reason: verdict.reason || '',
       cache: Boolean(verdict.cache_for_stage),
-      signature: this.signature(req),
+      signature: this.signature(req)
     };
     this.remember(req, d);
     return d;

@@ -15,7 +15,7 @@ import {
   escapeRegex,
   parseSemver,
   synchronizeVersion,
-  updateChangelog,
+  updateChangelog
 } from '../../scripts/versioning/version-sync.mjs';
 
 test('parseSemver parses valid semantic versions and rejects invalid', () => {
@@ -67,13 +67,13 @@ test('updateChangelog promotes unreleased section and creates fresh unreleased b
     '',
     '## [1.0.0] - 2026-09-01',
     '',
-    '- Initial release',
+    '- Initial release'
   ].join('\n');
 
   const updated = updateChangelog(initial, {
     currentVersion: '1.0.0',
     targetVersion: '1.1.0',
-    date: '2026-09-16',
+    date: '2026-09-16'
   });
 
   assert.match(updated, /## \[Unreleased\]\n\n## \[1\.1\.0\] - 2026-09-16/);
@@ -86,9 +86,9 @@ test('updateChangelog promotes unreleased section and creates fresh unreleased b
       updateChangelog(updated, {
         currentVersion: '1.1.0',
         targetVersion: '1.1.0',
-        date: '2026-09-16',
+        date: '2026-09-16'
       }),
-    /already contains version 1\.1\.0/,
+    /already contains version 1\.1\.0/
   );
 });
 
@@ -104,7 +104,7 @@ test('synchronizeVersion --dry-run does not modify files on disk', async () => {
     const result = await synchronizeVersion({
       root: tmpDir,
       bump: 'patch',
-      dryRun: true,
+      dryRun: true
     });
 
     assert.equal(result.dryRun, true);
@@ -129,11 +129,11 @@ test('synchronizeVersion atomically updates package.json, lockfile, src/version.
         {
           name: 'test-harness',
           version: '1.0.0',
-          dependencies: { ink: '7.1.1' },
+          dependencies: { ink: '7.1.1' }
         },
         null,
-        2,
-      ),
+        2
+      )
     );
 
     const lockPath = path.join(tmpDir, 'package-lock.json');
@@ -145,12 +145,12 @@ test('synchronizeVersion atomically updates package.json, lockfile, src/version.
           version: '1.0.0',
           packages: {
             '': { name: 'test-harness', version: '1.0.0' },
-            'node_modules/ink': { version: '7.1.1' },
-          },
+            'node_modules/ink': { version: '7.1.1' }
+          }
         },
         null,
-        2,
-      ),
+        2
+      )
     );
 
     const srcDir = path.join(tmpDir, 'src');
@@ -164,12 +164,12 @@ test('synchronizeVersion atomically updates package.json, lockfile, src/version.
     const changelogPath = path.join(tmpDir, 'CHANGELOG.md');
     fs.writeFileSync(
       changelogPath,
-      '# Changelog\n\n## [Unreleased]\n\n### Added\n\n- Verified version sync\n',
+      '# Changelog\n\n## [Unreleased]\n\n### Added\n\n- Verified version sync\n'
     );
 
     const result = await synchronizeVersion({
       root: tmpDir,
-      bump: 'minor',
+      bump: 'minor'
     });
 
     assert.equal(result.currentVersion, '1.0.0');
@@ -202,7 +202,7 @@ test('synchronizeVersion atomically updates package.json, lockfile, src/version.
     // Verify alreadyImplemented check
     const sameResult = await synchronizeVersion({
       root: tmpDir,
-      targetVersion: '1.1.0',
+      targetVersion: '1.1.0'
     });
     assert.equal(sameResult.alreadyImplemented, true);
 
@@ -211,16 +211,16 @@ test('synchronizeVersion atomically updates package.json, lockfile, src/version.
       async () =>
         synchronizeVersion({
           root: tmpDir,
-          targetVersion: '1.0.0',
+          targetVersion: '1.0.0'
         }),
-      /lower than current version/,
+      /lower than current version/
     );
 
     // Verify downgrade allowed with flag
     const downgradeResult = await synchronizeVersion({
       root: tmpDir,
       targetVersion: '1.0.0',
-      allowDowngrade: true,
+      allowDowngrade: true
     });
     assert.equal(downgradeResult.targetVersion, '1.0.0');
   } finally {
@@ -241,7 +241,7 @@ test('increase-version CLI runs via subprocess and performs dry-run', () => {
     const child = spawnSync(
       process.execPath,
       [scriptPath, 'patch', '--dry-run', '--root', tmpDir],
-      { encoding: 'utf8' },
+      { encoding: 'utf8' }
     );
 
     assert.equal(child.status, 0, `CLI failed with stderr: ${child.stderr}`);

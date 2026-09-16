@@ -19,7 +19,7 @@ function gitRoot(cwd: string) {
   const r = spawnSync('git', ['rev-parse', '--show-toplevel'], {
     cwd,
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore'],
+    stdio: ['ignore', 'pipe', 'ignore']
   });
   return r.status === 0 ? String(r.stdout).trim() : '';
 }

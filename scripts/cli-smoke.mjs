@@ -14,7 +14,7 @@ function run(args, expected = 0) {
   const r = spawnSync(process.execPath, [cli, ...args], {
     cwd: process.cwd(),
     encoding: 'utf8',
-    env: { ...process.env, AI_HARNESS_CONFIG_HOME: path.join(root, 'global-config') },
+    env: { ...process.env, AI_HARNESS_CONFIG_HOME: path.join(root, 'global-config') }
   });
   if (r.status !== expected) {
     console.error(`Command failed: ${args.join(' ')}`);
@@ -44,7 +44,7 @@ try {
   fs.mkdirSync(stage, { recursive: true });
   fs.writeFileSync(
     path.join(stage, 'functional-spec.md'),
-    '# Functional\n\n## Acceptance Criteria\n- pass\n',
+    '# Functional\n\n## Acceptance Criteria\n- pass\n'
   );
   fs.writeFileSync(path.join(stage, 'technical-spec.md'), '# Technical\n\nDetails\n');
   fs.writeFileSync(path.join(stage, 'prompt.md'), '# Prompt\n\nImplement it.\n');

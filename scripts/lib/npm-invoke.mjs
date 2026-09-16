@@ -19,7 +19,7 @@ export function findNpmCli() {
   const nodeDir = path.dirname(process.execPath);
   const candidates = [
     path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-    path.join(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    path.join(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
   ];
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
@@ -42,14 +42,14 @@ export function spawnNpm(args, options = {}) {
   if (npmCli) {
     result = spawnSync(process.execPath, [npmCli, ...args], {
       windowsHide: true,
-      ...options,
+      ...options
     });
   } else {
     const isWindows = process.platform === 'win32';
     result = spawnSync(isWindows ? 'npm.cmd' : 'npm', args, {
       shell: isWindows,
       windowsHide: true,
-      ...options,
+      ...options
     });
   }
   return result;

@@ -15,7 +15,7 @@ import {
   type UiQualityDisplay,
   type UiState,
   type UiTodo,
-  type UiTool,
+  type UiTool
 } from './types.js';
 
 /** Maximum number of messages preserved in the presentation buffer */
@@ -44,7 +44,7 @@ function createDefaultPhases(): UiPhaseMap {
     IMPLEMENT: 'pending',
     QUALITY: 'pending',
     REVIEW: 'pending',
-    COMMIT: 'pending',
+    COMMIT: 'pending'
   };
 }
 
@@ -72,7 +72,7 @@ export function createInitialUiState(meta: Partial<UiMeta> = {}): UiState {
     tokens: { calls: 0, input: 0, output: 0 },
     logs: [],
     focusText: '',
-    focusFile: '',
+    focusFile: ''
   };
 }
 
@@ -91,7 +91,7 @@ function appendMessage(
     readonly kind?: 'error' | 'success' | 'info';
     readonly ts?: string;
     readonly id?: string;
-  },
+  }
 ): UiState {
   const id = item.id ?? `${Date.now()}-${++messageSequence}`;
   const newMessage: UiMessage = {
@@ -99,12 +99,12 @@ function appendMessage(
     role: item.role,
     text: item.text,
     kind: item.kind,
-    ts: item.ts,
+    ts: item.ts
   };
 
   return {
     ...state,
-    messages: [...state.messages, newMessage].slice(-MAX_MESSAGES),
+    messages: [...state.messages, newMessage].slice(-MAX_MESSAGES)
   };
 }
 
@@ -123,22 +123,22 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
       return {
         ...state,
         status: 'running',
-        meta: { ...state.meta, ...payload },
+        meta: { ...state.meta, ...payload }
       };
     }
 
     case 'run.completed': {
       const completedPhases: UiPhaseMap = Object.fromEntries(
-        PHASES.map((phase) => [phase, 'completed' as PhaseStatus]),
+        PHASES.map((phase) => [phase, 'completed' as PhaseStatus])
       ) as UiPhaseMap;
 
       return appendMessage(
         {
           ...state,
           status: 'completed',
-          phase: completedPhases,
+          phase: completedPhases
         },
-        { role: 'system', text: 'Run completed.', ts: event.ts },
+        { role: 'system', text: 'Run completed.', ts: event.ts }
       );
     }
 
@@ -147,7 +147,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
       const reason = (payload.reason as string) || 'Run stopped';
       return appendMessage(
         { ...state, status: nextStatus },
-        { role: 'system', kind: 'error', text: reason, ts: event.ts },
+        { role: 'system', kind: 'error', text: reason, ts: event.ts }
       );
     }
 
@@ -163,7 +163,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
           IMPLEMENT: 'pending',
           QUALITY: 'pending',
           REVIEW: 'pending',
-          COMMIT: 'pending',
+          COMMIT: 'pending'
         },
         quality: null,
         changedFiles: [],
@@ -171,7 +171,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
         tools: {},
         toolOrder: [],
         focusText: '',
-        focusFile: '',
+        focusFile: ''
       };
     }
 
@@ -185,8 +185,8 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
           IMPLEMENT: 'active',
           QUALITY: 'pending',
           REVIEW: 'pending',
-          COMMIT: 'pending',
-        },
+          COMMIT: 'pending'
+        }
       };
     }
 
@@ -197,10 +197,10 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
           ...state,
           phase: {
             ...state.phase,
-            COMMIT: 'completed',
-          },
+            COMMIT: 'completed'
+          }
         },
-        { role: 'system', text: `Stage ${stageName} completed.`, ts: event.ts },
+        { role: 'system', text: `Stage ${stageName} completed.`, ts: event.ts }
       );
     }
 
@@ -208,7 +208,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
       const reason = (payload.reason as string) ?? 'Stage blocked';
       return appendMessage(
         { ...state, status: 'blocked' },
-        { role: 'system', kind: 'error', text: `Stage blocked: ${reason}`, ts: event.ts },
+        { role: 'system', kind: 'error', text: `Stage blocked: ${reason}`, ts: event.ts }
       );
     }
 
@@ -232,7 +232,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
       return {
         ...state,
         focusText: combinedText,
-        focusFile: nextFocusFile,
+        focusFile: nextFocusFile
       };
     }
 
@@ -255,7 +255,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
         role: 'system',
         kind: 'info',
         text,
-        ts: event.ts,
+        ts: event.ts
       });
     }
 
@@ -269,14 +269,14 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
           ...state,
           phase: {
             ...state.phase,
-            PLAN: isApproved ? 'completed' : 'active',
-          },
+            PLAN: isApproved ? 'completed' : 'active'
+          }
         },
         {
           role: 'reviewer',
           text: `Plan ${verdict}: ${summary}`.trim(),
-          ts: event.ts,
-        },
+          ts: event.ts
+        }
       );
     }
 
@@ -285,7 +285,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
       return appendMessage(state, {
         role: 'executor',
         text: `Question: ${promptText}`.trim(),
-        ts: event.ts,
+        ts: event.ts
       });
     }
 
@@ -295,7 +295,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
       return appendMessage(state, {
         role: 'reviewer',
         text: `Answer: ${answer}${rationale}`.trim(),
-        ts: event.ts,
+        ts: event.ts
       });
     }
 
@@ -304,7 +304,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
       return appendMessage(state, {
         role: 'system',
         text: `Permission requested: ${summary}`.trim(),
-        ts: event.ts,
+        ts: event.ts
       });
     }
 
@@ -314,7 +314,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
       return appendMessage(state, {
         role: 'reviewer',
         text: `Permission ${verdict}: ${summary}`.trim(),
-        ts: event.ts,
+        ts: event.ts
       });
     }
 
@@ -342,7 +342,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
         ...existing,
         ...payload,
         id: toolId,
-        status: (payload.status as UiTool['status']) ?? existing.status,
+        status: (payload.status as UiTool['status']) ?? existing.status
       };
 
       const updatedTools = { ...state.tools, [toolId]: updatedTool };
@@ -353,7 +353,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
       return {
         ...state,
         tools: updatedTools,
-        toolOrder: updatedOrder,
+        toolOrder: updatedOrder
       };
     }
 
@@ -363,8 +363,8 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
         phase: {
           ...state.phase,
           IMPLEMENT: 'completed',
-          QUALITY: 'active',
-        },
+          QUALITY: 'active'
+        }
       };
     }
 
@@ -381,7 +381,7 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
         status: isPass ? 'PASS' : 'FAIL',
         pass: isPass,
         summary,
-        changed_files: changed,
+        changed_files: changed
       };
 
       return appendMessage(
@@ -390,17 +390,17 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
           phase: {
             ...state.phase,
             IMPLEMENT: 'completed',
-            QUALITY: isPass ? 'completed' : 'active',
+            QUALITY: isPass ? 'completed' : 'active'
           },
           quality: qualityDisplay,
-          changedFiles: changed,
+          changedFiles: changed
         },
         {
           role: 'system',
           kind: isPass ? 'success' : 'error',
           text: `Quality ${isPass ? 'PASS' : 'FAIL'}: ${summary}`.trim(),
-          ts: event.ts,
-        },
+          ts: event.ts
+        }
       );
     }
 
@@ -409,8 +409,8 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
         ...state,
         phase: {
           ...state.phase,
-          REVIEW: 'active',
-        },
+          REVIEW: 'active'
+        }
       };
     }
 
@@ -424,14 +424,14 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
           ...state,
           phase: {
             ...state.phase,
-            REVIEW: isApproved ? 'completed' : 'active',
-          },
+            REVIEW: isApproved ? 'completed' : 'active'
+          }
         },
         {
           role: 'reviewer',
           text: `Final review ${verdict}: ${summary}`.trim(),
-          ts: event.ts,
-        },
+          ts: event.ts
+        }
       );
     }
 
@@ -440,8 +440,8 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
         ...state,
         phase: {
           ...state.phase,
-          COMMIT: 'active',
-        },
+          COMMIT: 'active'
+        }
       };
     }
 
@@ -454,14 +454,14 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
           ...state,
           phase: {
             ...state.phase,
-            COMMIT: 'completed',
-          },
+            COMMIT: 'completed'
+          }
         },
         {
           role: 'system',
           text: `Committed ${stageName} · ${sha}`.trim(),
-          ts: event.ts,
-        },
+          ts: event.ts
+        }
       );
     }
 
@@ -471,8 +471,8 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
         tokens: {
           calls: state.tokens.calls + 1,
           input: state.tokens.input + Number(payload.input ?? 0),
-          output: state.tokens.output + Number(payload.output ?? 0),
-        },
+          output: state.tokens.output + Number(payload.output ?? 0)
+        }
       };
     }
 
@@ -481,12 +481,12 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
         ts: event.ts,
         ...payload,
         level: (payload.level as UiLogEntry['level']) ?? 'info',
-        message: String(payload.message ?? ''),
+        message: String(payload.message ?? '')
       };
 
       return {
         ...state,
-        logs: [...state.logs, entry].slice(-MAX_LOGS),
+        logs: [...state.logs, entry].slice(-MAX_LOGS)
       };
     }
 

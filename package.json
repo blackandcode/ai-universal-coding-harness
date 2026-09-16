@@ -1,6 +1,6 @@
 {
   "name": "ai-universal-coding-harness",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "A cross-platform CLI that orchestrates autonomous coding harnesses through structured stages, review, quality gates, and clean Git history.",
   "keywords": [
     "agents",
@@ -50,18 +50,22 @@
     "access": "public"
   },
   "scripts": {
-    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true}); require('node:fs').rmSync('.test-dist',{recursive:true,force:true})\"",
     "build": "npm run clean && tsc -p tsconfig.json && node scripts/postbuild.mjs",
+    "build:tests": "tsc -p tsconfig.test.json",
     "compile": "npm run build",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "lint": "oxlint && node scripts/verify-oxlint-rules.mjs",
-    "test:unit": "npm run build && node scripts/run-tests.mjs",
-    "test:coverage": "npm run build && node scripts/run-tests.mjs --coverage",
+    "test:unit": "npm run build && npm run build:tests && node scripts/run-tests.mjs",
+    "test:coverage": "npm run build && npm run build:tests && node scripts/run-tests.mjs --coverage",
     "test:cli": "node scripts/cli-smoke.mjs",
     "test:versioning": "node --test tests/scripts/versioning.test.mjs tests/scripts/changelog.test.mjs tests/scripts/adr.test.mjs",
     "test": "npm run test:unit",
+    "check:changed": "node scripts/check-changed.mjs",
+    "check:touched": "node scripts/check-changed.mjs",
+    "pre-push": "node scripts/pre-push.mjs",
     "changelog:add": "node scripts/changelog/record-unreleased-change.mjs",
     "update-version": "node scripts/versioning/increase-version.mjs",
     "update-version:patch": "node scripts/versioning/increase-version.mjs patch",
@@ -70,7 +74,7 @@
     "adr:new": "node scripts/adr/new-adr.mjs",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run test:cli && node scripts/package-check.mjs",
     "check": "npm run verify",
-    "prepare": "npm run build",
+    "prepare": "npm run build && node scripts/setup-git-hooks.mjs",
     "prepack": "npm run verify"
   },
   "dependencies": {

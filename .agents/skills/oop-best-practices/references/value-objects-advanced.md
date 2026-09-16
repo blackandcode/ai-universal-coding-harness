@@ -207,7 +207,7 @@ class Address {
     readonly street: Street,
     readonly city: City,
     readonly postalCode: PostalCode,
-    readonly country: CountryCode,
+    readonly country: CountryCode
   ) {}
 
   equals(other: Address): boolean {

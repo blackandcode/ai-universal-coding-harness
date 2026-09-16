@@ -54,7 +54,7 @@ export class ObservationJournal {
    */
   record(entry: CommandObservation, isReplay = false): void {
     const idx = this.observed.findIndex(
-      (x) => x.tool_call_id === entry.tool_call_id && x.session_id === entry.session_id,
+      (x) => x.tool_call_id === entry.tool_call_id && x.session_id === entry.session_id
     );
 
     if (idx >= 0) {
@@ -63,7 +63,7 @@ export class ObservationJournal {
         ...entry,
         exit_code: entry.exit_code ?? this.observed[idx].exit_code,
         status: entry.status || this.observed[idx].status,
-        sequence: entry.sequence || this.observed[idx].sequence,
+        sequence: entry.sequence || this.observed[idx].sequence
       };
     } else {
       this.observed.push(entry);

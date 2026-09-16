@@ -41,7 +41,7 @@ export class RecoveryManager {
   constructor(
     private root = ROOT,
     private store = new RunStateStore(),
-    private git = new GitRepository(ROOT),
+    private git = new GitRepository(ROOT)
   ) {}
 
   /**
@@ -64,7 +64,7 @@ export class RecoveryManager {
         stageName: '',
         stageIndex: -1,
         details,
-        error: 'No run found.',
+        error: 'No run found.'
       };
     }
 
@@ -79,7 +79,7 @@ export class RecoveryManager {
         stageName: '',
         stageIndex: -1,
         details,
-        error: `Failed to load run ${runId}: ${e.message}`,
+        error: `Failed to load run ${runId}: ${e.message}`
       };
     }
 
@@ -87,7 +87,7 @@ export class RecoveryManager {
     let stageIndex = -1;
     if (opts.stageName) {
       stageIndex = state.stages.findIndex(
-        (s) => s.name === opts.stageName || s.name.includes(opts.stageName!),
+        (s) => s.name === opts.stageName || s.name.includes(opts.stageName!)
       );
     } else {
       stageIndex = state.stages.findIndex((s) => s.status === 'failed');
@@ -104,7 +104,7 @@ export class RecoveryManager {
         stageName: opts.stageName || '',
         stageIndex: -1,
         details,
-        error: 'Could not determine stage to recover.',
+        error: 'Could not determine stage to recover.'
       };
     }
 
@@ -116,7 +116,7 @@ export class RecoveryManager {
     details.push(`Target run: ${runId}`);
     details.push(`Target stage: ${stageName} (index ${stageIndex + 1}/${state.stages.length})`);
     details.push(
-      `Current run status: ${state.status}, stage status: ${stage.status}, stage phase: ${stageState.phase || 'unknown'}`,
+      `Current run status: ${state.status}, stage status: ${stage.status}, stage phase: ${stageState.phase || 'unknown'}`
     );
 
     // Authoritative Git verification
@@ -129,7 +129,7 @@ export class RecoveryManager {
         stageName,
         stageIndex,
         details,
-        error: `Authoritative git diff check failed:\n${diffCheck.issues.join('\n')}`,
+        error: `Authoritative git diff check failed:\n${diffCheck.issues.join('\n')}`
       };
     }
     details.push('Authoritative git diff check PASSED.');
@@ -145,7 +145,7 @@ export class RecoveryManager {
         runId,
         stageName,
         attempt: stageState.attempt || 1,
-        workspace: this.root,
+        workspace: this.root
       });
       details.push(`Extracted ${observations.length} command observation(s) from ACP log.`);
     }
@@ -156,7 +156,7 @@ export class RecoveryManager {
       '.ai-orchestrator',
       'stage-runtime',
       stageName,
-      'evidence.json',
+      'evidence.json'
     );
     if (!fs.existsSync(evidencePath)) {
       evidencePath = path.join(stageDir, 'evidence.json');
@@ -187,7 +187,7 @@ export class RecoveryManager {
         stage: stageName,
         attempt: evidence.attempt,
         expected_patch_fingerprint: currentPatchFingerprint,
-        orchestrator_diff_check_ok: diffCheck.ok,
+        orchestrator_diff_check_ok: diffCheck.ok
       });
       corroborationReport = corroboration;
 
@@ -209,7 +209,7 @@ export class RecoveryManager {
         canResumeReview
           ? 'corroborated green evidence matches patch fingerprint'
           : 'evidence missing, uncorroborated, or requires re-verification'
-      })`,
+      })`
     );
 
     if (!isApply) {
@@ -221,7 +221,7 @@ export class RecoveryManager {
         details.push(`Would save corroborated evidence to: ${savedEvidencePath}`);
       }
       details.push(
-        `Would transition stage phase to "${targetPhase}" with patch_fingerprint=${currentPatchFingerprint}`,
+        `Would transition stage phase to "${targetPhase}" with patch_fingerprint=${currentPatchFingerprint}`
       );
       details.push(`Would transition run status to "running" at stage index ${stageIndex}`);
       details.push('Run "ai-harness recover --apply" to apply these changes.');
@@ -232,7 +232,7 @@ export class RecoveryManager {
         stageName,
         stageIndex,
         resumePhase: targetPhase as 'quality' | 'review',
-        details,
+        details
       };
     }
 
@@ -253,7 +253,7 @@ export class RecoveryManager {
       fs.writeFileSync(
         observationsFile,
         observations.map((o) => JSON.stringify(o)).join('\n') + '\n',
-        'utf8',
+        'utf8'
       );
       details.push(`Wrote ${observations.length} observations to ${observationsFile}.`);
     }
@@ -275,7 +275,7 @@ export class RecoveryManager {
       phase: targetPhase,
       attempt: recoveryAttempt,
       evidence_file: canResumeReview ? savedEvidencePath : undefined,
-      patch_fingerprint: currentPatchFingerprint,
+      patch_fingerprint: currentPatchFingerprint
     });
 
     // Update run state
@@ -295,7 +295,7 @@ export class RecoveryManager {
       stageName,
       stageIndex,
       resumePhase: targetPhase as 'quality' | 'review',
-      details,
+      details
     };
   }
 }

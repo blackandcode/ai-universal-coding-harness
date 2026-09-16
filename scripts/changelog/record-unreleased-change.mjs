@@ -45,7 +45,7 @@ export function recordUnreleasedChange(source, { type = 'Changed', message }) {
       'All notable changes to this project are documented in this file.',
       '',
       unreleasedHeading,
-      '',
+      ''
     ].join('\n');
   }
 
@@ -86,7 +86,7 @@ export function recordUnreleasedChange(source, { type = 'Changed', message }) {
       unreleasedSection.slice(0, headerStart),
       sectionContent,
       `\n${bullet}\n`,
-      unreleasedSection.slice(sectionContentEnd).replace(/^\n*/, '\n'),
+      unreleasedSection.slice(sectionContentEnd).replace(/^\n*/, '\n')
     ].join('');
   } else {
     const newSectionBlock = `\n\n### ${normalizedType}\n\n${bullet}\n`;
@@ -98,9 +98,7 @@ export function recordUnreleasedChange(source, { type = 'Changed', message }) {
     newUnreleasedSection.startsWith('\n\n')
       ? newUnreleasedSection
       : `\n\n${newUnreleasedSection.replace(/^\n*/, '')}`,
-    working.slice(bodyEnd).startsWith('\n')
-      ? working.slice(bodyEnd)
-      : `\n${working.slice(bodyEnd)}`,
+    working.slice(bodyEnd).startsWith('\n') ? working.slice(bodyEnd) : `\n${working.slice(bodyEnd)}`
   ].join('');
 }
 
@@ -108,7 +106,7 @@ export async function addUnreleasedEntry({
   root = process.cwd(),
   changelogFile = 'CHANGELOG.md',
   type = 'Changed',
-  message,
+  message
 }) {
   const changelogPath = join(root, changelogFile);
   let source = '';
@@ -124,7 +122,7 @@ export async function addUnreleasedEntry({
   return {
     path: changelogPath,
     type: normalizeChangeType(type),
-    message: message.trim(),
+    message: message.trim()
   };
 }
 
@@ -154,10 +152,10 @@ if (process.argv[1] && process.argv[1].endsWith('record-unreleased-change.mjs'))
       message: { type: 'string', short: 'm' },
       root: { type: 'string', default: process.cwd() },
       changelog: { type: 'string', default: 'CHANGELOG.md' },
-      help: { type: 'boolean', short: 'h', default: false },
+      help: { type: 'boolean', short: 'h', default: false }
     },
     allowPositionals: true,
-    strict: true,
+    strict: true
   });
 
   if (values.help) {
@@ -168,7 +166,7 @@ if (process.argv[1] && process.argv[1].endsWith('record-unreleased-change.mjs'))
   const message = values.message || positionals.join(' ').trim();
   if (!message) {
     console.error(
-      'Error: Change message is required. Example: npm run changelog:add -- -t Added "New REST route"',
+      'Error: Change message is required. Example: npm run changelog:add -- -t Added "New REST route"'
     );
     process.exit(1);
   }
@@ -178,7 +176,7 @@ if (process.argv[1] && process.argv[1].endsWith('record-unreleased-change.mjs'))
       root: values.root,
       changelogFile: values.changelog,
       type: values.type,
-      message,
+      message
     });
     console.log(`Successfully recorded unreleased [${result.type}] change in ${result.path}:`);
     console.log(`  - ${result.message}`);

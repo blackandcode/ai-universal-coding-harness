@@ -14,7 +14,7 @@ import {
   legacyProjectTrackedConfigPath,
   projectLocalConfigPath,
   projectTrackedConfigPath,
-  PROJECT_ROOT,
+  PROJECT_ROOT
 } from './paths.js';
 import { envLayer } from './env.js';
 import { validateAndNormalizeConfig } from './validation.js';
@@ -26,11 +26,11 @@ export function readJsonc(file: string): Record<string, unknown> {
   const errors: { error: number; offset: number; length: number }[] = [];
   const value = parse(fs.readFileSync(file, 'utf8'), errors, {
     allowTrailingComma: true,
-    disallowComments: false,
+    disallowComments: false
   });
   if (errors.length) {
     throw new ConfigError(
-      `Invalid JSONC config ${file}: ${errors.map((e) => printParseErrorCode(e.error)).join(', ')}`,
+      `Invalid JSONC config ${file}: ${errors.map((e) => printParseErrorCode(e.error)).join(', ')}`
     );
   }
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -65,7 +65,7 @@ export function deepMerge<T extends Record<string, unknown>>(
 
 export function loadEffectiveConfig(
   projectRoot = PROJECT_ROOT,
-  customLayers: Record<string, unknown>[] = [],
+  customLayers: Record<string, unknown>[] = []
 ): OrchestratorConfig {
   const globalPath = globalConfigPath();
   const legacyProjectPath = legacyProjectTrackedConfigPath(projectRoot);
@@ -79,7 +79,7 @@ export function loadEffectiveConfig(
     readJsonc(projectPath),
     readJsonc(localPath),
     envLayer(),
-    ...customLayers,
+    ...customLayers
   );
 
   return validateAndNormalizeConfig(merged, DEFAULT_CONFIG, projectRoot);
@@ -89,7 +89,7 @@ export const EFFECTIVE_CONFIG: OrchestratorConfig = loadEffectiveConfig();
 
 export function harnessConfig(
   id: string,
-  config: OrchestratorConfig = EFFECTIVE_CONFIG,
+  config: OrchestratorConfig = EFFECTIVE_CONFIG
 ): Record<string, unknown> {
   return { ...config.harnesses?.[id] };
 }
@@ -98,7 +98,7 @@ export function harnessString(
   id: string,
   key: string,
   fallback: string,
-  config: OrchestratorConfig = EFFECTIVE_CONFIG,
+  config: OrchestratorConfig = EFFECTIVE_CONFIG
 ): string {
   const v = harnessConfig(id, config)[key];
   return v == null ? fallback : String(v);
@@ -108,7 +108,7 @@ export function harnessNumber(
   id: string,
   key: string,
   fallback: number,
-  config: OrchestratorConfig = EFFECTIVE_CONFIG,
+  config: OrchestratorConfig = EFFECTIVE_CONFIG
 ): number {
   const n = Number(harnessConfig(id, config)[key]);
   return Number.isFinite(n) ? n : fallback;
@@ -125,11 +125,11 @@ export function writeConfig(file: string, overwrite = false, content = configTem
 
 export function configSummary(
   root = PROJECT_ROOT,
-  config: OrchestratorConfig = EFFECTIVE_CONFIG,
+  config: OrchestratorConfig = EFFECTIVE_CONFIG
 ): ConfigSummary {
   return {
     projectRoot: root,
     paths: CONFIG_SOURCES,
-    effective: config,
+    effective: config
   };
 }

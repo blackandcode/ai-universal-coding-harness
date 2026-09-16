@@ -11,18 +11,18 @@ import path from 'node:path';
 const HARD_DENY: [RegExp, string][] = [
   [
     /\bgit\s+(?:push|commit|merge|rebase|reset\s+--hard|clean\s+-[^\s]*f|switch|checkout|stash)\b/i,
-    'Git lifecycle is owned by the orchestrator.',
+    'Git lifecycle is owned by the orchestrator.'
   ],
   [/\bgit\s+branch\s+-[dD]\b/i, 'Branch deletion is not allowed.'],
   [/\bsudo\b/i, 'Privilege escalation is not allowed.'],
   [
     /\b(?:mkfs|fdisk|parted|shutdown|reboot|poweroff)\b/i,
-    'System-destructive operation is not allowed.',
+    'System-destructive operation is not allowed.'
   ],
   [/\bterraform\s+destroy\b/i, 'Infrastructure destroy is not allowed.'],
   [/\bkubectl\s+delete\b/i, 'Cluster deletion is not allowed.'],
   [/\b(?:npm|pnpm|yarn)\s+publish\b/i, 'Package publishing is not allowed.'],
-  [/\brm\s+-[^\s]*r[^\s]*f\s+(?:\/|~|\.\.)/i, 'Broad destructive delete is not allowed.'],
+  [/\brm\s+-[^\s]*r[^\s]*f\s+(?:\/|~|\.\.)/i, 'Broad destructive delete is not allowed.']
 ];
 
 const SAFE_PREFIXES = [
@@ -74,7 +74,7 @@ const SAFE_PREFIXES = [
   'phpcs',
   'vendor/bin/phpcs',
   'node --check',
-  'bash -n',
+  'bash -n'
 ];
 
 /**
@@ -140,7 +140,7 @@ export function commandCategory(command: string): string {
   if (['npm', 'npx', 'pnpm', 'yarn', 'composer'].includes(exe)) return 'package-tool';
   if (
     ['php', 'phpunit', 'phpstan', 'phpcs', 'node', 'tsc', 'eslint', 'vitest', 'jest'].includes(
-      exe,
+      exe
     ) ||
     c.includes('vendor/bin/')
   )

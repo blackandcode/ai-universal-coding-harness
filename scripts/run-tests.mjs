@@ -1,6 +1,7 @@
 /**
  * @fileoverview Test runner script using Node.js native test runner and code coverage.
- * Enforces native Node 24 coverage thresholds (85% lines, 85% functions, 80% branches)
+ * Discovers compiled tests in .test-dist/tests (or targeted files passed via arguments),
+ * enforces native Node 24 coverage thresholds (85% lines, 85% functions, 80% branches),
  * and verifies critical security, quality, and recovery modules.
  */
 
@@ -21,15 +22,38 @@ function walk(dir, out = []) {
   return out;
 }
 
-const distDir = path.resolve('dist');
-const testFiles = walk(distDir).sort((a, b) => a.localeCompare(b, 'en'));
+const specifiedArgs = process.argv.slice(2);
+const isCoverage =
+  specifiedArgs.includes('--coverage') || specifiedArgs.includes('--coverage-gate');
+const fileArgs = specifiedArgs.filter((arg) => !arg.startsWith('--'));
 
-if (testFiles.length === 0) {
-  console.error('No compiled test files found in dist. Run npm run build first.');
-  process.exit(2);
+let testFiles = [];
+
+if (fileArgs.length > 0) {
+  for (const raw of fileArgs) {
+    let candidate = path.resolve(raw);
+    if (!fs.existsSync(candidate) || candidate.endsWith('.ts') || candidate.endsWith('.tsx')) {
+      const rel = path.isAbsolute(raw) ? path.relative(process.cwd(), raw) : raw;
+      const mapped = path.resolve('.test-dist', rel.replace(/\.(ts|tsx)$/, '.js'));
+      if (fs.existsSync(mapped)) {
+        candidate = mapped;
+      }
+    }
+    if (fs.existsSync(candidate) && (candidate.endsWith('.js') || candidate.endsWith('.mjs'))) {
+      testFiles.push(candidate);
+    } else {
+      console.warn(`[run-tests] Warning: Test file not found for "${raw}"`);
+    }
+  }
+} else {
+  const testDistDir = path.resolve('.test-dist/tests');
+  testFiles = walk(testDistDir).sort((a, b) => a.localeCompare(b, 'en'));
 }
 
-const isCoverage = process.argv.includes('--coverage') || process.argv.includes('--coverage-gate');
+if (testFiles.length === 0) {
+  console.error('No compiled test files found in .test-dist/tests. Run npm run build:tests first.');
+  process.exit(2);
+}
 
 const args = [];
 if (isCoverage) {
@@ -37,14 +61,14 @@ if (isCoverage) {
     '--experimental-test-coverage',
     '--test-coverage-lines=85',
     '--test-coverage-functions=85',
-    '--test-coverage-branches=80',
+    '--test-coverage-branches=80'
   );
 }
 args.push('--test', ...testFiles);
 
 const result = spawnSync(process.execPath, args, {
   stdio: 'inherit',
-  windowsHide: true,
+  windowsHide: true
 });
 
 process.exit(result.status ?? 1);

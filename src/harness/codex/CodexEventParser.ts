@@ -10,7 +10,7 @@ import type {
   FinalVerdict,
   PermissionVerdict,
   PlanReviewVerdict,
-  QuestionVerdict,
+  QuestionVerdict
 } from '../../types.js';
 
 export interface TokenUsage {
@@ -36,11 +36,11 @@ export interface ParsedCodexEvent {
  */
 export function parseCodexEventLine(
   line: string,
-  options?: { readonlyProject?: boolean },
+  options?: { readonlyProject?: boolean }
 ): ParsedCodexEvent {
   const result: ParsedCodexEvent = {
     hasTokenUsage: false,
-    hasRoleViolation: false,
+    hasRoleViolation: false
   };
 
   if (!line || !line.trim()) {
@@ -74,7 +74,7 @@ export function parseCodexEventLine(
     result.tokenUsage = {
       input: Number(event.usage.input_tokens || 0),
       cached: Number(event.usage.cached_input_tokens || 0),
-      output: Number(event.usage.output_tokens || 0),
+      output: Number(event.usage.output_tokens || 0)
     };
   }
 
@@ -90,7 +90,7 @@ export function parseCodexEventLine(
  */
 export function validateReviewerVerdict(
   kind: 'plan-review' | 'question' | 'permission' | 'final-review',
-  result: any,
+  result: any
 ): { ok: boolean; error?: string } {
   if (!result || typeof result !== 'object') {
     return { ok: false, error: `Reviewer ${kind} returned non-object or null result` };
@@ -101,7 +101,7 @@ export function validateReviewerVerdict(
     if (!['APPROVE', 'REPLAN', 'BLOCKED'].includes(v.verdict)) {
       return {
         ok: false,
-        error: `Reviewer plan-review has missing or invalid verdict: ${v.verdict}`,
+        error: `Reviewer plan-review has missing or invalid verdict: ${v.verdict}`
       };
     }
     return { ok: true };
@@ -120,7 +120,7 @@ export function validateReviewerVerdict(
     if (!['ALLOW', 'DENY'].includes(v.verdict)) {
       return {
         ok: false,
-        error: `Reviewer permission has missing or invalid verdict: ${v.verdict}`,
+        error: `Reviewer permission has missing or invalid verdict: ${v.verdict}`
       };
     }
     return { ok: true };
@@ -131,7 +131,7 @@ export function validateReviewerVerdict(
     if (!['APPROVE', 'REWORK', 'NEEDS_CONTEXT', 'BLOCKED'].includes(v.verdict)) {
       return {
         ok: false,
-        error: `Reviewer final-review has missing or invalid verdict: ${v.verdict}`,
+        error: `Reviewer final-review has missing or invalid verdict: ${v.verdict}`
       };
     }
     return { ok: true };

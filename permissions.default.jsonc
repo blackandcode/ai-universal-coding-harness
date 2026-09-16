@@ -314,7 +314,7 @@
     // ============================================================
     "tar",
     "unzip",
-    "zip",
+    "zip"
   ],
   "terminalDenylist": [
     "git push",
@@ -322,6 +322,6 @@
     "git clean -f",
     "git rebase",
     "git merge",
-    "npm publish",
-  ],
+    "npm publish"
+  ]
 }

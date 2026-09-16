@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 export const DIST_DIR = path.resolve(path.dirname(path.dirname(__filename)));
 export const TOOL_DIR = path.dirname(DIST_DIR);
 export const PROJECT_ROOT = path.resolve(
-  process.env.AI_HARNESS_PROJECT_ROOT || process.env.AI_STAGE_PROJECT_ROOT || process.cwd(),
+  process.env.AI_HARNESS_PROJECT_ROOT || process.env.AI_STAGE_PROJECT_ROOT || process.cwd()
 );
 
 export function globalConfigDir(): string {
@@ -22,13 +22,13 @@ export function globalConfigDir(): string {
   if (process.platform === 'win32')
     return path.join(
       process.env.APPDATA || path.join(home, 'AppData', 'Roaming'),
-      'ai-universal-coding-harness',
+      'ai-universal-coding-harness'
     );
   if (process.platform === 'darwin')
     return path.join(home, 'Library', 'Application Support', 'ai-universal-coding-harness');
   return path.join(
     process.env.XDG_CONFIG_HOME || path.join(home, '.config'),
-    'ai-universal-coding-harness',
+    'ai-universal-coding-harness'
   );
 }
 
@@ -61,7 +61,7 @@ export function getConfigSources(root = PROJECT_ROOT): ConfigSources {
     global: globalConfigPath(),
     legacyProject: legacyProjectTrackedConfigPath(root),
     project: projectTrackedConfigPath(root),
-    projectLocal: projectLocalConfigPath(root),
+    projectLocal: projectLocalConfigPath(root)
   };
 }
 

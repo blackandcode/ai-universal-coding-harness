@@ -418,7 +418,7 @@ class Order {
     private readonly orderId: string,
     private readonly customerName: string,
     private readonly customerEmail: string,
-    private readonly items: OrderItem[],
+    private readonly items: OrderItem[]
   ) {}
 
   id(): string {
@@ -442,7 +442,7 @@ class Order {
 class Customer {
   constructor(
     private readonly _name: string,
-    private readonly _email: string,
+    private readonly _email: string
   ) {}
 
   name(): string {
@@ -457,7 +457,7 @@ class Order {
   constructor(
     private readonly orderId: string,
     private readonly _customer: Customer,
-    private readonly items: OrderItem[],
+    private readonly items: OrderItem[]
   ) {}
 
   id(): string {
@@ -883,7 +883,7 @@ Use this move when a method uses more data from another object than from its own
 class Rental {
   constructor(
     private readonly movie: Movie,
-    private readonly daysRented: number,
+    private readonly daysRented: number
   ) {}
 
   charge(): number {
@@ -909,7 +909,7 @@ class Movie {
 class Rental {
   constructor(
     private readonly movie: Movie,
-    private readonly daysRented: number,
+    private readonly daysRented: number
   ) {}
 
   charge(): number {

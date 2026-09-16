@@ -27,7 +27,7 @@ export interface LegacyConfigAliases {
 export type CompatibleConfig = OrchestratorConfig & LegacyConfigAliases;
 
 export function createCompatibleConfig(
-  cfg: OrchestratorConfig = EFFECTIVE_CONFIG,
+  cfg: OrchestratorConfig = EFFECTIVE_CONFIG
 ): CompatibleConfig {
   return {
     ...cfg,
@@ -75,7 +75,7 @@ export function createCompatibleConfig(
     },
     get FOCUS_LOG_MAX_BYTES() {
       return cfg.focusLogMaxBytes;
-    },
+    }
   };
 }
 

@@ -14,7 +14,7 @@ const VALID_PERMISSION_MODES: ReadonlySet<string> = new Set([
   'auto_safe',
   'allow_all',
   'allowlist',
-  'ask_reviewer',
+  'ask_reviewer'
 ]);
 
 const VALID_FALLBACK_TRIGGERS: ReadonlySet<ReviewerFallbackTrigger> = new Set([
@@ -24,7 +24,7 @@ const VALID_FALLBACK_TRIGGERS: ReadonlySet<ReviewerFallbackTrigger> = new Set([
   'no_result',
   'process_crash',
   'timeout',
-  'turn_failed',
+  'turn_failed'
 ]);
 
 const DEFAULT_FALLBACK_TRIGGERS: ReviewerFallbackTrigger[] = [
@@ -34,13 +34,13 @@ const DEFAULT_FALLBACK_TRIGGERS: ReviewerFallbackTrigger[] = [
   'no_result',
   'process_crash',
   'timeout',
-  'turn_failed',
+  'turn_failed'
 ];
 
 export function validateAndNormalizeConfig(
   raw: unknown,
   base: OrchestratorConfig,
-  projectRoot = PROJECT_ROOT,
+  projectRoot = PROJECT_ROOT
 ): OrchestratorConfig {
   if (raw !== null && typeof raw !== 'object') {
     throw new ConfigError('Configuration layer must be an object');
@@ -82,15 +82,15 @@ export function validateAndNormalizeConfig(
       (c.reviewerHarness !== base.reviewerHarness ? c.reviewerHarness : undefined) ??
       baseReviewer?.primary?.harness ??
       c.reviewerHarness ??
-      'codex',
+      'codex'
   );
   const primaryModel = String(
-    rawReviewer?.primary?.model ?? baseReviewer?.primary?.model ?? 'gpt-6-astra',
+    rawReviewer?.primary?.model ?? baseReviewer?.primary?.model ?? 'gpt-6-astra'
   );
 
   const fallbackTriggers = Array.isArray(rawReviewer?.fallback?.triggers)
     ? rawReviewer.fallback.triggers.filter((t): t is ReviewerFallbackTrigger =>
-        VALID_FALLBACK_TRIGGERS.has(t as ReviewerFallbackTrigger),
+        VALID_FALLBACK_TRIGGERS.has(t as ReviewerFallbackTrigger)
       )
     : (baseReviewer?.fallback?.triggers ?? DEFAULT_FALLBACK_TRIGGERS);
 
@@ -103,10 +103,10 @@ export function validateAndNormalizeConfig(
       verbosity: rawReviewer?.primary?.verbosity ?? baseReviewer?.primary?.verbosity ?? 'low',
       timeoutMinutes: Math.max(
         1,
-        Number(rawReviewer?.primary?.timeoutMinutes ?? baseReviewer?.primary?.timeoutMinutes ?? 8),
+        Number(rawReviewer?.primary?.timeoutMinutes ?? baseReviewer?.primary?.timeoutMinutes ?? 8)
       ),
       contextMode:
-        rawReviewer?.primary?.contextMode ?? baseReviewer?.primary?.contextMode ?? 'evidence_only',
+        rawReviewer?.primary?.contextMode ?? baseReviewer?.primary?.contextMode ?? 'evidence_only'
     },
     fallback: {
       enabled:
@@ -114,19 +114,17 @@ export function validateAndNormalizeConfig(
           ? rawReviewer.fallback.enabled
           : (baseReviewer?.fallback?.enabled ?? true),
       harness: String(
-        rawReviewer?.fallback?.harness ?? baseReviewer?.fallback?.harness ?? 'cursor',
+        rawReviewer?.fallback?.harness ?? baseReviewer?.fallback?.harness ?? 'cursor'
       ),
       model: String(
-        rawReviewer?.fallback?.model ?? baseReviewer?.fallback?.model ?? 'gemini-3.8-flash',
+        rawReviewer?.fallback?.model ?? baseReviewer?.fallback?.model ?? 'gemini-3.8-flash'
       ),
       thinking: rawReviewer?.fallback?.thinking ?? baseReviewer?.fallback?.thinking ?? 'high',
       triggers: fallbackTriggers.length > 0 ? fallbackTriggers : DEFAULT_FALLBACK_TRIGGERS,
       timeoutMinutes: Math.max(
         1,
-        Number(
-          rawReviewer?.fallback?.timeoutMinutes ?? baseReviewer?.fallback?.timeoutMinutes ?? 8,
-        ),
-      ),
+        Number(rawReviewer?.fallback?.timeoutMinutes ?? baseReviewer?.fallback?.timeoutMinutes ?? 8)
+      )
     },
     largeDiff: {
       thresholdChars: Math.max(
@@ -134,29 +132,29 @@ export function validateAndNormalizeConfig(
         Number(
           rawReviewer?.largeDiff?.thresholdChars ??
             baseReviewer?.largeDiff?.thresholdChars ??
-            300000,
-        ),
+            300000
+        )
       ),
       harness: String(
-        rawReviewer?.largeDiff?.harness ?? baseReviewer?.largeDiff?.harness ?? 'cursor',
+        rawReviewer?.largeDiff?.harness ?? baseReviewer?.largeDiff?.harness ?? 'cursor'
       ),
       model: String(
-        rawReviewer?.largeDiff?.model ?? baseReviewer?.largeDiff?.model ?? 'gemini-3.8-flash',
+        rawReviewer?.largeDiff?.model ?? baseReviewer?.largeDiff?.model ?? 'gemini-3.8-flash'
       ),
       thinking: rawReviewer?.largeDiff?.thinking ?? baseReviewer?.largeDiff?.thinking ?? 'high',
       timeoutMinutes: Math.max(
         1,
         Number(
-          rawReviewer?.largeDiff?.timeoutMinutes ?? baseReviewer?.largeDiff?.timeoutMinutes ?? 10,
-        ),
-      ),
+          rawReviewer?.largeDiff?.timeoutMinutes ?? baseReviewer?.largeDiff?.timeoutMinutes ?? 10
+        )
+      )
     },
     permission: {
       harness: String(
-        rawReviewer?.permission?.harness ?? baseReviewer?.permission?.harness ?? 'cursor',
+        rawReviewer?.permission?.harness ?? baseReviewer?.permission?.harness ?? 'cursor'
       ),
       model: String(
-        rawReviewer?.permission?.model ?? baseReviewer?.permission?.model ?? 'composer-2.5-fast',
+        rawReviewer?.permission?.model ?? baseReviewer?.permission?.model ?? 'composer-2.5-fast'
       ),
       thinking: rawReviewer?.permission?.thinking ?? baseReviewer?.permission?.thinking ?? 'low',
       reasoningEffort:
@@ -166,10 +164,10 @@ export function validateAndNormalizeConfig(
       timeoutSeconds: Math.max(
         5,
         Number(
-          rawReviewer?.permission?.timeoutSeconds ?? baseReviewer?.permission?.timeoutSeconds ?? 30,
-        ),
-      ),
-    },
+          rawReviewer?.permission?.timeoutSeconds ?? baseReviewer?.permission?.timeoutSeconds ?? 30
+        )
+      )
+    }
   };
 
   return c;

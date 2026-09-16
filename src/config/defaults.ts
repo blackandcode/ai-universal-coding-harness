@@ -13,7 +13,7 @@ export const DEFAULT_CONFIG: OrchestratorConfig = {
       harness: 'codex',
       model: 'gpt-6-astra',
       reasoningEffort: 'medium',
-      timeoutMinutes: 8,
+      timeoutMinutes: 8
     },
     fallback: {
       enabled: true,
@@ -27,22 +27,22 @@ export const DEFAULT_CONFIG: OrchestratorConfig = {
         'no_result',
         'process_crash',
         'timeout',
-        'turn_failed',
-      ],
+        'turn_failed'
+      ]
     },
     largeDiff: {
       thresholdChars: 300000,
       harness: 'cursor',
       model: 'gemini-3.8-flash',
-      thinking: 'high',
+      thinking: 'high'
     },
     permission: {
       harness: 'cursor',
       model: 'composer-2.5-fast',
       thinking: 'low',
       reasoningEffort: 'low',
-      timeoutSeconds: 30,
-    },
+      timeoutSeconds: 30
+    }
   },
   maxPlanReviews: 3,
   finalPlanReview: true,
@@ -63,7 +63,7 @@ export const DEFAULT_CONFIG: OrchestratorConfig = {
       binary: 'agent',
       model: 'gemini-3.8-flash',
       thinking: 'high',
-      turnTimeoutMinutes: 45,
+      turnTimeoutMinutes: 45
     },
     codex: {
       binary: 'codex',
@@ -71,8 +71,8 @@ export const DEFAULT_CONFIG: OrchestratorConfig = {
       reasoningEffort: 'low',
       verbosity: 'low',
       timeoutMinutes: 8,
-      contextMode: 'evidence_only',
-    },
+      contextMode: 'evidence_only'
+    }
   },
-  harnessModules: [],
+  harnessModules: []
 };

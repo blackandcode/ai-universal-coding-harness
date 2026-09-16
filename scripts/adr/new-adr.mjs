@@ -159,7 +159,7 @@ export async function findNextAdrNumber(adrDir) {
 
 export function updateAdrIndex(
   existingContent,
-  { number, title, filename, date, status = 'Proposed' },
+  { number, title, filename, date, status = 'Proposed' }
 ) {
   const header =
     '# Architecture Decision Records (ADR)\n\nThis directory contains durable Architecture Decision Records for AI Universal Coding Harness.\n\n| Number | Title | Status | Date |\n| --- | --- | --- | --- |';
@@ -182,7 +182,7 @@ export async function createNewAdr({
   title,
   template = 'nygard',
   date = todayIso(),
-  dryRun = false,
+  dryRun = false
 }) {
   if (!title || !title.trim()) {
     throw new Error('ADR title is required.');
@@ -217,7 +217,7 @@ export async function createNewAdr({
     title: cleanTitle,
     filename,
     date,
-    status: 'Proposed',
+    status: 'Proposed'
   });
 
   if (!dryRun) {
@@ -234,7 +234,7 @@ export async function createNewAdr({
     filePath,
     template,
     date,
-    dryRun,
+    dryRun
   };
 }
 
@@ -262,10 +262,10 @@ if (process.argv[1] && process.argv[1].endsWith('new-adr.mjs')) {
       date: { type: 'string' },
       root: { type: 'string', default: process.cwd() },
       'dry-run': { type: 'boolean', default: false },
-      help: { type: 'boolean', short: 'h', default: false },
+      help: { type: 'boolean', short: 'h', default: false }
     },
     allowPositionals: true,
-    strict: true,
+    strict: true
   });
 
   if (values.help) {
@@ -276,7 +276,7 @@ if (process.argv[1] && process.argv[1].endsWith('new-adr.mjs')) {
   const title = values.title || positionals.join(' ').trim();
   if (!title) {
     console.error(
-      'Error: ADR title is required. Example: npm run adr:new -- -t "Choose Stage Execution Model"',
+      'Error: ADR title is required. Example: npm run adr:new -- -t "Choose Stage Execution Model"'
     );
     process.exit(1);
   }
@@ -287,7 +287,7 @@ if (process.argv[1] && process.argv[1].endsWith('new-adr.mjs')) {
       title,
       template: values.template,
       date: values.date,
-      dryRun: values['dry-run'],
+      dryRun: values['dry-run']
     });
 
     if (result.dryRun) {

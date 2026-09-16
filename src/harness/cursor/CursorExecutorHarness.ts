@@ -15,7 +15,7 @@ import type {
   ExecutorSession,
   ExecutorSessionCallbacks,
   HarnessInfo,
-  HarnessPreflightResult,
+  HarnessPreflightResult
 } from '../types.js';
 import type { CommandObservation } from '../../types.js';
 import { CONFIG, harnessNumber, harnessString } from '../../core/config.js';
@@ -33,7 +33,7 @@ export class CursorExecutorHarness implements ExecutorHarness {
     binary: 'agent',
     model: 'gemini-3.8-flash',
     thinking: 'high',
-    turnTimeoutMinutes: 45,
+    turnTimeoutMinutes: 45
   };
   private binary = harnessString('cursor', 'binary', CursorExecutorHarness.defaults.binary);
   private model = harnessString('cursor', 'model', CursorExecutorHarness.defaults.model);
@@ -41,13 +41,13 @@ export class CursorExecutorHarness implements ExecutorHarness {
   private turnTimeoutMinutes = harnessNumber(
     'cursor',
     'turnTimeoutMinutes',
-    CursorExecutorHarness.defaults.turnTimeoutMinutes,
+    CursorExecutorHarness.defaults.turnTimeoutMinutes
   );
   info: HarnessInfo = {
     id: 'cursor',
     label: `${this.model} ${this.thinking}`,
     role: 'executor',
-    model: this.model,
+    model: this.model
   };
   constructor(private ctx: any) {
     this.binary = ctx?.executorBinary || this.binary;
@@ -69,7 +69,7 @@ export class CursorExecutorHarness implements ExecutorHarness {
       model: this.model,
       thinking: this.thinking,
       turnTimeoutMinutes: this.turnTimeoutMinutes,
-      events: this.ctx.events,
+      events: this.ctx.events
     });
     await s.start();
     return s;
@@ -108,7 +108,7 @@ export class CursorAcpSession implements ExecutorSession {
       attempt?: number;
       runId?: string;
       observationsFile?: string;
-    },
+    }
   ) {
     ensureDir(path.dirname(o.eventsFile));
     ensureDir(path.dirname(o.focusFile));
@@ -132,7 +132,7 @@ export class CursorAcpSession implements ExecutorSession {
       },
       onPlanRequest: (m) => this.handlePlan(m),
       onQuestionRequest: (m) => this.handleQuestion(m),
-      onPermissionRequest: (m) => this.handlePermission(m),
+      onPermissionRequest: (m) => this.handlePermission(m)
     });
     if (!fs.existsSync(o.focusFile)) fs.writeFileSync(o.focusFile, '');
   }
@@ -161,7 +161,7 @@ export class CursorAcpSession implements ExecutorSession {
       },
       onPlanRequest: (m) => this.handlePlan(m),
       onQuestionRequest: (m) => this.handleQuestion(m),
-      onPermissionRequest: (m) => this.handlePermission(m),
+      onPermissionRequest: (m) => this.handlePermission(m)
     });
   }
   observedCommands(): CommandObservation[] {
@@ -175,7 +175,7 @@ export class CursorAcpSession implements ExecutorSession {
         runId: this.o.runId,
         stageName: this.o.stageName,
         attempt: this.o.attempt,
-        workspace: this.o.workspace,
+        workspace: this.o.workspace
       });
       for (const obs of replayed) {
         this.journal.record(obs, true);
@@ -184,7 +184,7 @@ export class CursorAcpSession implements ExecutorSession {
       if (current.length > 0) {
         this.o.events?.emit?.('log', {
           level: 'info',
-          message: `Replayed ${current.length} executor observations from historical ACP log.`,
+          message: `Replayed ${current.length} executor observations from historical ACP log.`
         });
       }
     } catch (e: any) {
@@ -203,7 +203,7 @@ export class CursorAcpSession implements ExecutorSession {
   private request(
     method: string,
     params: any,
-    timeoutMs = this.o.turnTimeoutMinutes * 60_000,
+    timeoutMs = this.o.turnTimeoutMinutes * 60_000
   ): Promise<any> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
@@ -220,7 +220,7 @@ export class CursorAcpSession implements ExecutorSession {
     this.child = spawn(this.o.binary, ['--model', this.o.model, 'acp'], {
       cwd: this.o.workspace,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: process.env,
+      env: process.env
     });
     this.child.stdin?.on?.('error', (e: any) => {
       if (e?.code !== 'EPIPE')
@@ -245,9 +245,9 @@ export class CursorAcpSession implements ExecutorSession {
       {
         protocolVersion: 1,
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-        clientInfo: { name: 'ai-universal-coding-harness', version: VERSION },
+        clientInfo: { name: 'ai-universal-coding-harness', version: VERSION }
       },
-      60_000,
+      60_000
     );
     this.capabilities = init?.agentCapabilities || init?.agent_capabilities || {};
     try {
@@ -262,18 +262,18 @@ export class CursorAcpSession implements ExecutorSession {
         ns = await this.request(
           'session/load',
           { sessionId: this.o.resumeSessionId, cwd: this.o.workspace, mcpServers: [] },
-          60_000,
+          60_000
         );
         this.id = this.o.resumeSessionId;
         this.o.events.emit('log', {
           level: 'info',
-          message: `Resumed executor session ${this.id}.`,
+          message: `Resumed executor session ${this.id}.`
         });
       } catch (e: any) {
         appendBounded(
           this.o.runLog,
           `[executor session/load failed] ${e.message}`,
-          CONFIG.runLogMaxBytes,
+          CONFIG.runLogMaxBytes
         );
       }
     }
@@ -297,7 +297,7 @@ export class CursorAcpSession implements ExecutorSession {
       },
       onPlanRequest: (m) => this.handlePlan(m),
       onQuestionRequest: (m) => this.handleQuestion(m),
-      onPermissionRequest: (m) => this.handlePermission(m),
+      onPermissionRequest: (m) => this.handlePermission(m)
     });
     this.o.callbacks.onSessionId?.(this.id);
     const cfg = ns?.configOptions || ns?.config_options || [];
@@ -310,11 +310,11 @@ export class CursorAcpSession implements ExecutorSession {
         await this.request(
           'session/set_config_option',
           { sessionId: this.id, configId: 'thinking', value: this.o.thinking },
-          60_000,
+          60_000
         );
         this.o.events.emit('log', {
           level: 'info',
-          message: `Executor thinking set to ${this.o.thinking}.`,
+          message: `Executor thinking set to ${this.o.thinking}.`
         });
       } catch {}
     }
@@ -326,7 +326,7 @@ export class CursorAcpSession implements ExecutorSession {
     } catch (e: any) {
       this.o.events.emit('log', {
         level: 'warn',
-        message: `Unable to set executor mode ${mode}: ${e.message}`,
+        message: `Unable to set executor mode ${mode}: ${e.message}`
       });
     }
     this.o.events.emit('executor.mode', { mode });
@@ -335,7 +335,7 @@ export class CursorAcpSession implements ExecutorSession {
     this.agentText = '';
     let r = await this.request('session/prompt', {
       sessionId: this.id,
-      prompt: [{ type: 'text', text }],
+      prompt: [{ type: 'text', text }]
     });
     let combined = this.agentText;
     let n = 0;
@@ -348,7 +348,7 @@ export class CursorAcpSession implements ExecutorSession {
         rs.map((x) => `COMMAND: ${x.command}\nEXIT: ${x.code}\nOUTPUT:\n${x.output}`).join('\n\n');
       r = await this.request('session/prompt', {
         sessionId: this.id,
-        prompt: [{ type: 'text', text: note }],
+        prompt: [{ type: 'text', text: note }]
       });
       combined += '\n' + this.agentText;
     }
@@ -416,7 +416,7 @@ export class CursorAcpSession implements ExecutorSession {
     this.o.events.emit('executor.plan.request', { name: p.name || '', overview: p.overview || '' });
     if (!plan) {
       this.respond(m.id, {
-        outcome: { outcome: 'rejected', reason: 'Plan is empty. Submit a complete plan.' },
+        outcome: { outcome: 'rejected', reason: 'Plan is empty. Submit a complete plan.' }
       });
       return;
     }
@@ -427,27 +427,27 @@ export class CursorAcpSession implements ExecutorSession {
         this.o.events.emit('reviewer.plan', {
           verdict: d.status || 'APPROVE',
           summary: d.verdict?.summary || 'Plan accepted.',
-          feedback: d.carryover || '',
+          feedback: d.carryover || ''
         });
       } else {
         this.respond(m.id, {
           outcome: {
             outcome: 'rejected',
-            reason: `Revise the entire current plan and incorporate ALL consolidated feedback below in one revision:\n\n${d.feedback || ''}`,
-          },
+            reason: `Revise the entire current plan and incorporate ALL consolidated feedback below in one revision:\n\n${d.feedback || ''}`
+          }
         });
         this.o.events.emit('reviewer.plan', {
           verdict: 'REPLAN',
           summary: d.verdict?.summary || '',
-          feedback: d.feedback || '',
+          feedback: d.feedback || ''
         });
       }
     } catch (e: any) {
       this.respond(m.id, {
         outcome: {
           outcome: 'rejected',
-          reason: `Reviewer unavailable or plan review failed. Keep the current complete plan and resubmit once. Error: ${e.message}`,
-        },
+          reason: `Reviewer unavailable or plan review failed. Keep the current complete plan and resubmit once. Error: ${e.message}`
+        }
       });
     }
   }
@@ -456,20 +456,20 @@ export class CursorAcpSession implements ExecutorSession {
     this.o.events.emit('executor.question', {
       title: p.title || '',
       prompt: (p.questions || []).map((q: any) => q.prompt).join(' | '),
-      questions: p.questions || [],
+      questions: p.questions || []
     });
     try {
       const a = await this.o.callbacks.onQuestion(p);
       this.respond(m.id, { outcome: { outcome: 'answered', answers: a.answers } });
       this.o.events.emit('reviewer.question', {
         answer: a.answers.map((x) => x.selectedOptionIds.join(',')).join(' | '),
-        rationale: a.rationale,
+        rationale: a.rationale
       });
     } catch (e: any) {
       this.respond(m.id, { outcome: { outcome: 'cancelled' } });
       this.o.events.emit('log', {
         level: 'warn',
-        message: `Question could not be resolved automatically: ${e.message}`,
+        message: `Question could not be resolved automatically: ${e.message}`
       });
     }
   }
@@ -484,7 +484,7 @@ export class CursorAcpSession implements ExecutorSession {
       command: String(command || ''),
       description: tc.title || p.description || '',
       paths,
-      raw: p,
+      raw: p
     };
   }
   private pickOption(p: any, allow: boolean) {
@@ -502,7 +502,7 @@ export class CursorAcpSession implements ExecutorSession {
     const p = m.params || {};
     const req = this.permissionRequest(p);
     this.o.events.emit('executor.permission', {
-      summary: req.command || req.description || 'permission request',
+      summary: req.command || req.description || 'permission request'
     });
     let decision: { allow: boolean; reason: string };
     try {
@@ -510,12 +510,12 @@ export class CursorAcpSession implements ExecutorSession {
     } catch (e: any) {
       decision = {
         allow: false,
-        reason: `Permission reviewer failed: ${e.message}. Denying this operation only; continue with another approach.`,
+        reason: `Permission reviewer failed: ${e.message}. Denying this operation only; continue with another approach.`
       };
     }
     this.o.events.emit('reviewer.permission', {
       verdict: decision.allow ? 'ALLOW' : 'DENY',
-      summary: decision.reason,
+      summary: decision.reason
     });
     let option = this.pickOption(p, decision.allow);
     if (!option && decision.allow && req.command) {
@@ -527,17 +527,17 @@ export class CursorAcpSession implements ExecutorSession {
           onStdoutLine: (l: string) =>
             this.o.events.emit('log', { level: 'info', message: `Command: ${l}` }),
           onStderrLine: (l: string) =>
-            this.o.events.emit('log', { level: 'warn', message: `Command: ${l}` }),
+            this.o.events.emit('log', { level: 'warn', message: `Command: ${l}` })
         });
         this.externalResults.push({
           command: req.command,
           code: r.code,
-          output: (r.stdout + r.stderr).slice(-20000),
+          output: (r.stdout + r.stderr).slice(-20000)
         });
         const seq = this.accumulator.stepSequence();
         if (
           /git\s+(apply|checkout|restore|clean)|rm\s+|mv\s+|cp\s+|touch\s+|sed\s+/i.test(
-            req.command,
+            req.command
           )
         ) {
           this.accumulator.markMutation(seq);
@@ -560,7 +560,7 @@ export class CursorAcpSession implements ExecutorSession {
           status: r.code === 0 ? 'completed' : 'failed',
           exit_code: r.code,
           cwd: this.o.workspace,
-          quality_epoch_id: this.qualityEpochId || undefined,
+          quality_epoch_id: this.qualityEpochId || undefined
         });
         this.respond(m.id, { outcome: { outcome: 'selected', optionId: denyOpt } });
         return;
@@ -573,7 +573,7 @@ export class CursorAcpSession implements ExecutorSession {
 
 export function parseAcpEvents(
   eventsFilePath: string,
-  opts?: { runId?: string; stageName?: string; attempt?: number; workspace?: string },
+  opts?: { runId?: string; stageName?: string; attempt?: number; workspace?: string }
 ): CommandObservation[] {
   if (!fs.existsSync(eventsFilePath)) return [];
   const content = fs.readFileSync(eventsFilePath, 'utf8');
@@ -614,8 +614,8 @@ export function parseAcpEvents(
           stageName: opts?.stageName,
           attempt: opts?.attempt,
           workspace: opts?.workspace,
-          isReplay: true,
-        },
+          isReplay: true
+        }
       );
 
       if (result.observation) {

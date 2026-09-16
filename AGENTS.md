@@ -34,14 +34,23 @@ Maintain a cross-platform TypeScript CLI that orchestrates staged AI software de
 
 ## Quality
 
-Before completing code changes:
+### Fast Day-to-Day Quality Gate (Default for Agents)
+
+For day-to-day iterative code changes, agents must run the fast incremental quality gate:
 
 ```bash
-npm run format:check
-npm run lint
-npm run typecheck
-npm test
-npm run test:cli
+npm run check:changed
+```
+
+This performs Oxfmt formatting check, Oxlint linting, full TypeScript typechecking, and targeted test execution only on modified/touched parts of the codebase.
+
+**Agent Directive**: Agents must NOT run the full test suite (`npm test`, `npm run test:coverage`, `npm run verify`, `npm pack --dry-run`) during routine iterations unless explicitly requested by the user.
+
+### Release & Pre-Push Quality Gate
+
+Full repository verification is enforced before git push via the pre-push gate (`scripts/pre-push.mjs`), which halts git push if any check fails:
+
+```bash
 npm run verify
 npm pack --dry-run
 ```

@@ -4,6 +4,24 @@ Current project scripts include clean/build/typecheck/unit/full tests/CLI verifi
 
 A typical change should run the smallest relevant fast checks during iteration and the repository canonical verification before release/merge readiness.
 
+## Two-tier quality gate structure
+
+### Tier 1: Fast Day-to-Day Iterative Gate (`npm run check:changed`)
+
+- **Scope**: Touched files (modified, staged, untracked).
+- **Execution**:
+  1. Oxfmt format check (`--check`) on touched files.
+  2. Oxlint linting on touched JS/TS files.
+  3. TypeScript typechecking (`tsconfig.json` and `tsconfig.test.json`).
+  4. Targeted unit test execution for touched source or test files.
+- **Agent Policy**: Default command for AI agents during routine iterations. Agents must NOT run the full test suite unless explicitly requested.
+
+### Tier 2: Canonical Release & Pre-Push Gate (`npm run verify`)
+
+- **Scope**: Entire repository.
+- **Execution**: Full Oxfmt formatting, full Oxlint linting, full TypeScript typechecking, full coverage test suite (85% line, 85% function, 80% branch coverage), CLI smoke tests, and package tarball integrity check (`scripts/package-check.mjs`).
+- **Enforcement**: Automated via Git pre-push hook (`.githooks/pre-push` -> `scripts/pre-push.mjs`). Any failure halts `git push` immediately.
+
 ## Gate categories
 
 - TypeScript compiler/typecheck;

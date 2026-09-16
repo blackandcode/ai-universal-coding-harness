@@ -9,7 +9,7 @@ import type {
   PlanReviewVerdict,
   QuestionVerdict,
   CommandObservation,
-  HarnessContext,
+  HarnessContext
 } from '../types.js';
 import type { PermissionRequest } from '../permissions/PermissionEngine.js';
 
@@ -138,7 +138,7 @@ export interface ExecutorSessionCallbacks {
   /** Invoked when the executor requests command execution or write permissions */
   onPermission: (
     request: PermissionRequest,
-    payload: unknown,
+    payload: unknown
   ) => Promise<{ allow: boolean; reason: string }>;
   /** Optional callback invoked when the harness assigns an in-process session ID */
   onSessionId?: (id: string) => void;
@@ -198,7 +198,7 @@ export interface ReviewerHarness {
   /** Evaluates an implementation plan */
   reviewPlan(
     input: PlanReviewInput,
-    opts?: { finalConsolidation?: boolean },
+    opts?: { finalConsolidation?: boolean }
   ): Promise<PlanReviewVerdict>;
   /** Answers blocking questions posed by the executor */
   answerQuestions(input: QuestionReviewInput): Promise<QuestionVerdict>;

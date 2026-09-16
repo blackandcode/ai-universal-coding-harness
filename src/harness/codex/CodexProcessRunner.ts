@@ -30,7 +30,7 @@ export class CodexProcessRunner {
       options.runDir,
       'reviewer-decisions',
       options.stageName || '_run',
-      `${String(options.decisionSeq).padStart(3, '0')}-${options.decisionKind}`,
+      `${String(options.decisionSeq).padStart(3, '0')}-${options.decisionKind}`
     );
     ensureDir(decisionDir);
 
@@ -65,7 +65,7 @@ export class CodexProcessRunner {
       '-c',
       `model_verbosity="${options.verbosity}"`,
       '-c',
-      'web_search="disabled"',
+      'web_search="disabled"'
     );
 
     if (!readonlyProject) {
@@ -102,7 +102,7 @@ export class CodexProcessRunner {
               kind: options.decisionKind,
               input: parsed.tokenUsage.input,
               cached: parsed.tokenUsage.cached,
-              output: parsed.tokenUsage.output,
+              output: parsed.tokenUsage.output
             });
           }
         },
@@ -110,7 +110,7 @@ export class CodexProcessRunner {
           if (options.runLog) {
             appendBounded(options.runLog, `[reviewer-stderr] ${line}`, CONFIG.runLogMaxBytes);
           }
-        },
+        }
       });
 
       if (r.code !== 0) {
@@ -122,19 +122,19 @@ export class CodexProcessRunner {
             signal: r.signal,
             stdout: r.stdout,
             stderr: r.stderr,
-            timedOut: r.timedOut,
-          },
+            timedOut: r.timedOut
+          }
         );
         Object.assign(err, {
           eventLines: recordedEventLines,
-          resultFileExists,
+          resultFileExists
         });
         throw err;
       }
 
       if (violation) {
         throw new Error(
-          `Reviewer ${options.decisionKind} role boundary violation: ${violationMessage}`,
+          `Reviewer ${options.decisionKind} role boundary violation: ${violationMessage}`
         );
       }
 
@@ -144,7 +144,7 @@ export class CodexProcessRunner {
       return {
         result: out,
         eventsFilePath: eventsFile,
-        decisionDir,
+        decisionDir
       };
     } finally {
       try {

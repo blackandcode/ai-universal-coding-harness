@@ -10,7 +10,7 @@ import type {
   AccumulatedToolState,
   ProcessToolResult,
   ToolStatus,
-  CommandConfidence,
+  CommandConfidence
 } from './types.js';
 import type { CommandObservation } from '../../types.js';
 import { iso } from '../../core/time.js';
@@ -75,7 +75,7 @@ export class AcpToolAccumulator {
       workspace?: string;
       qualityEpochId?: string;
       isReplay?: boolean;
-    } = {},
+    } = {}
   ): ProcessToolResult {
     this.sequence++;
 
@@ -183,7 +183,7 @@ export class AcpToolAccumulator {
       rawInput: raw,
       rawOutput: out,
       commandConfidence,
-      updatedAt: Date.now(),
+      updatedAt: Date.now()
     };
 
     this.tools.set(compositeKey, state);
@@ -207,7 +207,7 @@ export class AcpToolAccumulator {
         status,
         exit_code: exit,
         cwd: options.workspace,
-        quality_epoch_id: options.qualityEpochId,
+        quality_epoch_id: options.qualityEpochId
       };
     }
 
@@ -215,7 +215,7 @@ export class AcpToolAccumulator {
       state,
       isExecution,
       isMutation,
-      observation,
+      observation
     };
   }
 

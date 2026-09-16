@@ -24,7 +24,7 @@ export function createProcessResult(
   signal: NodeJS.Signals | null,
   stdout: string,
   stderr: string,
-  timedOut = false,
+  timedOut = false
 ): ProcessResult {
   return {
     exitCode,
@@ -34,7 +34,7 @@ export function createProcessResult(
     timedOut,
     get code(): number {
       return exitCode ?? 1;
-    },
+    }
   };
 }
 
@@ -58,7 +58,7 @@ export interface ProcessOptions {
 export function execSyncText(
   cmd: string,
   args: string[] = [],
-  opts: SyncProcessOptions = {},
+  opts: SyncProcessOptions = {}
 ): ProcessResult {
   const r = spawnSync(cmd, args, {
     encoding: 'utf8',
@@ -66,7 +66,7 @@ export function execSyncText(
     cwd: opts.cwd,
     env: opts.env,
     input: opts.input,
-    timeout: opts.timeout,
+    timeout: opts.timeout
   });
 
   const timedOut = Boolean(r.error && (r.error as NodeJS.ErrnoException).code === 'ETIMEDOUT');
@@ -75,19 +75,19 @@ export function execSyncText(
     r.signal,
     String(r.stdout || ''),
     String(r.stderr || ''),
-    timedOut,
+    timedOut
   );
 }
 
 export async function runProcess(
   cmd: string,
   args: string[],
-  opts: ProcessOptions = {},
+  opts: ProcessOptions = {}
 ): Promise<ProcessResult> {
   if (opts.signal?.aborted) {
     throw new ProcessExecutionError(`Command aborted before start: ${cmd} ${args.join(' ')}`, {
       signal: 'SIGTERM',
-      cause: opts.signal.reason,
+      cause: opts.signal.reason
     });
   }
 
@@ -96,7 +96,7 @@ export async function runProcess(
       cwd: opts.cwd,
       env: opts.env || process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
+      windowsHide: true
     });
 
     let stdout = '';
@@ -133,9 +133,9 @@ export async function runProcess(
               signal: 'SIGTERM',
               stdout,
               stderr,
-              cause: opts.signal?.reason,
-            }),
-          ),
+              cause: opts.signal?.reason
+            })
+          )
         );
       };
       opts.signal.addEventListener('abort', abortHandler, { once: true });
@@ -173,9 +173,9 @@ export async function runProcess(
           reject(
             new ProcessExecutionError(
               `Command timed out after ${opts.timeoutMs}ms: ${cmd} ${args.join(' ')}`,
-              { timedOut: true, stdout, stderr },
-            ),
-          ),
+              { timedOut: true, stdout, stderr }
+            )
+          )
         );
       }, opts.timeoutMs);
     }
@@ -186,10 +186,10 @@ export async function runProcess(
           new ProcessExecutionError(e.message, {
             stdout,
             stderr,
-            cause: e,
-          }),
-        ),
-      ),
+            cause: e
+          })
+        )
+      )
     );
 
     child.on('exit', (code: number | null, signal: NodeJS.Signals | null) =>
@@ -197,19 +197,19 @@ export async function runProcess(
         rlOut?.close();
         rlErr?.close();
         resolve(createProcessResult(code, signal, stdout, stderr, false));
-      }),
+      })
     );
   });
 }
 
 export async function runShellCommand(
   command: string,
-  opts: ProcessOptions = {},
+  opts: ProcessOptions = {}
 ): Promise<ProcessResult> {
   if (opts.signal?.aborted) {
     throw new ProcessExecutionError(`Command aborted before start: ${command}`, {
       signal: 'SIGTERM',
-      cause: opts.signal.reason,
+      cause: opts.signal.reason
     });
   }
 
@@ -219,7 +219,7 @@ export async function runShellCommand(
       env: opts.env || process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
-      windowsHide: true,
+      windowsHide: true
     });
 
     let stdout = '';
@@ -256,9 +256,9 @@ export async function runShellCommand(
               signal: 'SIGTERM',
               stdout,
               stderr,
-              cause: opts.signal?.reason,
-            }),
-          ),
+              cause: opts.signal?.reason
+            })
+          )
         );
       };
       opts.signal.addEventListener('abort', abortHandler, { once: true });
@@ -292,9 +292,9 @@ export async function runShellCommand(
             new ProcessExecutionError(`Command timed out after ${opts.timeoutMs}ms: ${command}`, {
               timedOut: true,
               stdout,
-              stderr,
-            }),
-          ),
+              stderr
+            })
+          )
         );
       }, opts.timeoutMs);
     }
@@ -305,10 +305,10 @@ export async function runShellCommand(
           new ProcessExecutionError(e.message, {
             stdout,
             stderr,
-            cause: e,
-          }),
-        ),
-      ),
+            cause: e
+          })
+        )
+      )
     );
 
     child.on('exit', (code: number | null, signal: NodeJS.Signals | null) =>
@@ -316,7 +316,7 @@ export async function runShellCommand(
         rlOut?.close();
         rlErr?.close();
         resolve(createProcessResult(code, signal, stdout, stderr, false));
-      }),
+      })
     );
   });
 }
@@ -338,7 +338,7 @@ export function commandExists(name: string): boolean {
     for (const ext of exts) {
       const p = path.join(
         dir,
-        process.platform === 'win32' && path.extname(name) ? name : name + ext,
+        process.platform === 'win32' && path.extname(name) ? name : name + ext
       );
       try {
         fs.accessSync(p, fs.constants.X_OK);

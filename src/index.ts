@@ -13,7 +13,7 @@ export {
   LockConflictError,
   RunStateError,
   ProcessExecutionError,
-  type ErrorOptions,
+  type ErrorOptions
 } from './errors.js';
 
 // Domain types & contracts
@@ -47,7 +47,7 @@ export {
   type TypedUiEvent,
   type GenericUiEvent,
   type KnownUiEventType,
-  type UiEventPayloadMap,
+  type UiEventPayloadMap
 } from './types.js';
 
 // Configuration
@@ -86,7 +86,7 @@ export {
   type ConfigSources,
   type ConfigSummary,
   type CompatibleConfig,
-  type LegacyConfigAliases,
+  type LegacyConfigAliases
 } from './config/index.js';
 
 // Harness registry & contracts
@@ -110,24 +110,24 @@ export {
   type ReviewerFallbackTrigger,
   type ReviewerModelConfig,
   type ReviewerRouterConfig,
-  type ReviewerFallbackMetadata,
+  type ReviewerFallbackMetadata
 } from './harness/types.js';
 export {
   ReviewerErrorClassifier,
-  type ReviewerClassificationResult,
+  type ReviewerClassificationResult
 } from './harness/ReviewerErrorClassifier.js';
 export {
   CursorReviewerHarness,
-  extractJsonFromText,
+  extractJsonFromText
 } from './harness/cursor/CursorReviewerHarness.js';
 export {
   ReviewPayloadBuilder,
   type ReviewDiffMetrics,
-  type BuildReviewPayloadOptions,
+  type BuildReviewPayloadOptions
 } from './orchestrator/services/ReviewPayloadBuilder.js';
 export {
   ReviewerRouter,
-  type ReviewerRouterOptions,
+  type ReviewerRouterOptions
 } from './orchestrator/services/ReviewerRouter.js';
 
 // Stages & Planning
@@ -138,7 +138,7 @@ export {
   selectorNum,
   type RequiredStageFile,
   type StageValidationIssue,
-  type StageValidationReport,
+  type StageValidationReport
 } from './stages/StageSource.js';
 export { PlanCoordinator } from './stages/PlanCoordinator.js';
 
@@ -150,12 +150,12 @@ export { BranchManager } from './git/BranchManager.js';
 export {
   ProjectWorkspace,
   type WorkspaceInitResult,
-  type RunSummary,
+  type RunSummary
 } from './project/ProjectWorkspace.js';
 export {
   RunStateStore,
   validateRunState,
-  validateStageRuntimeState,
+  validateStageRuntimeState
 } from './state/RunStateStore.js';
 export { RunLock, type LockPayload } from './state/RunLock.js';
 
@@ -168,7 +168,7 @@ export {
   createProcessResult,
   type ProcessResult,
   type ProcessOptions,
-  type SyncProcessOptions,
+  type SyncProcessOptions
 } from './core/process.js';
 
 // Orchestrator & Quality
@@ -176,12 +176,12 @@ export { Orchestrator } from './orchestrator/Orchestrator.js';
 export {
   RecoveryManager,
   type RecoveryResult,
-  type RecoveryOptions,
+  type RecoveryOptions
 } from './orchestrator/RecoveryManager.js';
 export {
   PermissionEngine,
   type PermissionRequest,
-  type PermissionDecision,
+  type PermissionDecision
 } from './permissions/PermissionEngine.js';
 export { EvidenceService, type CorroborationResult } from './quality/EvidenceService.js';
 export {
@@ -189,7 +189,7 @@ export {
   validateEvidence,
   normalizeCommand,
   commandMatches,
-  type VerificationContext,
+  type VerificationContext
 } from './quality/EvidenceVerifier.js';
 export { AcpToolAccumulator } from './harness/cursor/AcpToolAccumulator.js';
 export {
@@ -197,11 +197,11 @@ export {
   type ProcessToolResult,
   type ToolStatus,
   type CommandConfidence,
-  type ParseAcpOptions,
+  type ParseAcpOptions
 } from './harness/cursor/types.js';
 export {
   AcpEventNormalizer,
-  type AcpEventNormalizerOptions,
+  type AcpEventNormalizerOptions
 } from './harness/cursor/AcpEventNormalizer.js';
 export { ObservationJournal } from './harness/cursor/ObservationJournal.js';
 export { parseAcpEvents } from './harness/cursor/CursorExecutorHarness.js';
@@ -209,7 +209,7 @@ export {
   parseCodexEventLine,
   validateReviewerVerdict,
   type ParsedCodexEvent,
-  type TokenUsage,
+  type TokenUsage
 } from './harness/codex/CodexEventParser.js';
 export { CodexPromptBuilder } from './harness/codex/CodexPromptBuilder.js';
 export { CodexProcessRunner } from './harness/codex/CodexProcessRunner.js';
@@ -236,7 +236,7 @@ export type {
   RunUiStatus,
   StartInkUiOptions,
   FollowInkUiOptions,
-  InkUiInstance,
+  InkUiInstance
 } from './ui/types.js';
 
 // CLI Parser & Dispatch

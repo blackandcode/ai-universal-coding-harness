@@ -17,7 +17,7 @@ try {
   // Fixture 2: no-async-promise-executor
   fs.writeFileSync(
     path.join(tmpDir, 'async-executor.ts'),
-    'new Promise(async (resolve, reject) => { resolve(1); reject(2); });\n',
+    'new Promise(async (resolve, reject) => { resolve(1); reject(2); });\n'
   );
 
   // Fixture 3: node/no-exports-assign
@@ -29,19 +29,19 @@ try {
   // Fixture 5: eqeqeq
   fs.writeFileSync(
     path.join(tmpDir, 'eqeqeq.ts'),
-    'export function checkEquality(a: number, b: number) { if (a == b) return true; return false; }\n',
+    'export function checkEquality(a: number, b: number) { if (a == b) return true; return false; }\n'
   );
 
   // Fixture 6: no-self-compare
   fs.writeFileSync(
     path.join(tmpDir, 'self-compare.ts'),
-    'export function checkSelf(x: number) { if (x === x) return true; return false; }\n',
+    'export function checkSelf(x: number) { if (x === x) return true; return false; }\n'
   );
 
   // Fixture 7: react/jsx-key
   fs.writeFileSync(
     path.join(tmpDir, 'jsx-key.tsx'),
-    'export const List = () => [1, 2].map((n) => <span>{n}</span>);\n',
+    'export const List = () => [1, 2].map((n) => <span>{n}</span>);\n'
   );
 
   // Fixture 8: no-unused-vars
@@ -52,7 +52,7 @@ try {
 
   const result = spawnSync(oxlintBin, ['-c', configPath, tmpDir], {
     encoding: 'utf8',
-    shell: process.platform === 'win32',
+    shell: process.platform === 'win32'
   });
 
   if (result.status === 0) {
@@ -70,14 +70,14 @@ try {
     'eqeqeq',
     'no-self-compare',
     'jsx-key',
-    'no-unused-vars',
+    'no-unused-vars'
   ];
 
   const missingRules = expectedRules.filter((rule) => !output.includes(rule));
 
   if (missingRules.length > 0) {
     console.error(
-      `Oxlint rule verification failed. Missing expected diagnostics: ${missingRules.join(', ')}`,
+      `Oxlint rule verification failed. Missing expected diagnostics: ${missingRules.join(', ')}`
     );
     console.error('Oxlint output:\n', output);
     process.exit(2);

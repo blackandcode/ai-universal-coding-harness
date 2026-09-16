@@ -24,7 +24,7 @@ function parseLock(data: unknown): Partial<LockPayload> | null {
     pid: Number.isFinite(pidNum) && pidNum > 0 ? pidNum : undefined,
     run_id: typeof obj.run_id === 'string' ? obj.run_id : undefined,
     branch: typeof obj.branch === 'string' ? obj.branch : undefined,
-    started_at: typeof obj.started_at === 'string' ? obj.started_at : undefined,
+    started_at: typeof obj.started_at === 'string' ? obj.started_at : undefined
   };
 }
 
@@ -48,7 +48,7 @@ export class RunLock {
       } catch {}
       if (prior?.pid && pidAlive(prior.pid)) {
         throw new LockConflictError(
-          `Another orchestrator process is active (PID ${prior.pid}, run ${prior.run_id || 'unknown'}, branch ${prior.branch || 'unknown'}).`,
+          `Another orchestrator process is active (PID ${prior.pid}, run ${prior.run_id || 'unknown'}, branch ${prior.branch || 'unknown'}).`
         );
       }
       try {
@@ -59,7 +59,7 @@ export class RunLock {
       pid: process.pid,
       run_id: runId,
       branch,
-      started_at: iso(),
+      started_at: iso()
     };
     atomicCreate(LOCK_FILE, JSON.stringify(payload, null, 2) + '\n');
     this.owned = true;
@@ -71,7 +71,7 @@ export class RunLock {
         pid: process.pid,
         run_id: runId,
         branch,
-        started_at: iso(),
+        started_at: iso()
       };
       writeJson(LOCK_FILE, payload);
     }

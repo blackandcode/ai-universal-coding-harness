@@ -1,13 +1,15 @@
 ---
 description: Testing and verification conventions
-globs: "src/**/*.test.{ts,tsx}, scripts/**/*.mjs, .github/workflows/*.yml"
+globs: "tests/**/*.test.{ts,tsx}, scripts/**/*.mjs, .github/workflows/*.yml"
 alwaysApply: false
 ---
 - Test failure paths, resume behavior, configuration precedence, and cross-platform process assumptions.
 - Prefer deterministic tests over spawning real paid AI harnesses.
 - Keep mocked adapter tests separate from true harness preflight checks.
 - All unit and CLI tests are hermetic and run completely offline without AI credentials or network dependencies.
-- Tests discover compiled `.test.js` files originating from both `.test.ts` and `.test.tsx` under `dist/`.
-- `npm run test:unit` ensures build freshness by cleaning and compiling prior to running tests.
+- Tests reside in `tests/` mirroring `src/`, keeping `src/` clean for production code.
+- Production code compiles to `dist/`; tests compile separately to `.test-dist/` via `tsconfig.test.json`.
+- For day-to-day changes, agents must run `npm run check:changed` on touched files. Do NOT run the full test suite (`npm test`, `npm run verify`) unless explicitly requested by the user or preparing for a release/push.
+- Pre-push safeguard: Git push runs full verification via `scripts/pre-push.mjs` (`.githooks/pre-push`) and halts the push if any test or check fails.
+- `npm run test:unit` ensures test build freshness by compiling prior to running tests.
 - `npm run test:coverage` runs Node test runner with `--experimental-test-coverage`.
-- Run `npm run verify` before completing code changes.

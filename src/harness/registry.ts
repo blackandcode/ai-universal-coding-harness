@@ -62,7 +62,7 @@ export class HarnessRegistry {
     const f = this.executors.get(id);
     if (!f) {
       throw new Error(
-        `Unknown executor harness '${id}'. Registered: ${[...this.executors.keys()].join(', ')}`,
+        `Unknown executor harness '${id}'. Registered: ${[...this.executors.keys()].join(', ')}`
       );
     }
     return f(ctx);
@@ -80,7 +80,7 @@ export class HarnessRegistry {
     const f = this.reviewers.get(id);
     if (!f) {
       throw new Error(
-        `Unknown reviewer harness '${id}'. Registered: ${[...this.reviewers.keys()].join(', ')}`,
+        `Unknown reviewer harness '${id}'. Registered: ${[...this.reviewers.keys()].join(', ')}`
       );
     }
     return f(ctx);
@@ -125,7 +125,7 @@ export class HarnessRegistry {
     const register = mod.registerHarnesses || mod.default;
     if (typeof register !== 'function') {
       throw new Error(
-        `Harness module '${spec}' must export registerHarnesses(registry) or a default registration function.`,
+        `Harness module '${spec}' must export registerHarnesses(registry) or a default registration function.`
       );
     }
     await register(this);

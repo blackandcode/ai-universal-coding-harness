@@ -15,7 +15,7 @@ import {
   LOCAL_CONFIG_FILE,
   LOCAL_PERMISSIONS_FILE,
   LATEST_FILE,
-  LOCK_FILE,
+  LOCK_FILE
 } from '../core/paths.js';
 import { removeTree } from '../core/fs.js';
 import { projectPlaceholderConfigTemplate, projectPermissionsTemplate } from '../core/config.js';
@@ -59,7 +59,7 @@ export class ProjectWorkspace {
   requireInitialized(): void {
     if (!this.isInitialized()) {
       throw new Error(
-        `Project is not initialized for AI Universal Coding Harness. Run: ai-harness init`,
+        `Project is not initialized for AI Universal Coding Harness. Run: ai-harness init`
       );
     }
   }
@@ -67,7 +67,7 @@ export class ProjectWorkspace {
   init(force = false): WorkspaceInitResult {
     if (!this.isGitRepository()) {
       throw new Error(
-        `AI Universal Coding Harness requires a Git repository. Initialize Git first, then run ai-harness init.`,
+        `AI Universal Coding Harness requires a Git repository. Initialize Git first, then run ai-harness init.`
       );
     }
     ensureDir(STATE_ROOT);
@@ -84,7 +84,7 @@ export class ProjectWorkspace {
     if (force || !fs.existsSync(readme)) {
       fs.writeFileSync(
         readme,
-        `# .ai-orchestrator\n\nLocal runtime workspace for AI Universal Coding Harness.\n\n- \`config.jsonc\` — local project overrides\n- \`permissions.jsonc\` — local permission overrides\n- \`runs/\` — machine + human run history\n- \`stage-input/\` — frozen selected stage specifications for the active run\n- \`stage-runtime/\` — executor evidence/runtime files\n\nThis directory is excluded locally through \`.git/info/exclude\` and should not be committed.\n`,
+        `# .ai-orchestrator\n\nLocal runtime workspace for AI Universal Coding Harness.\n\n- \`config.jsonc\` — local project overrides\n- \`permissions.jsonc\` — local permission overrides\n- \`runs/\` — machine + human run history\n- \`stage-input/\` — frozen selected stage specifications for the active run\n- \`stage-runtime/\` — executor evidence/runtime files\n\nThis directory is excluded locally through \`.git/info/exclude\` and should not be committed.\n`
       );
     }
     this.ensureGitExclude();
@@ -94,7 +94,7 @@ export class ProjectWorkspace {
       permissions: LOCAL_PERMISSIONS_FILE,
       runs: RUNS_ROOT,
       stageInput: STAGE_INPUT_ROOT,
-      stageRuntime: STAGE_RUNTIME_ROOT,
+      stageRuntime: STAGE_RUNTIME_ROOT
     };
   }
 
@@ -128,7 +128,7 @@ export class ProjectWorkspace {
             id: x.name,
             status: typeof j.status === 'string' ? j.status : undefined,
             updated_at: typeof j.updated_at === 'string' ? j.updated_at : undefined,
-            branch: typeof j.branch === 'string' ? j.branch : undefined,
+            branch: typeof j.branch === 'string' ? j.branch : undefined
           };
         } catch {
           return { id: x.name };
@@ -146,7 +146,7 @@ export class ProjectWorkspace {
         try {
           process.kill(pid, 0);
           throw new LockConflictError(
-            `Another orchestrator process is active (PID ${pid}, run ${String(lock.run_id || 'unknown')}).`,
+            `Another orchestrator process is active (PID ${pid}, run ${String(lock.run_id || 'unknown')}).`
           );
         } catch (e: unknown) {
           if (e instanceof LockConflictError) throw e;
@@ -181,7 +181,7 @@ export class ProjectWorkspace {
       LOCK_FILE,
       path.join(STATE_ROOT, 'preflight-events.jsonl'),
       path.join(STATE_ROOT, 'creating-events.jsonl'),
-      path.join(STATE_ROOT, 'preflight.log'),
+      path.join(STATE_ROOT, 'preflight.log')
     ]) {
       try {
         fs.rmSync(p, { force: true });

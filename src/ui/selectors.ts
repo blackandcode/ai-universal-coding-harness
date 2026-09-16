@@ -12,7 +12,7 @@ import {
   type UiMessage,
   type UiPhaseMap,
   type UiTodo,
-  type UiTool,
+  type UiTool
 } from './types.js';
 import { normalizeOneLine, wrapText } from './text.js';
 
@@ -98,12 +98,12 @@ export function selectPhaseProgress(phase: UiPhaseMap): PhaseProgress {
 export function selectActiveAndRecentTools(
   tools: Readonly<Record<string, UiTool>>,
   toolOrder: readonly string[],
-  maxTotal: number = 3,
+  maxTotal: number = 3
 ): UiTool[] {
   const orderedTools = toolOrder.map((id) => tools[id]).filter((t): t is UiTool => Boolean(t));
 
   const active = orderedTools.filter((t) =>
-    ['pending', 'in_progress', 'active', 'started'].includes(t.status),
+    ['pending', 'in_progress', 'active', 'started'].includes(t.status)
   );
   const inactive = orderedTools.filter((t) => !active.includes(t));
 
@@ -123,7 +123,7 @@ export function selectActiveAndRecentTools(
  */
 export function selectRecentMessages(
   messages: readonly UiMessage[],
-  count: number = 2,
+  count: number = 2
 ): readonly UiMessage[] {
   return messages.slice(-count);
 }
@@ -163,7 +163,7 @@ export function selectVisibleFocusLines(
   viewportHeight: number,
   offset: number,
   follow: boolean,
-  width: number,
+  width: number
 ): string[] {
   const effectiveHeight = Math.max(1, viewportHeight);
   const columnWidth = Math.max(20, width);

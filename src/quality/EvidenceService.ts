@@ -12,7 +12,7 @@ import type { ExecutionEvidence, CommandObservation, StageRuntimeState } from '.
 import {
   validateEvidence,
   verifyEvidenceAgainstObserved,
-  type VerificationContext,
+  type VerificationContext
 } from './EvidenceVerifier.js';
 import { STAGE_RUNTIME_ROOT } from '../core/paths.js';
 import { ensureDir, writeJson, writeText } from '../core/fs.js';
@@ -36,7 +36,7 @@ export class EvidenceService {
    */
   validateRuntimeEvidence(
     stageName: string,
-    attempt: number,
+    attempt: number
   ): { ok: boolean; reason: string; e?: ExecutionEvidence } {
     const runtimeEvidence = path.join(this.stageRuntimeRoot, stageName, 'evidence.json');
     return validateEvidence(runtimeEvidence, stageName, attempt);
@@ -68,27 +68,27 @@ export class EvidenceService {
   corroborate(
     evidence: ExecutionEvidence,
     observations: CommandObservation[],
-    context: VerificationContext,
+    context: VerificationContext
   ): CorroborationResult {
     const r = verifyEvidenceAgainstObserved(evidence, observations, context);
     if (!r.ok) {
       return {
         ok: false,
-        issues: r.issues,
+        issues: r.issues
       };
     }
 
     const corroborated: ExecutionEvidence = {
       ...evidence,
       observed_quality: r.observed_quality,
-      patch_fingerprint: context.expected_patch_fingerprint,
+      patch_fingerprint: context.expected_patch_fingerprint
     };
 
     return {
       ok: true,
       evidence: corroborated,
       issues: [],
-      observedQuality: r.observed_quality,
+      observedQuality: r.observed_quality
     };
   }
 
@@ -103,7 +103,7 @@ export class EvidenceService {
   saveCorroboratedEvidence(
     stageRunDir: string,
     evidence: ExecutionEvidence,
-    attempt: number,
+    attempt: number
   ): string {
     ensureDir(stageRunDir);
     const savedJson = path.join(stageRunDir, `evidence-attempt-${attempt}.json`);
@@ -112,7 +112,7 @@ export class EvidenceService {
     writeJson(savedJson, evidence);
     writeText(
       savedMd,
-      `# Execution evidence — attempt ${attempt}\n\n\`\`\`json\n${JSON.stringify(evidence, null, 2)}\n\`\`\`\n`,
+      `# Execution evidence — attempt ${attempt}\n\n\`\`\`json\n${JSON.stringify(evidence, null, 2)}\n\`\`\`\n`
     );
 
     return savedJson;
@@ -127,7 +127,7 @@ export class EvidenceService {
    */
   checkReusableEvidence(
     runtime: StageRuntimeState,
-    currentPatchFingerprint: string,
+    currentPatchFingerprint: string
   ): { ok: boolean; e: ExecutionEvidence; resumed: boolean } | null {
     if (
       (runtime.phase === 'quality' || runtime.phase === 'review') &&
@@ -140,7 +140,7 @@ export class EvidenceService {
         return {
           ok: true,
           e: parsed,
-          resumed: true,
+          resumed: true
         };
       } catch {
         return null;

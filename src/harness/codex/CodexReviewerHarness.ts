@@ -11,7 +11,7 @@ import type {
   PlanReviewVerdict,
   QuestionVerdict,
   PermissionVerdict,
-  FinalVerdict,
+  FinalVerdict
 } from '../../types.js';
 import { harnessNumber, harnessString } from '../../core/config.js';
 import { execSyncText, commandExists } from '../../core/process.js';
@@ -25,7 +25,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
     model: 'gpt-6-astra',
     reasoningEffort: 'low',
     verbosity: 'low',
-    timeoutMinutes: 8,
+    timeoutMinutes: 8
   };
 
   private seq = 0;
@@ -34,13 +34,13 @@ export class CodexReviewerHarness implements ReviewerHarness {
   private reasoningEffort = harnessString(
     'codex',
     'reasoningEffort',
-    CodexReviewerHarness.defaults.reasoningEffort,
+    CodexReviewerHarness.defaults.reasoningEffort
   );
   private verbosity = harnessString('codex', 'verbosity', CodexReviewerHarness.defaults.verbosity);
   private timeoutMinutes = harnessNumber(
     'codex',
     'timeoutMinutes',
-    CodexReviewerHarness.defaults.timeoutMinutes,
+    CodexReviewerHarness.defaults.timeoutMinutes
   );
   private contextMode = harnessString('codex', 'contextMode', 'evidence_only') as
     | 'evidence_only'
@@ -50,7 +50,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
     id: 'codex',
     label: `${this.model} reviewer`,
     role: 'reviewer',
-    model: this.model,
+    model: this.model
   };
 
   constructor(private ctx: any) {
@@ -82,7 +82,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
     kind: CodexDecisionKind,
     payload: unknown,
     schemaFile: string,
-    extra = '',
+    extra = ''
   ): Promise<T> {
     this.seq++;
 
@@ -93,7 +93,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
       skillsText: this.ctx.skillsText || '',
       payload,
       extraPromptText: extra,
-      readonlyProject: this.contextMode === 'project_readonly',
+      readonlyProject: this.contextMode === 'project_readonly'
     });
 
     const execution = await CodexProcessRunner.run<T>({
@@ -110,7 +110,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
       prompt,
       schemaFileName: schemaFile,
       events: this.ctx.events,
-      runLog: this.ctx.runLog,
+      runLog: this.ctx.runLog
     });
 
     return execution.result;
@@ -134,7 +134,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
       'question',
       input,
       'question-verdict.schema.json',
-      'Answer the blocking Cursor question using only frozen requirements and supplied evidence.',
+      'Answer the blocking Cursor question using only frozen requirements and supplied evidence.'
     );
   }
 
@@ -146,7 +146,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
       'permission',
       input,
       'permission-verdict.schema.json',
-      'Decide only whether this exact operation should be allowed. Denial applies to this operation only and must not imply stage failure.',
+      'Decide only whether this exact operation should be allowed. Denial applies to this operation only and must not imply stage failure.'
     );
   }
 
@@ -158,7 +158,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
       'final-review',
       input,
       'final-verdict.schema.json',
-      'Review only supplied patch/evidence. Do not ask to run commands. Return all material findings together.',
+      'Review only supplied patch/evidence. Do not ask to run commands. Return all material findings together.'
     );
   }
 }

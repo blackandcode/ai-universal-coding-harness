@@ -18,7 +18,7 @@ import {
   removeTree,
   sha256Text,
   writeJson,
-  writeText,
+  writeText
 } from '../core/fs.js';
 import { iso, utcStamp } from '../core/time.js';
 import { GitRepository } from '../git/GitRepository.js';
@@ -41,7 +41,7 @@ import type {
   QuestionVerdict,
   FinalVerdict,
   ExecutionEvidence,
-  RunStatus,
+  RunStatus
 } from '../types.js';
 
 export interface OrchestratorOptions {
@@ -61,7 +61,7 @@ export class Orchestrator {
 
   constructor(
     public events: EventBus,
-    options: OrchestratorOptions = {},
+    options: OrchestratorOptions = {}
   ) {
     this.workspace = options.workspace ? path.resolve(options.workspace) : ROOT;
     this.git = new GitRepository(this.workspace);
@@ -70,7 +70,7 @@ export class Orchestrator {
     this.registry = options.registry || new HarnessRegistry();
     this.branch = new BranchManager(this.git, (s) => this.store.save(s));
     this.evidenceService = new EvidenceService(
-      path.join(this.workspace, '.ai-orchestrator', 'stage-runtime'),
+      path.join(this.workspace, '.ai-orchestrator', 'stage-runtime')
     );
   }
 
@@ -126,7 +126,7 @@ export class Orchestrator {
           stageName: '_run',
           stageContext: '',
           skillsText: '',
-          runLog: path.join(runDir, 'run.log'),
+          runLog: path.join(runDir, 'run.log')
         }).info;
       const state: RunState = {
         version: 1,
@@ -147,7 +147,7 @@ export class Orchestrator {
         reviewer_harness: reviewerId,
         executor_label: executorInfo.label,
         reviewer_label: reviewerInfo.label,
-        quality_cmd: input.qualityCmd || CONFIG.qualityCommand,
+        quality_cmd: input.qualityCmd || CONFIG.qualityCommand
       };
       this.store.save(state);
       return state;
@@ -183,26 +183,26 @@ export class Orchestrator {
         ...CONFIG.reviewer,
         primary: {
           ...CONFIG.reviewer.primary,
-          harness: reviewerId || CONFIG.reviewer.primary.harness,
+          harness: reviewerId || CONFIG.reviewer.primary.harness
         },
         fallback: {
           ...CONFIG.reviewer.fallback,
-          harness: isCustomHarness ? reviewerId : CONFIG.reviewer.fallback.harness,
+          harness: isCustomHarness ? reviewerId : CONFIG.reviewer.fallback.harness
         },
         largeDiff: {
           ...CONFIG.reviewer.largeDiff,
-          harness: isCustomHarness ? reviewerId : CONFIG.reviewer.largeDiff.harness,
+          harness: isCustomHarness ? reviewerId : CONFIG.reviewer.largeDiff.harness
         },
         permission: {
           ...CONFIG.reviewer.permission,
-          harness: isCustomHarness ? reviewerId : CONFIG.reviewer.permission.harness,
-        },
+          harness: isCustomHarness ? reviewerId : CONFIG.reviewer.permission.harness
+        }
       };
       return new ReviewerRouter({
         config: routerConfig,
         registry: this.registry,
         context,
-        events: this.events,
+        events: this.events
       });
     }
     return this.registry.reviewer(reviewerId, context);
@@ -227,7 +227,7 @@ export class Orchestrator {
     carry: string,
     feedback: string,
     attempt: number,
-    quality: string,
+    quality: string
   ) {
     return (
       `You are the implementation executor for ${stage}. Work autonomously on the dedicated AI branch.\n\n` +
@@ -267,7 +267,7 @@ export class Orchestrator {
   async preflight(stateOrInput: { executor_harness?: string; reviewer_harness?: string }) {
     await this.registry.loadConfigured();
     const exec = this.registry.executor(stateOrInput.executor_harness || CONFIG.executorHarness, {
-      events: this.events,
+      events: this.events
     });
     const rev = this.createReviewerHarness(
       stateOrInput.reviewer_harness || CONFIG.reviewerHarness,
@@ -277,13 +277,13 @@ export class Orchestrator {
         stageName: '_preflight',
         stageContext: '',
         skillsText: '',
-        runLog: path.join(this.workspace, '.ai-orchestrator', 'preflight.log'),
-      },
+        runLog: path.join(this.workspace, '.ai-orchestrator', 'preflight.log')
+      }
     );
     const [a, b] = await Promise.all([exec.preflight(), rev.preflight()]);
     if (!a.ok || !b.ok)
       throw new Error(
-        `Harness preflight failed:\nExecutor: ${a.details.join('; ')}\nReviewer: ${b.details.join('; ')}`,
+        `Harness preflight failed:\nExecutor: ${a.details.join('; ')}\nReviewer: ${b.details.join('; ')}`
       );
     return { executor: a, reviewer: b };
   }
@@ -293,10 +293,10 @@ export class Orchestrator {
     payload: QuestionReviewInput,
     cache: Map<string, QuestionVerdict>,
     stageName: string,
-    state: RunState,
+    state: RunState
   ) {
     const key = sha256Text(
-      JSON.stringify({ title: payload.title || '', questions: payload.questions || [] }),
+      JSON.stringify({ title: payload.title || '', questions: payload.questions || [] })
     );
     let v: QuestionVerdict | undefined = cache.get(key);
     if (!v) {
@@ -307,7 +307,7 @@ export class Orchestrator {
     for (const q of payload.questions || []) {
       const a = (v?.answers || []).find((x) => x.question_id === q.id);
       let ids = (a?.selected_option_ids || []).filter((id: string) =>
-        (q.options || []).some((o) => o.id === id),
+        (q.options || []).some((o) => o.id === id)
       );
       if (!ids.length && q.options?.length) ids = [q.options[0].id];
       answers.push({ questionId: q.id, selectedOptionIds: ids });
@@ -317,7 +317,7 @@ export class Orchestrator {
       stageName,
       'DECISIONS.md',
       'Executor question answered',
-      `**Question:** ${(payload.questions || []).map((q) => q.prompt).join(' | ')}\n\n**Reviewer verdict:** ${v?.verdict || 'ANSWER'}\n\n**Rationale:** ${v?.rationale || 'Autonomous fallback selected the first available option.'}`,
+      `**Question:** ${(payload.questions || []).map((q) => q.prompt).join(' | ')}\n\n**Reviewer verdict:** ${v?.verdict || 'ANSWER'}\n\n**Rationale:** ${v?.rationale || 'Autonomous fallback selected the first available option.'}`
     );
     return { answers, rationale: v?.rationale || 'Autonomous fallback used.' };
   }
@@ -327,7 +327,7 @@ export class Orchestrator {
     reviewer: ReviewerHarness,
     req: PermissionRequest,
     stageName: string,
-    state: RunState,
+    state: RunState
   ) {
     const cached = engine.cached(req);
     let d = cached || engine.deterministic(req);
@@ -337,7 +337,7 @@ export class Orchestrator {
         signature: engine.signature(req),
         permission_mode: CONFIG.permissionMode,
         command: req.command || '',
-        note: 'No permission-call quota exists. Deny only this exact operation if unsafe; the executor must continue with another approach.',
+        note: 'No permission-call quota exists. Deny only this exact operation if unsafe; the executor must continue with another approach.'
       });
       d = engine.fromReviewer(req, v);
     }
@@ -347,7 +347,7 @@ export class Orchestrator {
       stageName,
       'DECISIONS.md',
       'Permission decision',
-      `- **Decision:** ${d.allow ? 'ALLOW' : 'DENY'}\n- **Source:** ${d.source}\n- **Signature:** \`${d.signature}\`\n- **Reason:** ${d.reason}`,
+      `- **Decision:** ${d.allow ? 'ALLOW' : 'DENY'}\n- **Source:** ${d.source}\n- **Signature:** \`${d.signature}\`\n- **Reason:** ${d.reason}`
     );
     return { allow: d.allow, reason: d.reason || d.source };
   }
@@ -365,14 +365,14 @@ export class Orchestrator {
     this.events.emit('stage.started', {
       stage: stage.name,
       index: index + 1,
-      total: state.stages.length,
+      total: state.stages.length
     });
     this.store.appendHuman(
       state.run_id,
       stage.name,
       'STAGE.md',
       'Stage started',
-      `- **Started:** ${iso()}\n- **Branch:** \`${state.branch}\`\n- **Base commit:** \`${this.git.head()}\``,
+      `- **Started:** ${iso()}\n- **Branch:** \`${state.branch}\`\n- **Base commit:** \`${this.git.head()}\``
     );
     const stageRunDir = this.store.stageDir(state.run_id, stage.name);
     ensureDir(stageRunDir);
@@ -380,7 +380,7 @@ export class Orchestrator {
       ['PLAN_REVIEW_HISTORY.md', 'Plan Review History'],
       ['DECISIONS.md', 'Decisions'],
       ['EXECUTION.md', 'Execution'],
-      ['FINAL_REVIEW.md', 'Final Review'],
+      ['FINAL_REVIEW.md', 'Final Review']
     ] as const) {
       const p = path.join(stageRunDir, file);
       if (!fs.existsSync(p)) writeText(p, `# ${title}\n\n`);
@@ -395,33 +395,33 @@ export class Orchestrator {
       stageName: stage.name,
       stageContext,
       skillsText,
-      runLog,
+      runLog
     });
     const permission = new PermissionEngine(
       this.workspace,
       CONFIG.permissionMode,
-      CONFIG.permissionsFile,
+      CONFIG.permissionsFile
     );
     const planCoord = new PlanCoordinator({
       runId: state.run_id,
       stage,
       stageContext,
       reviewer,
-      store: this.store,
+      store: this.store
     });
     const runtime0 = this.store.loadStage(state.run_id, stage.name);
     const reused = planCoord.reusable();
     if (reused) {
       this.events.emit('reviewer.plan', {
         verdict: 'APPROVE',
-        summary: 'Reusing validated approved plan.',
+        summary: 'Reusing validated approved plan.'
       });
       this.store.appendHuman(
         state.run_id,
         stage.name,
         'STAGE.md',
         'Approved plan reused',
-        'Plan/spec hashes matched; planning and plan review were skipped.',
+        'Plan/spec hashes matched; planning and plan review were skipped.'
       );
     }
     const qcache = new Map<string, any>();
@@ -438,8 +438,8 @@ export class Orchestrator {
         onPermission: (req, _p) =>
           this.permissionDecision(permission, reviewer, req, stage.name, state),
         onSessionId: (id) =>
-          this.store.saveStage(state.run_id, stage.name, { executor_session_id: id }),
-      },
+          this.store.saveStage(state.run_id, stage.name, { executor_session_id: id })
+      }
     });
     this.activeExecutor = session;
     try {
@@ -459,7 +459,7 @@ export class Orchestrator {
         if (!approved)
           approved = planCoord.forceAccept(
             `1. Read all frozen stage specifications and applicable skills.\n2. Implement every functional and technical requirement for ${stage.name}.\n3. Add/update all required tests and documentation.\n4. Run focused tests, ${state.quality_cmd}, and git diff --check; fix failures.`,
-            `Executor did not submit a plan through ACP after the bounded planning interaction. Autonomous fallback accepted a complete requirements-driven plan.`,
+            `Executor did not submit a plan through ACP after the bounded planning interaction. Autonomous fallback accepted a complete requirements-driven plan.`
           );
       }
       const carry = planCoord.reviewerCarryover;
@@ -471,12 +471,12 @@ export class Orchestrator {
       let _finalEvidence: ExecutionEvidence | null = null;
       let pendingResumedEvidence = this.evidenceService.checkReusableEvidence(
         runtime0,
-        this.patchFingerprint(),
+        this.patchFingerprint()
       );
       if (pendingResumedEvidence) {
         this.events.emit('log', {
           level: 'info',
-          message: 'Reusing previously corroborated quality evidence for unchanged patch.',
+          message: 'Reusing previously corroborated quality evidence for unchanged patch.'
         });
       }
       for (let attempt = 1; attempt <= CONFIG.maxExecutionAttempts; attempt++) {
@@ -494,7 +494,7 @@ export class Orchestrator {
           epochId = `${state.run_id}-${stage.name}-${attempt}-${Date.now()}`;
           session.setQualityEpoch?.(epochId);
           await session.prompt(
-            this.executionPrompt(stage.name, approved, carry, feedback, attempt, state.quality_cmd),
+            this.executionPrompt(stage.name, approved, carry, feedback, attempt, state.quality_cmd)
           );
           ev = this.evidenceService.validateRuntimeEvidence(stage.name, attempt);
         }
@@ -506,7 +506,7 @@ export class Orchestrator {
             stage.name,
             'EXECUTION.md',
             `Attempt ${attempt} — invalid evidence`,
-            feedback,
+            feedback
           );
           this.store.saveStage(state.run_id, stage.name, {
             phase: 'implementation',
@@ -514,7 +514,7 @@ export class Orchestrator {
             reviewer_feedback: feedback,
             evidence_file: undefined,
             patch_fingerprint: undefined,
-            executor_session_id: session.id,
+            executor_session_id: session.id
           });
           state.current_phase = 'implementation';
           this.store.save(state);
@@ -532,8 +532,8 @@ export class Orchestrator {
             quality_epoch_id: epochId || undefined,
             expected_patch_fingerprint: this.patchFingerprint(),
             last_mutation_sequence: session.lastMutationSeq?.(),
-            orchestrator_diff_check_ok: diffCheck.ok,
-          },
+            orchestrator_diff_check_ok: diffCheck.ok
+          }
         );
         if (!isResumed && !corroboration.ok) {
           feedback = `Execution evidence could not be corroborated against executor ACP results:\n${corroboration.issues.map((x: string) => `- ${x}`).join('\n')}\nRerun the exact quality commands and regenerate evidence.json.`;
@@ -543,7 +543,7 @@ export class Orchestrator {
             stage.name,
             'EXECUTION.md',
             `Attempt ${attempt} — evidence mismatch`,
-            feedback,
+            feedback
           );
           this.store.saveStage(state.run_id, stage.name, {
             phase: 'implementation',
@@ -551,7 +551,7 @@ export class Orchestrator {
             reviewer_feedback: feedback,
             evidence_file: undefined,
             patch_fingerprint: undefined,
-            executor_session_id: session.id,
+            executor_session_id: session.id
           });
           state.current_phase = 'implementation';
           this.store.save(state);
@@ -562,18 +562,18 @@ export class Orchestrator {
         const saved = this.evidenceService.saveCorroboratedEvidence(
           stageRunDir,
           finalEvidence,
-          attempt,
+          attempt
         );
         this.events.emit('quality.result', {
           ...activeEvidence,
-          summary: activeEvidence.quality_summary,
+          summary: activeEvidence.quality_summary
         });
         this.store.appendHuman(
           state.run_id,
           stage.name,
           'EXECUTION.md',
           `Attempt ${attempt} — corroborated evidence`,
-          `- **Status:** ${activeEvidence.status}\n- **Quality:** ${activeEvidence.quality_command} → ${activeEvidence.quality_exit_code}\n- **git diff --check:** ${activeEvidence.git_diff_check_exit_code}\n- **Summary:** ${activeEvidence.quality_summary || ''}`,
+          `- **Status:** ${activeEvidence.status}\n- **Quality:** ${activeEvidence.quality_command} → ${activeEvidence.quality_exit_code}\n- **git diff --check:** ${activeEvidence.git_diff_check_exit_code}\n- **Summary:** ${activeEvidence.quality_summary || ''}`
         );
         if (
           activeEvidence.status !== 'PASS' ||
@@ -588,7 +588,7 @@ export class Orchestrator {
             reviewer_feedback: feedback,
             evidence_file: undefined,
             patch_fingerprint: undefined,
-            executor_session_id: session.id,
+            executor_session_id: session.id
           });
           state.current_phase = 'implementation';
           this.store.save(state);
@@ -600,7 +600,7 @@ export class Orchestrator {
           evidence_file: saved,
           patch_fingerprint: this.patchFingerprint(),
           reviewer_feedback: feedback,
-          executor_session_id: session.id,
+          executor_session_id: session.id
         });
         state.current_phase = 'review';
         this.store.save(state);
@@ -610,7 +610,7 @@ export class Orchestrator {
           approvedPlan: approved,
           planReviewerCarryover: carry,
           evidence: activeEvidence,
-          maxDiffChars: CONFIG.maxDiffChars,
+          maxDiffChars: CONFIG.maxDiffChars
         });
         let verdict = await reviewer.reviewImplementation(payload as any);
         if (verdict.verdict === 'NEEDS_CONTEXT' && verdict.requested_paths?.length) {
@@ -620,7 +620,7 @@ export class Orchestrator {
             planReviewerCarryover: carry,
             evidence: activeEvidence,
             maxDiffChars: CONFIG.maxDiffChars,
-            requestedPaths: verdict.requested_paths,
+            requestedPaths: verdict.requested_paths
           });
           verdict = await reviewer.reviewImplementation(followUpPayload as any);
         }
@@ -628,7 +628,7 @@ export class Orchestrator {
         writeJson(path.join(stageRunDir, `review-attempt-${attempt}.json`), verdict);
         writeText(
           path.join(stageRunDir, `review-attempt-${attempt}.md`),
-          `# Final review — attempt ${attempt}\n\n- **Verdict:** ${verdict.verdict}\n- **Summary:** ${verdict.summary}\n\n${(verdict.findings || []).map((x) => `- **${typeof x === 'object' && x.severity ? x.severity : 'n/a'} / ${typeof x === 'object' && x.area ? x.area : ''}:** ${typeof x === 'object' && x.finding ? x.finding : String(x)}\n  - Required fix: ${typeof x === 'object' && x.required_fix ? x.required_fix : ''}`).join('\n')}\n`,
+          `# Final review — attempt ${attempt}\n\n- **Verdict:** ${verdict.verdict}\n- **Summary:** ${verdict.summary}\n\n${(verdict.findings || []).map((x) => `- **${typeof x === 'object' && x.severity ? x.severity : 'n/a'} / ${typeof x === 'object' && x.area ? x.area : ''}:** ${typeof x === 'object' && x.finding ? x.finding : String(x)}\n  - Required fix: ${typeof x === 'object' && x.required_fix ? x.required_fix : ''}`).join('\n')}\n`
         );
         if (verdict.verdict === 'APPROVE') {
           approvedFinal = verdict;
@@ -642,7 +642,7 @@ export class Orchestrator {
           stage.name,
           'EXECUTION.md',
           `Attempt ${attempt} — reviewer rework`,
-          feedback,
+          feedback
         );
         this.store.saveStage(state.run_id, stage.name, {
           phase: 'implementation',
@@ -650,14 +650,14 @@ export class Orchestrator {
           reviewer_feedback: feedback,
           evidence_file: undefined,
           patch_fingerprint: undefined,
-          executor_session_id: session.id,
+          executor_session_id: session.id
         });
         state.current_phase = 'implementation';
         this.store.save(state);
       }
       if (!approvedFinal)
         throw new Error(
-          `Stage failed to reach approved green implementation after ${CONFIG.maxExecutionAttempts} execution attempts.`,
+          `Stage failed to reach approved green implementation after ${CONFIG.maxExecutionAttempts} execution attempts.`
         );
       this.branch.assertActive(state);
       state.current_phase = 'commit';
@@ -666,14 +666,14 @@ export class Orchestrator {
       const sha = this.git.commit(stage.name, [
         `AI-Orchestrator-Run: ${state.run_id}`,
         `Stage-Spec-SHA256: ${this.specDigest(stage)}`,
-        `Reviewer: ${approvedFinal.summary || 'APPROVE'}`,
+        `Reviewer: ${approvedFinal.summary || 'APPROVE'}`
       ]);
       this.store.appendHuman(
         state.run_id,
         stage.name,
         'FINAL_REVIEW.md',
         'Approved',
-        `**Summary:** ${approvedFinal.summary}\n\n**Commit:** \`${sha}\``,
+        `**Summary:** ${approvedFinal.summary}\n\n**Commit:** \`${sha}\``
       );
       this.store.saveStage(state.run_id, stage.name, { phase: 'completed', commit_sha: sha });
       stage.status = 'completed';
@@ -695,7 +695,7 @@ export class Orchestrator {
       run_id: state.run_id,
       branch: state.branch,
       workspace: state.workspace,
-      stageTotal: state.stages.length,
+      stageTotal: state.stages.length
     });
     for (let i = startIndex; i < state.stages.length; i++) {
       if (state.stages[i].status === 'completed') continue;
@@ -711,12 +711,12 @@ export class Orchestrator {
         this.events.emit('stage.blocked', {
           stage: state.stages[i].name,
           status: state.status,
-          reason: errMessage,
+          reason: errMessage
         });
         this.events.emit('run.blocked', {
           status: state.status,
           reason: errMessage,
-          branch: state.branch,
+          branch: state.branch
         });
         throw e;
       }

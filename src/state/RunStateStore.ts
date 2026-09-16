@@ -27,7 +27,7 @@ const VALID_RUN_STATUSES = new Set<string>([
   'specification_blocked',
   'autonomous_limit_reached',
   'failed',
-  'completed',
+  'completed'
 ]);
 
 const VALID_STAGE_PHASES = new Set<string>([
@@ -37,7 +37,7 @@ const VALID_STAGE_PHASES = new Set<string>([
   'quality',
   'review',
   'commit',
-  'completed',
+  'completed'
 ]);
 
 export function validateRunState(data: unknown): RunState {
@@ -145,7 +145,7 @@ export class RunStateStore {
     const next: StageRuntimeState = {
       ...this.loadStage(id, stage),
       ...patch,
-      updated_at: iso(),
+      updated_at: iso()
     };
     writeJson(this.stageStatePath(id, stage), next);
     return next;
@@ -176,7 +176,7 @@ export class RunStateStore {
       '## Stages',
       '',
       ...state.stages.map((s, i) => `${i + 1}. **${s.name}** — ${s.status}`),
-      '',
+      ''
     ];
     if (state.pre_run_stash) {
       lines.push(
@@ -190,14 +190,14 @@ export class RunStateStore {
         `git switch ${state.original_branch || '<original-branch>'}`,
         `git stash apply ${state.pre_run_stash.commit}`,
         '```',
-        '',
+        ''
       );
     }
     lines.push(
       '## Human-readable artifacts',
       '',
       'Each stage keeps `PLAN.md`, plan revisions/reviews, `DECISIONS.md`, `EXECUTION.md`, `FINAL_REVIEW.md`, and `STAGE.md` alongside machine JSON state.',
-      '',
+      ''
     );
     writeText(path.join(this.runDir(state.run_id), 'RUN.md'), lines.join('\n'));
   }

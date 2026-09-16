@@ -55,7 +55,7 @@ export class ReviewerErrorClassifier {
     exitCode: number | null,
     stderr: string = '',
     eventLines: string[] = [],
-    resultFileExists: boolean = false,
+    resultFileExists: boolean = false
   ): ReviewerClassificationResult {
     // 1. Scan eventLines for type: "error", "turn.failed", and specific provider messages
     for (const line of eventLines) {
@@ -67,7 +67,7 @@ export class ReviewerErrorClassifier {
         return {
           isTrigger: true,
           trigger: 'usage_limit',
-          reason: extractErrorMessage(line) || 'Provider usage limit reached',
+          reason: extractErrorMessage(line) || 'Provider usage limit reached'
         };
       }
 
@@ -76,7 +76,7 @@ export class ReviewerErrorClassifier {
         return {
           isTrigger: true,
           trigger: 'rate_limit',
-          reason: extractErrorMessage(line) || 'Provider rate limit exceeded (429)',
+          reason: extractErrorMessage(line) || 'Provider rate limit exceeded (429)'
         };
       }
 
@@ -85,7 +85,7 @@ export class ReviewerErrorClassifier {
         return {
           isTrigger: true,
           trigger: 'quota_exhausted',
-          reason: extractErrorMessage(line) || 'Provider quota exhausted',
+          reason: extractErrorMessage(line) || 'Provider quota exhausted'
         };
       }
 
@@ -94,7 +94,7 @@ export class ReviewerErrorClassifier {
         return {
           isTrigger: true,
           trigger: 'turn_failed',
-          reason: extractErrorMessage(line) || 'Reviewer protocol turn failed',
+          reason: extractErrorMessage(line) || 'Reviewer protocol turn failed'
         };
       }
     }
@@ -121,7 +121,7 @@ export class ReviewerErrorClassifier {
       return {
         isTrigger: true,
         trigger: 'process_crash',
-        reason: `Reviewer process crashed with exit code ${exitCode} without producing result.json`,
+        reason: `Reviewer process crashed with exit code ${exitCode} without producing result.json`
       };
     }
 
@@ -130,14 +130,14 @@ export class ReviewerErrorClassifier {
       return {
         isTrigger: true,
         trigger: 'no_result',
-        reason: 'Reviewer process completed without producing structured result.json',
+        reason: 'Reviewer process completed without producing structured result.json'
       };
     }
 
     return {
       isTrigger: false,
       trigger: null,
-      reason: 'No fallback trigger detected',
+      reason: 'No fallback trigger detected'
     };
   }
 
@@ -190,7 +190,7 @@ export class ReviewerErrorClassifier {
           return {
             isTrigger: true,
             trigger: 'timeout',
-            reason: typeof e.message === 'string' ? e.message : 'Reviewer execution timed out',
+            reason: typeof e.message === 'string' ? e.message : 'Reviewer execution timed out'
           };
         }
 
@@ -198,7 +198,7 @@ export class ReviewerErrorClassifier {
           exitCode,
           stderr,
           eventLines,
-          resultFileExists,
+          resultFileExists
         );
         if (res.isTrigger) return res;
       }
@@ -214,7 +214,7 @@ export class ReviewerErrorClassifier {
     return {
       isTrigger: false,
       trigger: null,
-      reason: message,
+      reason: message
     };
   }
 }

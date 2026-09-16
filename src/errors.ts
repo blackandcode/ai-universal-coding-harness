@@ -88,7 +88,7 @@ export class ProcessExecutionError extends HarnessError {
       stderr?: string;
       timedOut?: boolean;
       cause?: unknown;
-    },
+    }
   ) {
     super(message, details?.cause !== undefined ? { cause: details.cause } : undefined);
     this.name = 'ProcessExecutionError';

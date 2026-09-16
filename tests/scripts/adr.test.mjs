@@ -13,7 +13,7 @@ import {
   findNextAdrNumber,
   renderAdrTemplate,
   slugify,
-  updateAdrIndex,
+  updateAdrIndex
 } from '../../scripts/adr/new-adr.mjs';
 
 test('slugify transforms arbitrary titles into clean URL-safe slugs', () => {
@@ -47,26 +47,26 @@ test('updateAdrIndex builds index table and appends entries cleanly', () => {
     number: '0001',
     title: 'First Decision',
     filename: '0001-first-decision.md',
-    date: '2026-09-16',
+    date: '2026-09-16'
   });
 
   assert.match(initial, /# Architecture Decision Records \(ADR\)/);
   assert.match(
     initial,
-    /\| \[0001\]\(0001-first-decision\.md\) \| First Decision \| Proposed \| 2026-09-16 \|/,
+    /\| \[0001\]\(0001-first-decision\.md\) \| First Decision \| Proposed \| 2026-09-16 \|/
   );
 
   const updated = updateAdrIndex(initial, {
     number: '0002',
     title: 'Second Decision',
     filename: '0002-second-decision.md',
-    date: '2026-09-17',
+    date: '2026-09-17'
   });
 
   assert.match(updated, /\| \[0001\]\(0001-first-decision\.md\)/);
   assert.match(
     updated,
-    /\| \[0002\]\(0002-second-decision\.md\) \| Second Decision \| Proposed \| 2026-09-17 \|/,
+    /\| \[0002\]\(0002-second-decision\.md\) \| Second Decision \| Proposed \| 2026-09-17 \|/
   );
 
   // Does not duplicate already indexed record
@@ -74,7 +74,7 @@ test('updateAdrIndex builds index table and appends entries cleanly', () => {
     number: '0002',
     title: 'Second Decision',
     filename: '0002-second-decision.md',
-    date: '2026-09-17',
+    date: '2026-09-17'
   });
   const matches = deduped.match(/\[0002\]/g);
   assert.equal(matches?.length, 1);
@@ -102,7 +102,7 @@ test('createNewAdr scaffolds ADR file and updates README index', async () => {
     const dryRun = await createNewAdr({
       root: tmpDir,
       title: 'Dry Run Decision',
-      dryRun: true,
+      dryRun: true
     });
     assert.equal(dryRun.dryRun, true);
     assert.equal(fs.existsSync(dryRun.filePath), false);
@@ -111,7 +111,7 @@ test('createNewAdr scaffolds ADR file and updates README index', async () => {
     const adr1 = await createNewAdr({
       root: tmpDir,
       title: 'Decide Process Runner',
-      template: 'nygard',
+      template: 'nygard'
     });
     assert.equal(adr1.number, '0001');
     assert.equal(fs.existsSync(adr1.filePath), true);
@@ -126,7 +126,7 @@ test('createNewAdr scaffolds ADR file and updates README index', async () => {
     const adr2 = await createNewAdr({
       root: tmpDir,
       title: 'Protocol Schema Validation',
-      template: 'madr',
+      template: 'madr'
     });
     assert.equal(adr2.number, '0002');
     assert.equal(fs.existsSync(adr2.filePath), true);
@@ -138,7 +138,7 @@ test('createNewAdr scaffolds ADR file and updates README index', async () => {
     // Rejects empty title
     await assert.rejects(
       async () => createNewAdr({ root: tmpDir, title: '' }),
-      /ADR title is required/,
+      /ADR title is required/
     );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -152,7 +152,7 @@ test('new-adr CLI runs via subprocess and scaffolds ADR', () => {
     const child = spawnSync(
       process.execPath,
       [scriptPath, '-t', 'CLI Scaffolding Test', '--root', tmpDir],
-      { encoding: 'utf8' },
+      { encoding: 'utf8' }
     );
 
     assert.equal(child.status, 0, `CLI failed with stderr: ${child.stderr}`);

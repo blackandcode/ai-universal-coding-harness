@@ -21,7 +21,7 @@ import type { FollowInkUiOptions, InkUiInstance, StartInkUiOptions } from './typ
 export async function startInkUi(opts: StartInkUiOptions): Promise<InkUiInstance> {
   const previous = readRecentEvents(opts.eventFile);
   const app = render(<App emitter={opts.emitter} meta={opts.meta} initialEvents={previous} />, {
-    exitOnCtrlC: false,
+    exitOnCtrlC: false
   });
 
   return {
@@ -29,7 +29,7 @@ export async function startInkUi(opts: StartInkUiOptions): Promise<InkUiInstance
       try {
         app.unmount();
       } catch {}
-    },
+    }
   };
 }
 
@@ -42,7 +42,7 @@ export async function followInkUi(opts: FollowInkUiOptions): Promise<void> {
   const emitter = new EventEmitter();
   const previous = readRecentEvents(opts.eventFile);
   const app = render(<App emitter={emitter} meta={opts.meta} initialEvents={previous} />, {
-    exitOnCtrlC: true,
+    exitOnCtrlC: true
   });
 
   const watcher = followEventFile(opts.eventFile, (event) => {

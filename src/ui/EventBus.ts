@@ -36,7 +36,7 @@ export class EventBus {
     public readonly eventFile: string,
     public readonly lineMode: boolean = false,
     private readonly maxBytes: number = 20 * 1024 * 1024,
-    private readonly delay: number = 80,
+    private readonly delay: number = 80
   ) {
     ensureDir(path.dirname(eventFile));
     if (!fs.existsSync(eventFile)) {
@@ -96,7 +96,7 @@ export class EventBus {
       this.write({
         ts: iso(),
         type: 'executor.focus.delta',
-        payload: { text: this.focus, focus_file: this.focusFile },
+        payload: { text: this.focus, focus_file: this.focusFile }
       });
       this.focus = '';
     }
@@ -165,7 +165,7 @@ export class EventBus {
       log: () => {
         const icon = p.level === 'error' ? '✗' : p.level === 'warn' ? '!' : '·';
         return `${icon} ${(p.message as string) ?? ''}`;
-      },
+      }
     };
 
     return lineMap[e.type]?.() ?? '';

@@ -47,7 +47,7 @@ const requiredDiskFiles = [
   'permissions.default.jsonc',
   'config.example.jsonc',
   'docs/publishing.md',
-  '.github/workflows/publish-npm.yml',
+  '.github/workflows/publish-npm.yml'
 ];
 
 for (const file of requiredDiskFiles) {
@@ -86,7 +86,7 @@ if (pkg.name !== 'ai-universal-coding-harness') {
 
 if (pkg.repository?.url !== 'git+https://github.com/blackandcode/ai-universal-coding-harness.git') {
   console.error(
-    'package.json repository URL must exactly match the GitHub repository for npm trusted publishing.',
+    'package.json repository URL must exactly match the GitHub repository for npm trusted publishing.'
   );
   process.exit(2);
 }
@@ -119,14 +119,14 @@ const frozenDeps = {
   '@types/node': '24.13.4',
   '@types/react': '19.2.18',
   oxfmt: '0.68.0',
-  oxlint: '1.83.0',
+  oxlint: '1.83.0'
 };
 
 for (const [dep, expectedVersion] of Object.entries(frozenDeps)) {
   const actualVersion = pkg.dependencies?.[dep] || pkg.devDependencies?.[dep];
   if (actualVersion !== expectedVersion) {
     console.error(
-      `Frozen dependency requirement mismatch for ${dep}: expected ${expectedVersion}, got ${actualVersion}`,
+      `Frozen dependency requirement mismatch for ${dep}: expected ${expectedVersion}, got ${actualVersion}`
     );
     process.exit(2);
   }
@@ -165,7 +165,7 @@ function validateDependencySection(sectionName, pkgMap = {}, lockMap = {}) {
     }
     if (pkgMap[dep] !== lockMap[dep]) {
       console.error(
-        `Lockfile ${sectionName} mismatch for ${dep}: expected ${pkgMap[dep]}, got ${lockMap[dep]}`,
+        `Lockfile ${sectionName} mismatch for ${dep}: expected ${pkgMap[dep]}, got ${lockMap[dep]}`
       );
       process.exit(2);
     }
@@ -176,7 +176,7 @@ function validateDependencySection(sectionName, pkgMap = {}, lockMap = {}) {
     }
     if (resolved.version !== pkgMap[dep]) {
       console.error(
-        `Resolved version mismatch for ${dep}: expected ${pkgMap[dep]}, got ${resolved.version}`,
+        `Resolved version mismatch for ${dep}: expected ${pkgMap[dep]}, got ${resolved.version}`
       );
       process.exit(2);
     }
@@ -220,7 +220,7 @@ if (!versionSrc.includes(`VERSION = '${pkg.version}'`)) {
 
 // Package dry-run inventory verification (using --ignore-scripts to prevent recursion)
 const packResult = spawnNpm(['pack', '--dry-run', '--json', '--ignore-scripts'], {
-  encoding: 'utf8',
+  encoding: 'utf8'
 });
 
 if (packResult.error || packResult.status !== 0) {
@@ -256,8 +256,11 @@ const prohibitedPatterns = [
   '.ai-orchestrator',
   '.agents',
   '.cursor',
+  '.githooks',
   '.oxfmtrc.json',
   '.oxlintrc.json',
+  '.test-dist',
+  'tests'
 ];
 
 for (const pattern of prohibitedPatterns) {
@@ -284,7 +287,7 @@ const requiredTarballArtifacts = [
   'docs/configuration.md',
   'docs/development.md',
   'docs/harnesses.md',
-  'docs/testing.md',
+  'docs/testing.md'
 ];
 
 for (const artifact of requiredTarballArtifacts) {
@@ -304,8 +307,8 @@ try {
     ['pack', '--pack-destination', fixtureDir, '--ignore-scripts', '--dry-run=false'],
     {
       encoding: 'utf8',
-      env: cleanEnv,
-    },
+      env: cleanEnv
+    }
   );
   if (packDestRes.error || packDestRes.status !== 0) {
     console.error('Failed to pack tarball for consumer verification:');
@@ -323,15 +326,15 @@ try {
       name: 'consumer-check',
       type: 'module',
       dependencies: {
-        'ai-universal-coding-harness': `file:${tgzName}`,
-      },
-    }),
+        'ai-universal-coding-harness': `file:${tgzName}`
+      }
+    })
   );
 
   const installRes = spawnNpm(['install', '--ignore-scripts', '--no-audit', '--no-fund'], {
     cwd: fixtureDir,
     encoding: 'utf8',
-    env: cleanEnv,
+    env: cleanEnv
   });
   if (installRes.error || installRes.status !== 0) {
     console.error('Failed to install package in consumer test fixture:');
@@ -370,7 +373,7 @@ const registry = new HarnessRegistry();
 const version: string = VERSION;
 const pkgName: string = PACKAGE_NAME;
 const prodName: string = PRODUCT_NAME;
-`,
+`
   );
 
   const tsconfig = path.join(fixtureDir, 'tsconfig.json');
@@ -383,16 +386,16 @@ const prodName: string = PRODUCT_NAME;
         moduleResolution: 'NodeNext',
         typeRoots: [path.resolve('node_modules/@types').replace(/\\/g, '/')],
         types: ['node'],
-        noEmit: true,
+        noEmit: true
       },
-      include: ['consumer.ts'],
-    }),
+      include: ['consumer.ts']
+    })
   );
 
   const tscBin = path.resolve('node_modules/typescript/bin/tsc');
   const checkResult = spawnSync(process.execPath, [tscBin, '-p', tsconfig], {
     encoding: 'utf8',
-    windowsHide: true,
+    windowsHide: true
   });
 
   if (checkResult.error || checkResult.status !== 0) {
@@ -425,12 +428,12 @@ assert.ok(ProjectWorkspace);
 assert.equal(typeof VERSION, 'string');
 assert.equal(PACKAGE_NAME, 'ai-universal-coding-harness');
 assert.equal(PRODUCT_NAME, 'AI Universal Coding Harness');
-`,
+`
   );
 
   const importResult = spawnSync(process.execPath, [importTestFile], {
     cwd: fixtureDir,
-    encoding: 'utf8',
+    encoding: 'utf8'
   });
   if (importResult.error || importResult.status !== 0) {
     console.error('Consumer runtime import check failed:');
@@ -445,7 +448,7 @@ assert.equal(PRODUCT_NAME, 'AI Universal Coding Harness');
   spawnSync('git', ['config', 'user.name', 'Consumer Test'], { cwd: fixtureDir, stdio: 'ignore' });
   spawnSync('git', ['config', 'user.email', 'test@example.com'], {
     cwd: fixtureDir,
-    stdio: 'ignore',
+    stdio: 'ignore'
   });
 
   const cliBin = path.join(
@@ -453,13 +456,13 @@ assert.equal(PRODUCT_NAME, 'AI Universal Coding Harness');
     'node_modules',
     'ai-universal-coding-harness',
     'dist',
-    'bin.js',
+    'bin.js'
   );
 
   // ai-harness --version
   const versionRes = spawnSync(process.execPath, [cliBin, '--version'], {
     cwd: fixtureDir,
-    encoding: 'utf8',
+    encoding: 'utf8'
   });
   if (versionRes.error || versionRes.status !== 0 || !versionRes.stdout.includes(pkg.version)) {
     console.error(`Consumer CLI version check failed. Expected ${pkg.version}:`);
@@ -472,7 +475,7 @@ assert.equal(PRODUCT_NAME, 'AI Universal Coding Harness');
   // ai-harness init
   const initRes = spawnSync(process.execPath, [cliBin, 'init'], {
     cwd: fixtureDir,
-    encoding: 'utf8',
+    encoding: 'utf8'
   });
   if (
     initRes.error ||
@@ -489,7 +492,7 @@ assert.equal(PRODUCT_NAME, 'AI Universal Coding Harness');
   // ai-harness config show
   const configRes = spawnSync(process.execPath, [cliBin, 'config', 'show'], {
     cwd: fixtureDir,
-    encoding: 'utf8',
+    encoding: 'utf8'
   });
   if (configRes.error || configRes.status !== 0) {
     console.error('Consumer CLI config show check failed:');
@@ -513,11 +516,11 @@ assert.equal(PRODUCT_NAME, 'AI Universal Coding Harness');
   fs.mkdirSync(fixtureStageDir, { recursive: true });
   fs.writeFileSync(
     path.join(fixtureStageDir, 'functional-spec.md'),
-    '# Functional Spec\n\n- Valid spec\n',
+    '# Functional Spec\n\n- Valid spec\n'
   );
   fs.writeFileSync(
     path.join(fixtureStageDir, 'technical-spec.md'),
-    '# Technical Spec\n\n- Implementation details\n',
+    '# Technical Spec\n\n- Implementation details\n'
   );
   fs.writeFileSync(path.join(fixtureStageDir, 'prompt.md'), '# Prompt\n\n- Execute the stage\n');
 
@@ -526,8 +529,8 @@ assert.equal(PRODUCT_NAME, 'AI Universal Coding Harness');
     [cliBin, 'validate', '--stage-source', path.join(fixtureDir, 'stages'), '--stage', '01'],
     {
       cwd: fixtureDir,
-      encoding: 'utf8',
-    },
+      encoding: 'utf8'
+    }
   );
   if (validateRes.error || validateRes.status !== 0) {
     console.error('Consumer CLI validate check failed:');

@@ -11,7 +11,7 @@ import { GitLifecycleError } from '../errors.js';
 export class BranchManager {
   constructor(
     private git: GitRepository,
-    private save: (state: RunState) => void,
+    private save: (state: RunState) => void
   ) {}
 
   reconcile(state: RunState): void {
@@ -58,7 +58,7 @@ export class BranchManager {
     if (current === state.branch) return;
     if (this.git.isDirty()) {
       throw new GitLifecycleError(
-        `Repository left AI branch ${state.branch} while working tree is dirty (currently ${current || 'detached'}).`,
+        `Repository left AI branch ${state.branch} while working tree is dirty (currently ${current || 'detached'}).`
       );
     }
     this.git.switch(state.branch);

@@ -175,7 +175,7 @@ export function App({ emitter, meta = {}, initialEvents = [] }: AppProps): React
   const focusH = Math.min(layout.focusRows, Math.max(0, maxRows - headerH - layout.footerRows));
   const taskH = Math.min(
     layout.taskRows,
-    Math.max(0, maxRows - headerH - focusH - layout.footerRows),
+    Math.max(0, maxRows - headerH - focusH - layout.footerRows)
   );
   const footerH = layout.footerRows;
   const bodyH = Math.max(1, maxRows - headerH - focusH - taskH - footerH);

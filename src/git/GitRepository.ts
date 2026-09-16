@@ -118,7 +118,7 @@ export class GitRepository {
     return {
       ok: r.code === 0,
       issues,
-      output: out,
+      output: out
     };
   }
 

@@ -88,7 +88,7 @@ export class ReviewPayloadBuilder {
           estimated_tokens: Math.ceil(fullDiff.length / 4),
           truncated: false,
           original_chars: fullDiff.length,
-          prioritized_paths: requestedPaths,
+          prioritized_paths: requestedPaths
         };
       } else {
         // Full diff exceeds threshold; prioritize requestedPaths
@@ -113,7 +113,7 @@ export class ReviewPayloadBuilder {
           estimated_tokens: Math.ceil(diff.length / 4),
           truncated: true,
           original_chars: fullDiff.length,
-          prioritized_paths: requestedPaths,
+          prioritized_paths: requestedPaths
         };
       }
     } else {
@@ -124,7 +124,7 @@ export class ReviewPayloadBuilder {
           char_count: fullDiff.length,
           estimated_tokens: Math.ceil(fullDiff.length / 4),
           truncated: false,
-          original_chars: fullDiff.length,
+          original_chars: fullDiff.length
         };
       } else {
         const truncatedNotice = `\n...[diff truncated: total ${fullDiff.length} chars exceeds limit ${maxChars}. If you need context on specific truncated files, return verdict NEEDS_CONTEXT with requested_paths]`;
@@ -133,7 +133,7 @@ export class ReviewPayloadBuilder {
           char_count: diff.length,
           estimated_tokens: Math.ceil(diff.length / 4),
           truncated: true,
-          original_chars: fullDiff.length,
+          original_chars: fullDiff.length
         };
       }
     }
@@ -149,7 +149,7 @@ export class ReviewPayloadBuilder {
       diff_metrics: metrics,
       ...(requestedContextDiff !== undefined
         ? { requested_context_diff: requestedContextDiff }
-        : {}),
+        : {})
     };
   }
 }

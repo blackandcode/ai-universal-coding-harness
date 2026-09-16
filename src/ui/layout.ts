@@ -53,7 +53,7 @@ export function dashboardLayout(stdoutRows: number, configuredMax: number = 26):
       taskRows: 0,
       messageRows: 0,
       toolRows: 0,
-      footerRows: 1,
+      footerRows: 1
     };
   }
 
@@ -66,7 +66,7 @@ export function dashboardLayout(stdoutRows: number, configuredMax: number = 26):
       taskRows: 0,
       messageRows: 2,
       toolRows: 3,
-      footerRows: 1,
+      footerRows: 1
     };
   }
 
@@ -78,6 +78,6 @@ export function dashboardLayout(stdoutRows: number, configuredMax: number = 26):
     taskRows: 2,
     messageRows: 3,
     toolRows: 4,
-    footerRows: 1,
+    footerRows: 1
   };
 }

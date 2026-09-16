@@ -35,7 +35,7 @@ export function FocusPanel({
   height,
   width,
   offset,
-  follow,
+  follow
 }: FocusPanelProps): React.JSX.Element {
   const viewportHeight = Math.max(3, height - 4);
   const visibleLines = selectVisibleFocusLines(text, viewportHeight, offset, follow, width);

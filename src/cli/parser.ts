@@ -113,7 +113,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
   const o: RawArgs = {
     cmd: initial,
     sub: argv[1] && !argv[1].startsWith('-') ? argv[1] : undefined,
-    stages: [],
+    stages: []
   };
 
   const start = o.sub ? 2 : 1;
@@ -164,7 +164,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
       kind: 'config',
       subCommand: sub as 'show' | 'paths' | 'init',
       targetScope,
-      force: Boolean(o.force),
+      force: Boolean(o.force)
     };
   }
 
@@ -177,7 +177,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
       kind: 'runs',
       subCommand: sub as 'list' | 'reset' | 'delete',
       runId: o.runId,
-      force: Boolean(o.force),
+      force: Boolean(o.force)
     };
   }
 
@@ -193,7 +193,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
       kind: 'inspect',
       stageSource: o.stageSource,
       stages: o.stages,
-      feature: o.feature,
+      feature: o.feature
     };
   }
 
@@ -203,7 +203,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
       kind: 'validate',
       stageSource: o.stageSource,
       stages: o.stages,
-      feature: o.feature,
+      feature: o.feature
     };
   }
 
@@ -214,7 +214,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
       stages: o.stages,
       feature: o.feature,
       executorHarness: o.executorHarness,
-      reviewerHarness: o.reviewerHarness,
+      reviewerHarness: o.reviewerHarness
     };
   }
 
@@ -232,7 +232,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
       runId: o.runId,
       stageName: o.stages[0],
       apply: Boolean(o.apply),
-      force: Boolean(o.force),
+      force: Boolean(o.force)
     };
   }
 
@@ -250,7 +250,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
       qualityCmd: o.qualityCmd,
       ui: o.ui,
       executorHarness: o.executorHarness,
-      reviewerHarness: o.reviewerHarness,
+      reviewerHarness: o.reviewerHarness
     };
   }
 
@@ -258,7 +258,7 @@ export function parseCliArgs(argv: string[]): CliCommand {
     return {
       kind: 'resume',
       runId: o.runId,
-      ui: o.ui,
+      ui: o.ui
     };
   }
 

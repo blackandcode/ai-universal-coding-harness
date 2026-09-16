@@ -12,7 +12,7 @@ import {
   addUnreleasedEntry,
   formatBullet,
   normalizeChangeType,
-  recordUnreleasedChange,
+  recordUnreleasedChange
 } from '../../scripts/changelog/record-unreleased-change.mjs';
 
 test('normalizeChangeType normalizes canonical and custom types', () => {
@@ -42,7 +42,7 @@ test('recordUnreleasedChange throws when message is empty', () => {
 test('recordUnreleasedChange creates full changelog structure when source is empty', () => {
   const result = recordUnreleasedChange('', {
     type: 'Added',
-    message: 'Initial project setup',
+    message: 'Initial project setup'
   });
 
   assert.match(result, /^# Changelog/);
@@ -63,12 +63,12 @@ test('recordUnreleasedChange appends bullet to existing category section', () =>
     '',
     '## [1.0.0] - 2026-09-01',
     '',
-    '- Baseline release',
+    '- Baseline release'
   ].join('\n');
 
   const updated = recordUnreleasedChange(initial, {
     type: 'Added',
-    message: 'Second added item',
+    message: 'Second added item'
   });
 
   assert.match(updated, /- First added item\n- Second added item/);
@@ -85,12 +85,12 @@ test('recordUnreleasedChange inserts new category section when not present in un
     '',
     '- First added item',
     '',
-    '## [1.0.0] - 2026-09-01',
+    '## [1.0.0] - 2026-09-01'
   ].join('\n');
 
   const updated = recordUnreleasedChange(initial, {
     type: 'Fixed',
-    message: 'Resolved race condition in lock release',
+    message: 'Resolved race condition in lock release'
   });
 
   assert.match(updated, /### Added/);
@@ -109,12 +109,12 @@ test('recordUnreleasedChange inserts unreleased section before first release whe
     '',
     '### Added',
     '',
-    '- v2 launch',
+    '- v2 launch'
   ].join('\n');
 
   const updated = recordUnreleasedChange(initial, {
     type: 'Changed',
-    message: 'Modernized script',
+    message: 'Modernized script'
   });
 
   const unreleasedIndex = updated.indexOf('## [Unreleased]');
@@ -132,13 +132,13 @@ test('addUnreleasedEntry writes to changelog file on disk', async () => {
     fs.writeFileSync(
       changelogPath,
       '# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n',
-      'utf8',
+      'utf8'
     );
 
     const result = await addUnreleasedEntry({
       root: tmpDir,
       type: 'Security',
-      message: 'Hardened path traversal validation',
+      message: 'Hardened path traversal validation'
     });
 
     assert.equal(result.type, 'Security');
@@ -162,7 +162,7 @@ test('record-unreleased-change CLI runs via subprocess and updates CHANGELOG.md'
     const child = spawnSync(
       process.execPath,
       [scriptPath, '-t', 'Added', 'CLI recorded feature', '--root', tmpDir],
-      { encoding: 'utf8' },
+      { encoding: 'utf8' }
     );
 
     assert.equal(child.status, 0, `CLI failed with stderr: ${child.stderr}`);

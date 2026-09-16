@@ -48,7 +48,7 @@ export class AcpEventNormalizer {
     if (message.method === 'cursor/update_todos') {
       this.options.events?.emit?.('executor.todos', {
         todos: message.params?.todos || [],
-        merge: Boolean(message.params?.merge),
+        merge: Boolean(message.params?.merge)
       });
       return;
     }
@@ -56,7 +56,7 @@ export class AcpEventNormalizer {
     if (message.method === 'cursor/task') {
       this.options.events?.emit?.('executor.task', {
         title: message.params?.title || '',
-        summary: message.params?.summary || '',
+        summary: message.params?.summary || ''
       });
       return;
     }
@@ -104,7 +104,7 @@ export class AcpEventNormalizer {
         stageName: this.options.stageName,
         attempt: this.options.attempt,
         workspace: this.options.workspace,
-        qualityEpochId: this.options.qualityEpochId,
+        qualityEpochId: this.options.qualityEpochId
       });
 
       this.options.events?.emit?.('executor.tool', {
@@ -114,7 +114,7 @@ export class AcpEventNormalizer {
         detail: result.state.detail,
         status: result.state.status,
         exit_code: result.state.exit_code,
-        updatedAt: result.state.updatedAt,
+        updatedAt: result.state.updatedAt
       });
 
       if (result.observation) {

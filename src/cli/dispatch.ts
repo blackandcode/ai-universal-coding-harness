@@ -13,7 +13,7 @@ import {
   globalConfigPath,
   projectLocalConfigPath,
   projectTrackedConfigPath,
-  writeConfig,
+  writeConfig
 } from '../core/config.js';
 import { ROOT, STATE_ROOT } from '../core/paths.js';
 import { StageSource } from '../stages/StageSource.js';
@@ -27,7 +27,7 @@ import type { RunState } from '../types.js';
 
 export function printHelp(): void {
   console.log(
-    `${PRODUCT_NAME} v${VERSION}\n\nUsage:\n  ai-harness <command> [options]\n\nStart a project:\n  ai-harness init\n  ai-harness validate --stage-source <dir|zip> --stage 06\n  ai-harness preflight --stage-source <dir|zip> --stage 06\n  ai-harness run --stage-source <dir|zip> --stage 06 [--stage 07 ...]\n\nRun lifecycle:\n  ai-harness resume [--run <run-id>]\n  ai-harness recover [--run <run-id>] [--stage <stage>] [--dry-run] [--apply]\n  ai-harness status [--run <run-id>]\n  ai-harness tail [--run <run-id>]\n  ai-harness runs list\n  ai-harness runs delete --run <run-id> --force\n  ai-harness runs reset --force\n\nStage discovery:\n  ai-harness list-stages --stage-source <dir|zip> [--feature token]\n  ai-harness inspect --stage-source <dir|zip> --stage 06\n  ai-harness validate --stage-source <dir|zip> [--stage 06 ...]\n\nConfiguration:\n  ai-harness config paths\n  ai-harness config show\n  ai-harness config init --global\n  ai-harness config init --project\n  ai-harness config init --local\n\nProject targeting:\n  --project <path>   Target another Git repository.\n\nStage contract:\n  stage-NN-kebab-name/{functional-spec.md,technical-spec.md,prompt.md}\n\nOne run = one dedicated AI branch. One approved stage = one commit. No push or merge.`,
+    `${PRODUCT_NAME} v${VERSION}\n\nUsage:\n  ai-harness <command> [options]\n\nStart a project:\n  ai-harness init\n  ai-harness validate --stage-source <dir|zip> --stage 06\n  ai-harness preflight --stage-source <dir|zip> --stage 06\n  ai-harness run --stage-source <dir|zip> --stage 06 [--stage 07 ...]\n\nRun lifecycle:\n  ai-harness resume [--run <run-id>]\n  ai-harness recover [--run <run-id>] [--stage <stage>] [--dry-run] [--apply]\n  ai-harness status [--run <run-id>]\n  ai-harness tail [--run <run-id>]\n  ai-harness runs list\n  ai-harness runs delete --run <run-id> --force\n  ai-harness runs reset --force\n\nStage discovery:\n  ai-harness list-stages --stage-source <dir|zip> [--feature token]\n  ai-harness inspect --stage-source <dir|zip> --stage 06\n  ai-harness validate --stage-source <dir|zip> [--stage 06 ...]\n\nConfiguration:\n  ai-harness config paths\n  ai-harness config show\n  ai-harness config init --global\n  ai-harness config init --project\n  ai-harness config init --local\n\nProject targeting:\n  --project <path>   Target another Git repository.\n\nStage contract:\n  stage-NN-kebab-name/{functional-spec.md,technical-spec.md,prompt.md}\n\nOne run = one dedicated AI branch. One approved stage = one commit. No push or merge.`
   );
 }
 
@@ -39,11 +39,11 @@ export function handleConfigCommand(cmd: Extract<CliCommand, { kind: 'config' }>
           global: globalConfigPath(),
           project: projectTrackedConfigPath(),
           projectLocal: projectLocalConfigPath(),
-          projectRoot: PROJECT_ROOT,
+          projectRoot: PROJECT_ROOT
         },
         null,
-        2,
-      ),
+        2
+      )
     );
     return;
   }
@@ -70,7 +70,7 @@ async function makeUi(runId: string, state: RunState, mode?: string) {
     file,
     effective === 'line',
     CONFIG.runLogMaxBytes,
-    CONFIG.uiEventCoalesceMs,
+    CONFIG.uiEventCoalesceMs
   );
   if (effective === 'raw') {
     events.emitter.on('event', (e: unknown) => console.log(JSON.stringify(e)));
@@ -88,8 +88,8 @@ async function makeUi(runId: string, state: RunState, mode?: string) {
         status: state.status,
         dashboardMaxRows: CONFIG.uiDashboardMaxRows,
         executorLabel: state.executor_label || state.executor_harness,
-        reviewerLabel: state.reviewer_label || state.reviewer_harness,
-      },
+        reviewerLabel: state.reviewer_label || state.reviewer_harness
+      }
     });
   }
   return {
@@ -97,7 +97,7 @@ async function makeUi(runId: string, state: RunState, mode?: string) {
     close: () => {
       events.close();
       ink?.close?.();
-    },
+    }
   };
 }
 
@@ -108,7 +108,7 @@ function printValidation(src: StageSource, dirs: string[]): boolean {
     console.log(`${r.valid ? '✓' : '✗'} ${r.stage}`);
     for (const i of r.issues) {
       console.log(
-        `  ${i.level === 'error' ? 'ERROR' : 'WARN'}${i.file ? ` ${i.file}` : ''}: ${i.message}`,
+        `  ${i.level === 'error' ? 'ERROR' : 'WARN'}${i.file ? ` ${i.file}` : ''}: ${i.message}`
       );
     }
     if (!r.valid) ok = false;
@@ -226,7 +226,7 @@ export async function dispatchCliCommand(cmd: CliCommand): Promise<number> {
       const orch = new Orchestrator(dummyEvents);
       const result = await orch.preflight({
         executor_harness: cmd.executorHarness || CONFIG.executorHarness,
-        reviewer_harness: cmd.reviewerHarness || CONFIG.reviewerHarness,
+        reviewer_harness: cmd.reviewerHarness || CONFIG.reviewerHarness
       });
       console.log('Preflight OK');
       console.log(`Project:  ${ROOT}`);
@@ -262,8 +262,8 @@ export async function dispatchCliCommand(cmd: CliCommand): Promise<number> {
           status: st.status,
           dashboardMaxRows: CONFIG.uiDashboardMaxRows,
           executorLabel: st.executor_label || st.executor_harness,
-          reviewerLabel: st.reviewer_label || st.reviewer_harness,
-        },
+          reviewerLabel: st.reviewer_label || st.reviewer_harness
+        }
       });
     } else if (fs.existsSync(file)) {
       process.stdout.write(fs.readFileSync(file, 'utf8'));
@@ -279,7 +279,7 @@ export async function dispatchCliCommand(cmd: CliCommand): Promise<number> {
       runId: cmd.runId,
       stageName: cmd.stageName,
       apply: cmd.apply,
-      force: cmd.force,
+      force: cmd.force
     });
     for (const line of result.details) console.log(line);
     if (!result.ok) {
@@ -339,7 +339,7 @@ export async function dispatchCliCommand(cmd: CliCommand): Promise<number> {
       orch = new Orchestrator(bootEvents);
       await orch.preflight({
         executor_harness: cmd.executorHarness || CONFIG.executorHarness,
-        reviewer_harness: cmd.reviewerHarness || CONFIG.reviewerHarness,
+        reviewer_harness: cmd.reviewerHarness || CONFIG.reviewerHarness
       });
       state = orch.createRun({
         stageSource: cmd.stageSource,
@@ -349,7 +349,7 @@ export async function dispatchCliCommand(cmd: CliCommand): Promise<number> {
         base: cmd.base,
         qualityCmd: cmd.qualityCmd,
         executorHarness: cmd.executorHarness,
-        reviewerHarness: cmd.reviewerHarness,
+        reviewerHarness: cmd.reviewerHarness
       });
       bootEvents.close();
       lock.update(state.run_id, state.branch);
@@ -367,7 +367,7 @@ export async function dispatchCliCommand(cmd: CliCommand): Promise<number> {
     lock.release();
     if (process.stdout.isTTY) {
       console.log(
-        `\n✓ AI run ${end.status}. Branch: ${end.branch}\nWorkspace: ${end.workspace}\nNo push or merge performed.`,
+        `\n✓ AI run ${end.status}. Branch: ${end.branch}\nWorkspace: ${end.workspace}\nNo push or merge performed.`
       );
     }
     return 0;
@@ -388,7 +388,7 @@ export async function dispatchCliCommand(cmd: CliCommand): Promise<number> {
     ui?.events?.emit('run.blocked', {
       status: finalStatus,
       reason: errMessage,
-      branch: state?.branch,
+      branch: state?.branch
     });
     ui?.close();
     lock.release();

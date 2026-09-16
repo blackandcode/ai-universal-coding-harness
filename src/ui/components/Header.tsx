@@ -11,7 +11,7 @@ import {
   type PhaseName,
   type UiMeta,
   type UiPhaseMap,
-  type RunUiStatus,
+  type RunUiStatus
 } from '../types.js';
 import { formatProgressBar, getPhaseColor, getPhaseIcon, truncateText } from '../text.js';
 import { selectPhaseProgress } from '../selectors.js';
@@ -55,7 +55,7 @@ export function Header({
   attempt,
   phase,
   height,
-  width,
+  width
 }: HeaderProps): React.JSX.Element {
   const borderColor = status === 'completed' ? 'green' : status === 'running' ? 'cyan' : 'red';
   const progress = selectPhaseProgress(phase);

@@ -40,7 +40,7 @@ export function ToolActivity({
   toolOrder,
   quality,
   height,
-  width,
+  width
 }: ToolActivityProps): React.JSX.Element {
   if (height <= 0) {
     return <Box />;
@@ -65,7 +65,7 @@ export function ToolActivity({
     rows.push(
       <Text key={`msg-${m.id}`} color={color}>
         {icon} {truncateText(m.text, width - 5)}
-      </Text>,
+      </Text>
     );
   }
 
@@ -78,7 +78,7 @@ export function ToolActivity({
     rows.push(
       <Text key={`tool-${t.id}`} color={color}>
         {glyph} {truncateText(label, width - 5)}
-      </Text>,
+      </Text>
     );
   }
 
@@ -91,7 +91,7 @@ export function ToolActivity({
     rows.push(
       <Text key="quality-banner" color={isPass ? 'green' : 'red'}>
         {truncateText(badge, width - 5)}
-      </Text>,
+      </Text>
     );
   }
 

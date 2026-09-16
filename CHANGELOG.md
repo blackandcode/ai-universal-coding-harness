@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-09-16
+
+### Added
+
+- **Dedicated `tests/` Directory Structure**: Reorganized the entire test suite from `src/` into a dedicated root-level `tests/` directory mirroring `src/`, keeping production code in `src/` completely clean.
+- **Isolated Test Compilation (`.test-dist/`)**: Added `tsconfig.test.json` compiling tests and sources to `.test-dist/`, ensuring `dist/` contains only production code with zero emitted test files.
+- **Fast Incremental Quality Gate (`npm run check:changed`)**: Added `scripts/check-changed.mjs` to format, lint, typecheck, and execute targeted test suites only for touched/modified files during daily iteration.
+- **Git Pre-Push Safeguard (`scripts/pre-push.mjs`)**: Added pre-push verification script and `.githooks/pre-push` hook configured via `scripts/setup-git-hooks.mjs` to automatically run full repository verification (`npm run verify`) and halt `git push` if any check fails.
+- **Agent Testing Directives**: Updated `AGENTS.md`, `.cursor/rules/tests.mdc`, `.agents/rules/tests.mdc`, and harness quality skills instructing AI agents to default to `npm run check:changed` for day-to-day work and avoid running the full test suite unless explicitly requested.
+
 ## [2.1.0] - 2026-09-16
 
 ### Added

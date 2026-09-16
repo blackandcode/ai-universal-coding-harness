@@ -13,7 +13,7 @@ if (!fs.existsSync('package-lock.json')) {
 
 const args = ['ci', '--ignore-scripts', '--no-audit', '--no-fund'];
 const result = spawnNpm(args, {
-  stdio: 'inherit',
+  stdio: 'inherit'
 });
 
 if (result.error) {
