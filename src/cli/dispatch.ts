@@ -317,12 +317,21 @@ export async function dispatchCliCommand(cmd: CliCommand): Promise<number> {
     } finally {
       ui?.close();
       lock.release();
+      cleanupSignals();
     }
     process.exit(sig === 'SIGINT' ? 130 : 143);
   };
 
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  const onSigInt = () => void shutdown('SIGINT');
+  const onSigTerm = () => void shutdown('SIGTERM');
+
+  process.on('SIGINT', onSigInt);
+  process.on('SIGTERM', onSigTerm);
+
+  const cleanupSignals = () => {
+    process.removeListener('SIGINT', onSigInt);
+    process.removeListener('SIGTERM', onSigTerm);
+  };
 
   try {
     if (cmd.kind === 'run') {
@@ -370,6 +379,7 @@ export async function dispatchCliCommand(cmd: CliCommand): Promise<number> {
         `\n✓ AI run ${end.status}. Branch: ${end.branch}\nWorkspace: ${end.workspace}\nNo push or merge performed.`
       );
     }
+    cleanupSignals();
     return 0;
   } catch (e: unknown) {
     const errMessage = e instanceof Error ? e.message : String(e);
@@ -392,6 +402,7 @@ export async function dispatchCliCommand(cmd: CliCommand): Promise<number> {
     });
     ui?.close();
     lock.release();
+    cleanupSignals();
     console.error(`ERROR: ${errMessage}`);
     return 3;
   }

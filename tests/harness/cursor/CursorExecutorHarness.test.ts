@@ -13,6 +13,9 @@ import {
   CursorExecutorHarness,
   CursorAcpSession
 } from '../../../src/harness/cursor/CursorExecutorHarness.js';
+import { AcpToolAccumulator } from '../../../src/harness/cursor/AcpToolAccumulator.js';
+import { ObservationJournal } from '../../../src/harness/cursor/ObservationJournal.js';
+import { EventBus } from '../../../src/ui/EventBus.js';
 
 test('parseAcpEvents accumulates state across multi-chunk tool calls', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-test-'));
@@ -164,6 +167,375 @@ test('CursorAcpSession: creates session and manages state and epochs', () => {
     // Sets quality epoch without error
     session.setQualityEpoch('epoch-1');
     assert.equal(session.currentSequence(), 0);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+function createMockCursorBinary(tmpDir: string): string {
+  const scriptPath = path.join(tmpDir, 'mock-cursor-agent.mjs');
+  const scriptContent = `#!/usr/bin/env node
+import readline from 'node:readline';
+
+const args = process.argv.slice(2);
+if (args[0] === 'models') {
+  if (process.env.TEST_CURSOR_MODELS === 'none') {
+    console.log('other-unrelated-model');
+  } else {
+    console.log('gemini-3.8-flash\\nclaude-3.5-sonnet');
+  }
+  process.exit(0);
+}
+
+if (args.includes('acp')) {
+  const rl = readline.createInterface({ input: process.stdin });
+  rl.on('line', (line) => {
+    let msg;
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      return;
+    }
+
+    if (msg.method === 'initialize') {
+      console.log(JSON.stringify({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: {
+          agentCapabilities: { loadSession: true }
+        }
+      }));
+      return;
+    }
+
+    if (msg.method === 'authenticate') {
+      console.log(JSON.stringify({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: {}
+      }));
+      return;
+    }
+
+    if (msg.method === 'session/new' || msg.method === 'session/load') {
+      const isLoad = msg.method === 'session/load';
+      console.log(JSON.stringify({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: {
+          sessionId: isLoad ? msg.params?.sessionId : 'mock-sess-1',
+          configOptions: [{ id: 'thinking', options: [{ value: 'high' }] }]
+        }
+      }));
+      return;
+    }
+
+    if (msg.method === 'session/set_config_option' || msg.method === 'session/set_mode') {
+      console.log(JSON.stringify({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: {}
+      }));
+      return;
+    }
+
+    if (msg.method === 'session/prompt') {
+      const promptText = msg.params?.prompt?.[0]?.text || '';
+      if (promptText === 'trigger-plan') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 100,
+          method: 'cursor/create_plan',
+          params: { name: 'plan-01', plan: 'Step 1: Test plan' }
+        }));
+      } else if (promptText === 'trigger-empty-plan') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 101,
+          method: 'cursor/create_plan',
+          params: { name: 'empty-plan', plan: '' }
+        }));
+      } else if (promptText === 'trigger-question') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 102,
+          method: 'cursor/ask_question',
+          params: { title: 'Q', questions: [{ prompt: 'Which option?' }] }
+        }));
+      } else if (promptText === 'trigger-replan') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 105,
+          method: 'cursor/create_plan',
+          params: { name: 'plan-replan', plan: 'Plan needing changes' }
+        }));
+      } else if (promptText === 'trigger-question-err') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 106,
+          method: 'cursor/ask_question',
+          params: { title: 'Q err', questions: [{ prompt: 'Question throwing' }] }
+        }));
+      } else if (promptText === 'trigger-perm-err') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 107,
+          method: 'session/request_permission',
+          params: {
+            toolCall: { rawInput: { command: 'perm throwing' } },
+            options: [{ optionId: 'opt-deny', name: 'reject' }]
+          }
+        }));
+      } else if (promptText === 'trigger-permission-allow') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 103,
+          method: 'session/request_permission',
+          params: {
+            toolCall: { rawInput: { command: 'echo perm-ok' } },
+            options: [
+              { optionId: 'opt-allow', name: 'allow_once' },
+              { optionId: 'opt-deny', name: 'reject' }
+            ]
+          }
+        }));
+      } else if (promptText === 'trigger-permission-broker') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 104,
+          method: 'session/request_permission',
+          params: {
+            toolCall: { rawInput: { command: 'echo broker-executed' } },
+            options: [{ optionId: 'opt-deny-only', name: 'reject' }]
+          }
+        }));
+        setTimeout(() => {
+          console.log(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { status: 'completed' }
+          }));
+        }, 150);
+        return;
+      } else {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'session/update',
+          params: {
+            sessionId: 'mock-sess-1',
+            update: { sessionUpdate: 'agent_thought_chunk', content: { text: 'Thinking...' } }
+          }
+        }));
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'session/update',
+          params: {
+            sessionId: 'mock-sess-1',
+            update: { sessionUpdate: 'agent_message_chunk', content: { text: 'Done.' } }
+          }
+        }));
+      }
+
+      console.log(JSON.stringify({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: { status: 'completed' }
+      }));
+      return;
+    }
+
+    if (msg.method === 'session/cancel') {
+      return;
+    }
+  });
+
+  rl.on('close', () => process.exit(0));
+  process.on('SIGTERM', () => process.exit(0));
+  process.on('SIGINT', () => process.exit(0));
+}
+`;
+  fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
+  return scriptPath;
+}
+
+test('CursorExecutorHarness: preflight succeeds when model available and fails when missing', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-preflight-test-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+
+  try {
+    delete process.env.TEST_CURSOR_MODELS;
+    const okHarness = new CursorExecutorHarness({
+      executorBinary: mockBinary,
+      executorModel: 'gemini-3.8-flash'
+    });
+    const okResult = await okHarness.preflight();
+    assert.equal(okResult.ok, true);
+
+    process.env.TEST_CURSOR_MODELS = 'none';
+    const missingHarness = new CursorExecutorHarness({
+      executorBinary: mockBinary,
+      executorModel: 'gemini-3.8-flash'
+    });
+    const missingResult = await missingHarness.preflight();
+    assert.equal(missingResult.ok, false);
+    assert.ok(missingResult.details.some((d) => d.includes('not available')));
+  } finally {
+    delete process.env.TEST_CURSOR_MODELS;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('CursorExecutorHarness: creates session and manages interactive ACP callbacks and broker fallback', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-session-lifecycle-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus-events.jsonl'), true);
+
+  const planDecisions: string[] = [];
+  const questionsAnswered: string[] = [];
+  const permissionsGranted: string[] = [];
+
+  const harness = new CursorExecutorHarness({
+    executorBinary: mockBinary,
+    executorModel: 'gemini-3.8-flash',
+    events: eventsBus
+  });
+
+  try {
+    const session = await harness.createSession({
+      workspace: tmpDir,
+      runLog: path.join(tmpDir, 'run.log'),
+      eventsFile: path.join(tmpDir, 'events.jsonl'),
+      focusFile: path.join(tmpDir, 'focus.txt'),
+      stageName: 'stage-01',
+      attempt: 1,
+      callbacks: {
+        onPlan: async (plan: string) => {
+          planDecisions.push(plan);
+          if (plan.includes('needing changes')) {
+            return {
+              accepted: false,
+              status: 'REPLAN',
+              feedback: 'Please add X',
+              verdict: { summary: 'Needs X' }
+            };
+          }
+          return { accepted: true, status: 'APPROVE', verdict: { summary: 'Plan ok' } };
+        },
+        onQuestion: async (p: { questions?: Array<{ prompt: string }> }) => {
+          const prompt = p.questions?.[0]?.prompt || '';
+          if (prompt.includes('throwing')) {
+            throw new Error('Question resolution failed');
+          }
+          questionsAnswered.push(prompt);
+          return {
+            answers: [{ questionId: 'q', selectedOptionIds: ['opt-1'] }],
+            rationale: 'Reasoning'
+          };
+        },
+        onPermission: async (req: { command: string }) => {
+          if (req.command.includes('throwing')) {
+            throw new Error('Permission classifier exploded');
+          }
+          permissionsGranted.push(req.command);
+          return { allow: true, reason: 'Allowed' };
+        }
+      }
+    });
+
+    // 1. setMode
+    await session.setMode('plan');
+    await session.setMode('agent');
+
+    // 2. Normal prompt with streaming chunks
+    const normalResult = await session.prompt('Say hello');
+    assert.ok(normalResult.text.includes('Done.'));
+    assert.ok(fs.existsSync(path.join(tmpDir, 'focus.txt')));
+
+    // 3. Trigger plan request
+    await session.prompt('trigger-plan');
+    assert.ok(planDecisions.some((p) => p.includes('Test plan')));
+
+    // 4. Trigger empty plan and replan
+    await session.prompt('trigger-empty-plan');
+    await session.prompt('trigger-replan');
+
+    // 5. Trigger question and question error
+    await session.prompt('trigger-question');
+    assert.ok(questionsAnswered.length > 0);
+    await session.prompt('trigger-question-err');
+
+    // 6. Trigger permission allow and permission error
+    await session.prompt('trigger-permission-allow');
+    assert.ok(permissionsGranted.includes('echo perm-ok'));
+    await session.prompt('trigger-perm-err');
+
+    // 7. Trigger permission broker fallback
+    await session.prompt('trigger-permission-broker');
+    assert.ok(permissionsGranted.includes('echo broker-executed'));
+
+    // Verify command was observed in journal
+    const observed = session.observedCommands();
+    assert.ok(observed.some((o) => o.command.includes('broker-executed')));
+
+    await session.cancel();
+    await session.stop();
+
+    // 8. Resume session test and historical event replay
+    const resumedSession = await harness.createSession({
+      workspace: tmpDir,
+      runLog: path.join(tmpDir, 'run.log'),
+      eventsFile: path.join(tmpDir, 'events.jsonl'),
+      focusFile: path.join(tmpDir, 'focus.txt'),
+      resumeSessionId: 'resumed-sess-99',
+      callbacks: {
+        onPlan: async () => ({ accepted: true }),
+        onQuestion: async () => ({ answers: [], rationale: '' }),
+        onPermission: async () => ({ allow: true, reason: '' })
+      }
+    });
+    assert.equal(resumedSession.id, 'resumed-sess-99');
+    await resumedSession.stop();
+  } finally {
+    eventsBus.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('AcpToolAccumulator and ObservationJournal: unit test methods and persistence', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acc-journal-test-'));
+  const journalFile = path.join(tmpDir, 'journal.jsonl');
+
+  try {
+    const acc = new AcpToolAccumulator();
+    assert.equal(acc.stepSequence(10), 10);
+    assert.equal(acc.currentSequence(), 10);
+    assert.equal(acc.lastMutationSeq(), 0);
+    acc.markMutation(8);
+    assert.equal(acc.lastMutationSeq(), 8);
+    acc.markMutation();
+    assert.equal(acc.lastMutationSeq(), 10);
+
+    const journal = new ObservationJournal(journalFile);
+    journal.record({
+      observation_id: 'obs-1',
+      session_id: 's1',
+      tool_id: 't1',
+      tool_call_id: 'tc1',
+      sequence: 1,
+      timestamp: new Date().toISOString(),
+      source: 'acp',
+      command: 'npm test',
+      normalized_command: 'npm test',
+      command_confidence: 'high',
+      status: 'completed',
+      exit_code: 0
+    });
+
+    assert.equal(journal.getObservations().length, 1);
+    assert.ok(fs.existsSync(journalFile));
+
+    journal.clear();
+    assert.equal(journal.getObservations().length, 0);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

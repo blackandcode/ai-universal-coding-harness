@@ -61,7 +61,8 @@ if (isCoverage) {
     '--experimental-test-coverage',
     '--test-coverage-lines=85',
     '--test-coverage-functions=85',
-    '--test-coverage-branches=80'
+    '--test-coverage-branches=80',
+    '--test-coverage-exclude=.test-dist/tests/**'
   );
 }
 args.push('--test', ...testFiles);

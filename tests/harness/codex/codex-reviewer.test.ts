@@ -92,3 +92,33 @@ test('codex reviewer: validates final implementation review verdict', () => {
   const validated = validateReviewerVerdict('final-review', validFinalVerdict);
   assert.equal(validated.ok, true);
 });
+
+test('codex reviewer: handles empty and invalid JSON event lines safely', () => {
+  const emptyRes = parseCodexEventLine('');
+  assert.equal(emptyRes.hasTokenUsage, false);
+  assert.equal(emptyRes.hasRoleViolation, false);
+
+  const invalidJsonRes = parseCodexEventLine('{ not valid json');
+  assert.equal(invalidJsonRes.hasTokenUsage, false);
+});
+
+test('codex reviewer: validates permission verdict structure', () => {
+  const allowRes = validateReviewerVerdict('permission', { verdict: 'ALLOW', reason: 'Safe' });
+  assert.equal(allowRes.ok, true);
+
+  const invalidPerm = validateReviewerVerdict('permission', { verdict: 'MAYBE' });
+  assert.equal(invalidPerm.ok, false);
+  assert.match(invalidPerm.error || '', /missing or invalid verdict/i);
+});
+
+test('codex reviewer: rejects non-object results and unknown decision kinds', () => {
+  const nullRes = validateReviewerVerdict('plan-review', null);
+  assert.equal(nullRes.ok, false);
+  assert.match(nullRes.error || '', /non-object or null/i);
+
+  const unknownRes = validateReviewerVerdict('unknown-kind' as unknown as 'plan-review', {
+    verdict: 'APPROVE'
+  });
+  assert.equal(unknownRes.ok, false);
+  assert.match(unknownRes.error || '', /unknown reviewer decision kind/i);
+});

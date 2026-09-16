@@ -76,3 +76,8 @@ test('public API exports metadata constants', () => {
   assert.ok(PublicApi.PACKAGE_NAME);
   assert.ok(PublicApi.PRODUCT_NAME);
 });
+
+test('public API exports branded identifier helpers', () => {
+  assert.equal(PublicApi.asRunId('run-123'), 'run-123');
+  assert.equal(PublicApi.asStageName('stage-01'), 'stage-01');
+});

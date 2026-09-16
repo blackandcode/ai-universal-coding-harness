@@ -17,8 +17,13 @@ import os from 'node:os';
 import { dispatchCliCommand } from '../../src/cli/dispatch.js';
 import { ProjectWorkspace } from '../../src/project/ProjectWorkspace.js';
 import { projectTrackedConfigPath } from '../../src/config/paths.js';
+import { globalConfigPath, projectLocalConfigPath } from '../../src/core/config.js';
+import { Orchestrator } from '../../src/orchestrator/Orchestrator.js';
+import { RunStateStore } from '../../src/state/RunStateStore.js';
 import { RUNS_ROOT, LATEST_FILE } from '../../src/core/paths.js';
+import { removeTree } from '../../src/core/fs.js';
 import { VERSION } from '../../src/version.js';
+import type { RunState } from '../../src/types.js';
 
 /**
  * Captures console.log output during synchronous or asynchronous execution.
@@ -315,5 +320,425 @@ test('dispatchCliCommand: recover command outputs recovery audit trail', async (
     assert.ok(recoverLogs.some((l) => l.includes(testRunId)));
   } finally {
     fs.rmSync(runDir, { recursive: true, force: true });
+  }
+});
+
+test('dispatchCliCommand: config init global and local scopes', async () => {
+  const globalPath = globalConfigPath();
+  const localPath = projectLocalConfigPath();
+  const origGlobal = fs.existsSync(globalPath) ? fs.readFileSync(globalPath, 'utf8') : null;
+  const origLocal = fs.existsSync(localPath) ? fs.readFileSync(localPath, 'utf8') : null;
+  try {
+    const globalLogs = await captureLog(async () => {
+      const code = await dispatchCliCommand({
+        kind: 'config',
+        subCommand: 'init',
+        targetScope: 'global',
+        force: true
+      });
+      assert.equal(code, 0);
+    });
+    assert.ok(globalLogs.some((l) => l.includes('config') || l.includes('.jsonc')));
+
+    const localLogs = await captureLog(async () => {
+      const code = await dispatchCliCommand({
+        kind: 'config',
+        subCommand: 'init',
+        targetScope: 'local',
+        force: true
+      });
+      assert.equal(code, 0);
+    });
+    assert.ok(localLogs.some((l) => l.includes('config') || l.includes('.jsonc')));
+  } finally {
+    if (origGlobal !== null) fs.writeFileSync(globalPath, origGlobal, 'utf8');
+    else if (fs.existsSync(globalPath)) fs.unlinkSync(globalPath);
+
+    if (origLocal !== null) fs.writeFileSync(localPath, origLocal, 'utf8');
+    else if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+  }
+});
+
+test('dispatchCliCommand: preflight runs preflight checks', async () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  const origPreflight = Orchestrator.prototype.preflight;
+  Orchestrator.prototype.preflight = async function () {
+    return {
+      executor: { ok: true, details: ['mock executor ready'] },
+      reviewer: { ok: true, details: ['mock reviewer ready'] }
+    };
+  };
+
+  try {
+    const logs = await captureLog(async () => {
+      const code = await dispatchCliCommand({
+        kind: 'preflight',
+        stageSource: '',
+        stages: [],
+        feature: '',
+        executorHarness: 'cursor',
+        reviewerHarness: 'codex'
+      });
+      assert.equal(code, 0);
+    });
+    assert.ok(logs.some((l) => l.includes('Preflight OK')));
+    assert.ok(logs.some((l) => l.includes('mock executor ready')));
+  } finally {
+    Orchestrator.prototype.preflight = origPreflight;
+  }
+});
+
+test('dispatchCliCommand: preflight with stageSource and selectors', async () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-preflight-stage-'));
+  const stageDir = path.join(tmpDir, 'stage-01-example');
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.writeFileSync(path.join(stageDir, 'functional-spec.md'), '# Functional\n');
+  fs.writeFileSync(path.join(stageDir, 'technical-spec.md'), '# Technical\n');
+  fs.writeFileSync(path.join(stageDir, 'prompt.md'), '# Prompt\n');
+
+  const origPreflight = Orchestrator.prototype.preflight;
+  Orchestrator.prototype.preflight = async function () {
+    return {
+      executor: { ok: true, details: ['mock executor ready'] },
+      reviewer: { ok: true, details: ['mock reviewer ready'] }
+    };
+  };
+
+  try {
+    const logs = await captureLog(async () => {
+      const code = await dispatchCliCommand({
+        kind: 'preflight',
+        stageSource: tmpDir,
+        stages: ['01'],
+        feature: '',
+        executorHarness: 'cursor',
+        reviewerHarness: 'codex'
+      });
+      assert.equal(code, 0);
+    });
+    assert.ok(logs.some((l) => l.includes('Preflight OK')));
+  } finally {
+    Orchestrator.prototype.preflight = origPreflight;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('dispatchCliCommand: runs reset and empty list handling', async () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  // reset all runs
+  const resetLogs = await captureLog(async () => {
+    const code = await dispatchCliCommand({
+      kind: 'runs',
+      subCommand: 'reset',
+      force: true
+    });
+    assert.equal(code, 0);
+  });
+  assert.ok(resetLogs.some((l) => l.includes('deleted')));
+
+  // list runs when empty
+  const listLogs = await captureLog(async () => {
+    const code = await dispatchCliCommand({
+      kind: 'runs',
+      subCommand: 'list',
+      force: false
+    });
+    assert.equal(code, 0);
+  });
+  assert.ok(listLogs.some((l) => l.includes('No runs found.')));
+
+  // runs fallthrough
+  const fallbackCode = await dispatchCliCommand({
+    kind: 'runs',
+    subCommand: 'unknown' as unknown as 'list',
+    force: false
+  });
+  assert.equal(fallbackCode, 0);
+});
+
+test('dispatchCliCommand: validate returns error for missing or invalid stages', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-validate-empty-'));
+  try {
+    // empty directory
+    const emptyLogs = await captureLog(async () => {
+      const code = await dispatchCliCommand({
+        kind: 'validate',
+        stageSource: tmpDir,
+        stages: []
+      });
+      assert.equal(code, 2);
+    });
+    assert.ok(emptyLogs.some((l) => l.includes('No stage folders found.')));
+
+    // invalid stage (missing required prompt.md)
+    const invalidDir = path.join(tmpDir, 'stage-02-invalid');
+    fs.mkdirSync(invalidDir, { recursive: true });
+    fs.writeFileSync(path.join(invalidDir, 'functional-spec.md'), '# F');
+    const invalidLogs = await captureLog(async () => {
+      const code = await dispatchCliCommand({
+        kind: 'validate',
+        stageSource: tmpDir,
+        stages: ['02']
+      });
+      assert.equal(code, 2);
+    });
+    assert.ok(invalidLogs.some((l) => l.includes('stage-02-invalid')));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('dispatchCliCommand: recover returns error on invalid run or failure', async () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  const errorLogs: string[] = [];
+  const origError = console.error;
+  console.error = (...args: unknown[]) => {
+    errorLogs.push(args.map(String).join(' '));
+  };
+  try {
+    const code = await dispatchCliCommand({
+      kind: 'recover',
+      runId: 'non-existent-run-id-999999',
+      apply: false,
+      force: false
+    });
+    assert.equal(code, 1);
+    assert.ok(errorLogs.some((l) => l.includes('ERROR:')));
+  } finally {
+    console.error = origError;
+  }
+});
+
+test('dispatchCliCommand: run and resume execute full lifecycle', async () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  const tmpStageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-run-stages-'));
+  const stageDir = path.join(tmpStageDir, 'stage-01-mock');
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.writeFileSync(path.join(stageDir, 'functional-spec.md'), '# Functional');
+  fs.writeFileSync(path.join(stageDir, 'technical-spec.md'), '# Technical');
+  fs.writeFileSync(path.join(stageDir, 'prompt.md'), '# Prompt');
+
+  const origPreflight = Orchestrator.prototype.preflight;
+  const origRun = Orchestrator.prototype.run;
+
+  let createdRunId = '';
+  Orchestrator.prototype.preflight = async function () {
+    return {
+      executor: { ok: true, details: ['mock exec'] },
+      reviewer: { ok: true, details: ['mock rev'] }
+    };
+  };
+  Orchestrator.prototype.run = async function (st: RunState): Promise<RunState> {
+    createdRunId = st.run_id;
+    st.status = 'completed';
+    const store = new RunStateStore();
+    store.save(st);
+    return st;
+  };
+
+  const origTTY = process.stdout.isTTY;
+  try {
+    // 1. Run with ui: 'raw'
+    const code = await dispatchCliCommand({
+      kind: 'run',
+      stageSource: tmpStageDir,
+      stages: ['01'],
+      feature: '',
+      ui: 'raw',
+      executorHarness: 'cursor',
+      reviewerHarness: 'codex'
+    });
+    assert.equal(code, 0);
+    assert.ok(createdRunId);
+
+    // 2. Status without runId (loads latest)
+    const statusLogs = await captureLog(async () => {
+      const statusCode = await dispatchCliCommand({ kind: 'status' });
+      assert.equal(statusCode, 0);
+    });
+    assert.ok(statusLogs.some((l) => l.includes(createdRunId)));
+
+    // 3. Tail when event file does not exist
+    const nonExistentFileRunId = `tail-missing-${Date.now()}`;
+    const missingRunDir = path.join(RUNS_ROOT, nonExistentFileRunId);
+    fs.mkdirSync(missingRunDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(missingRunDir, 'run.json'),
+      JSON.stringify({
+        version: 1,
+        run_id: nonExistentFileRunId,
+        status: 'completed',
+        branch: 'ai-harness/test-tail',
+        workspace: process.cwd(),
+        base_ref: 'HEAD',
+        base_commit: 'abc1234',
+        original_branch: 'main',
+        original_head: 'abc1234',
+        branch_created: true,
+        stage_source: '/dummy',
+        stages: [],
+        executor_harness: 'cursor',
+        reviewer_harness: 'codex',
+        quality_cmd: 'npm test'
+      })
+    );
+    try {
+      const tailCode = await dispatchCliCommand({ kind: 'tail', runId: nonExistentFileRunId });
+      assert.equal(tailCode, 0);
+    } finally {
+      removeTree(missingRunDir);
+    }
+
+    // 4. Resume latest run with TTY enabled and ui: 'line'
+    process.stdout.isTTY = true;
+    const resumeLogs = await captureLog(async () => {
+      const resumeCode = await dispatchCliCommand({
+        kind: 'resume',
+        ui: 'line'
+      });
+      assert.equal(resumeCode, 0);
+    });
+    assert.ok(resumeLogs.some((l) => l.includes('AI run completed')));
+  } finally {
+    process.stdout.isTTY = origTTY;
+    Orchestrator.prototype.preflight = origPreflight;
+    Orchestrator.prototype.run = origRun;
+    fs.rmSync(tmpStageDir, { recursive: true, force: true });
+    if (createdRunId) {
+      const runPath = path.join(RUNS_ROOT, createdRunId);
+      removeTree(runPath);
+    }
+  }
+});
+
+test('dispatchCliCommand: run handles runtime execution failure and returns exit code 3', async () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  const tmpStageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-fail-stages-'));
+  const stageDir = path.join(tmpStageDir, 'stage-01-mock');
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.writeFileSync(path.join(stageDir, 'functional-spec.md'), '# Functional');
+  fs.writeFileSync(path.join(stageDir, 'technical-spec.md'), '# Technical');
+  fs.writeFileSync(path.join(stageDir, 'prompt.md'), '# Prompt');
+
+  const origPreflight = Orchestrator.prototype.preflight;
+  const origRun = Orchestrator.prototype.run;
+  const origError = console.error;
+  const errorLogs: string[] = [];
+  console.error = (...args: unknown[]) => {
+    errorLogs.push(args.map(String).join(' '));
+  };
+
+  Orchestrator.prototype.preflight = async function () {
+    return {
+      executor: { ok: true, details: ['mock exec'] },
+      reviewer: { ok: true, details: ['mock rev'] }
+    };
+  };
+  Orchestrator.prototype.run = async function (): Promise<RunState> {
+    throw new Error('Simulated stage run execution failure');
+  };
+
+  try {
+    const code = await dispatchCliCommand({
+      kind: 'run',
+      stageSource: tmpStageDir,
+      stages: ['01'],
+      feature: '',
+      ui: 'line',
+      executorHarness: 'cursor',
+      reviewerHarness: 'codex'
+    });
+    assert.equal(code, 3);
+    assert.ok(errorLogs.some((l) => l.includes('Simulated stage run execution failure')));
+  } finally {
+    Orchestrator.prototype.preflight = origPreflight;
+    Orchestrator.prototype.run = origRun;
+    console.error = origError;
+    fs.rmSync(tmpStageDir, { recursive: true, force: true });
+    try {
+      const store = new RunStateStore();
+      const latest = store.loadLatest();
+      if (latest && latest.stage_source.includes(tmpStageDir)) {
+        removeTree(path.join(RUNS_ROOT, latest.run_id));
+      }
+    } catch {}
+  }
+});
+
+test('dispatchCliCommand: run handles SIGINT interrupt cleanly', async () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+
+  const tmpStageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-sigint-stages-'));
+  const stageDir = path.join(tmpStageDir, 'stage-01-mock');
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.writeFileSync(path.join(stageDir, 'functional-spec.md'), '# Functional');
+  fs.writeFileSync(path.join(stageDir, 'technical-spec.md'), '# Technical');
+  fs.writeFileSync(path.join(stageDir, 'prompt.md'), '# Prompt');
+
+  const origPreflight = Orchestrator.prototype.preflight;
+  const origRun = Orchestrator.prototype.run;
+  const origExit = process.exit;
+
+  let createdRunId = '';
+  Orchestrator.prototype.preflight = async function () {
+    return {
+      executor: { ok: true, details: ['mock exec'] },
+      reviewer: { ok: true, details: ['mock rev'] }
+    };
+  };
+  let exitResolve!: (code: number) => void;
+  const exitPromise = new Promise<number>((resolve) => {
+    exitResolve = resolve;
+  });
+
+  Orchestrator.prototype.run = async function (st: RunState): Promise<RunState> {
+    createdRunId = st.run_id;
+    setTimeout(() => {
+      process.emit('SIGINT');
+    }, 10);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return st;
+  };
+
+  process.exit = ((code?: number) => {
+    exitResolve(code ?? 0);
+  }) as unknown as typeof process.exit;
+
+  try {
+    const runPromise = dispatchCliCommand({
+      kind: 'run',
+      stageSource: tmpStageDir,
+      stages: ['01'],
+      feature: '',
+      ui: 'line',
+      executorHarness: 'cursor',
+      reviewerHarness: 'codex'
+    });
+
+    const exitCode = await exitPromise;
+    assert.equal(exitCode, 130);
+    await runPromise;
+  } finally {
+    process.exit = origExit;
+    Orchestrator.prototype.preflight = origPreflight;
+    Orchestrator.prototype.run = origRun;
+    fs.rmSync(tmpStageDir, { recursive: true, force: true });
+    if (createdRunId) {
+      removeTree(path.join(RUNS_ROOT, createdRunId));
+    }
   }
 });

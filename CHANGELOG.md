@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+### Added
+
+- Comprehensive unit and integration test coverage hardening across all modules to >=85% line coverage (95.12% overall line, 80.24% branch, 94.15% function coverage)
+
+### Changed
+
+- Configured `--test-coverage-exclude=.test-dist/tests/**` in `scripts/run-tests.mjs` to keep test files out of source coverage metrics
+
+### Fixed
+
+- Fixed dangling `SIGINT` and `SIGTERM` signal listeners in `src/cli/dispatch.ts` by removing them upon command completion, interruption, or failure
+
 ## [2.1.2] - 2026-09-16
 
 ### Fixed

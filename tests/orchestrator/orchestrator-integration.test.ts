@@ -1249,3 +1249,28 @@ test('orchestrator integration: reviewer fallback failover on usage limit enable
     removeTree(repoDir);
   }
 });
+
+test('Orchestrator: cancel delegates to active executor session', async () => {
+  const repoDir = createTestRepo();
+  const events = new EventBus(path.join(repoDir, 'events.jsonl'), true);
+  try {
+    const orchestrator = new Orchestrator(events, { workspace: repoDir });
+    // When no active executor
+    await orchestrator.cancel();
+
+    // With active executor
+    let cancelCalled = false;
+    (
+      orchestrator as unknown as { activeExecutor: { cancel: () => Promise<void> } }
+    ).activeExecutor = {
+      cancel: async () => {
+        cancelCalled = true;
+      }
+    };
+    await orchestrator.cancel();
+    assert.equal(cancelCalled, true);
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
