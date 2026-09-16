@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 
 test('runCli: stringifies non-Error throws from parseCliArgs', async (t) => {
   t.mock.module('../../src/cli/parser.js', {
-    namedExports: {
+    // @ts-expect-error Node.js mock.module options.exports replaces deprecated namedExports
+    exports: {
       parseCliArgs: () => {
         throw 'plain-string-failure';
       }

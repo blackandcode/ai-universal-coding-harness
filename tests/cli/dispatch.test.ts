@@ -42,6 +42,44 @@ async function captureLog(fn: () => Promise<void> | void): Promise<string[]> {
   return lines;
 }
 
+/**
+ * Captures console.log, console.error, and process.stdout.write during execution.
+ *
+ * @param fn - Callback to execute while stdout, log, and error streams are intercepted.
+ * @returns Object containing the callback's return value and captured output lines/streams.
+ */
+async function captureCliOutput<T>(
+  fn: () => Promise<T> | T
+): Promise<{ result: T; logs: string[]; errors: string[]; stdout: string }> {
+  const logs: string[] = [];
+  const errors: string[] = [];
+  let stdout = '';
+
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalWrite = process.stdout.write;
+
+  console.log = (...args: unknown[]) => {
+    logs.push(args.map(String).join(' '));
+  };
+  console.error = (...args: unknown[]) => {
+    errors.push(args.map(String).join(' '));
+  };
+  process.stdout.write = ((chunk: string | Uint8Array, ..._args: unknown[]): boolean => {
+    stdout += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8');
+    return true;
+  }) as typeof process.stdout.write;
+
+  try {
+    const result = await fn();
+    return { result, logs, errors, stdout };
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+    process.stdout.write = originalWrite;
+  }
+}
+
 test('dispatchCliCommand: help and version display correct information', async () => {
   const helpLogs = await captureLog(async () => {
     const code = await dispatchCliCommand({ kind: 'help' });
@@ -178,22 +216,28 @@ test('dispatchCliCommand: list-stages, inspect, and validate against stage sourc
     assert.ok(validateLogs.some((l) => l.includes('✓ stage-01-example')));
 
     // validate without stages validates all discovered stages
-    const validateAllCode = await dispatchCliCommand({
-      kind: 'validate',
-      stageSource: tmpDir,
-      stages: []
+    const validateAllLogs = await captureLog(async () => {
+      const validateAllCode = await dispatchCliCommand({
+        kind: 'validate',
+        stageSource: tmpDir,
+        stages: []
+      });
+      assert.equal(validateAllCode, 0);
     });
-    assert.equal(validateAllCode, 0);
+    assert.ok(validateAllLogs.some((l) => l.includes('✓ stage-01-example')));
 
     // validate on empty directory returns 2
     const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'empty-stage-dir-'));
     try {
-      const emptyCode = await dispatchCliCommand({
-        kind: 'validate',
-        stageSource: emptyDir,
-        stages: []
+      const emptyLogs = await captureLog(async () => {
+        const emptyCode = await dispatchCliCommand({
+          kind: 'validate',
+          stageSource: emptyDir,
+          stages: []
+        });
+        assert.equal(emptyCode, 2);
       });
-      assert.equal(emptyCode, 2);
+      assert.ok(emptyLogs.some((l) => l.includes('No stage folders found.')));
     } finally {
       fs.rmSync(emptyDir, { recursive: true, force: true });
     }
@@ -242,8 +286,11 @@ test('dispatchCliCommand: status and tail commands', async () => {
     assert.equal(parsedState.run_id, testRunId);
     assert.equal(parsedState.status, 'completed');
 
-    const code = await dispatchCliCommand({ kind: 'tail', runId: testRunId });
+    const { result: code, stdout: tailOut } = await captureCliOutput(async () => {
+      return dispatchCliCommand({ kind: 'tail', runId: testRunId });
+    });
     assert.equal(code, 0);
+    assert.ok(tailOut.includes('test.event'));
   } finally {
     fs.rmSync(runDir, { recursive: true, force: true });
     fs.rmSync(LATEST_FILE, { force: true });
@@ -256,7 +303,8 @@ test('dispatchCliCommand: tail invokes followInkUi when stdout is TTY', async (t
 
   let followCalled = false;
   t.mock.module('../../src/ui/InkUi.js', {
-    namedExports: {
+    // @ts-expect-error Node.js mock.module options.exports replaces deprecated namedExports
+    exports: {
       followInkUi: async () => {
         followCalled = true;
       },
@@ -303,8 +351,11 @@ test('dispatchCliCommand: tail invokes followInkUi when stdout is TTY', async (t
     // Also test tail when stdout is NOT TTY and event file exists
     process.stdout.isTTY = false;
     fs.writeFileSync(path.join(runDir, 'ui-events.jsonl'), '{"type":"test"}\n');
-    const nonTtyCode = await dispatchCliCommand({ kind: 'tail', runId: testRunId });
+    const { result: nonTtyCode, stdout: nonTtyOut } = await captureCliOutput(async () => {
+      return dispatchCliCommand({ kind: 'tail', runId: testRunId });
+    });
     assert.equal(nonTtyCode, 0);
+    assert.ok(nonTtyOut.includes('{"type":"test"}'));
 
     // Also test preflight with stageSource and empty stages array
     const tmpStageFixture = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-stage-'));
@@ -427,13 +478,16 @@ test('dispatchCliCommand: recover command outputs recovery audit trail', async (
     assert.ok(recoverLogs.some((l) => l.includes(testRunId)));
 
     // Test recover failure returns 1
-    const failCode = await dispatchCliCommand({
-      kind: 'recover',
-      runId: 'non-existent-run-id-999',
-      apply: true,
-      force: false
+    const { result: failCode, errors: recoverErrors } = await captureCliOutput(async () => {
+      return dispatchCliCommand({
+        kind: 'recover',
+        runId: 'non-existent-run-id-999',
+        apply: true,
+        force: false
+      });
     });
     assert.equal(failCode, 1);
+    assert.ok(recoverErrors.some((l) => l.includes('non-existent-run-id-999')));
   } finally {
     fs.rmSync(runDir, { recursive: true, force: true });
   }
@@ -474,7 +528,8 @@ test('dispatchCliCommand: run with compact UI on TTY starts Ink UI and closes on
   let inkStarted = false;
   let inkClosed = false;
   t.mock.module('../../src/ui/InkUi.js', {
-    namedExports: {
+    // @ts-expect-error Node.js mock.module options.exports replaces deprecated namedExports
+    exports: {
       startInkUi: async () => {
         inkStarted = true;
         return {
@@ -504,30 +559,36 @@ test('dispatchCliCommand: run with compact UI on TTY starts Ink UI and closes on
   Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
 
   try {
-    const code = await dispatchCliCommand({
-      kind: 'run',
-      stageSource: tmpStageDir,
-      stages: ['01'],
-      feature: '',
-      ui: 'compact',
-      executorHarness: 'cursor',
-      reviewerHarness: 'codex'
+    const { result: code, logs: compactLogs } = await captureCliOutput(async () => {
+      return dispatchCliCommand({
+        kind: 'run',
+        stageSource: tmpStageDir,
+        stages: ['01'],
+        feature: '',
+        ui: 'compact',
+        executorHarness: 'cursor',
+        reviewerHarness: 'codex'
+      });
     });
     assert.equal(code, 0);
     assert.equal(inkStarted, true);
     assert.equal(inkClosed, true);
+    assert.ok(compactLogs.some((l) => l.includes('AI run completed')));
 
     // Also run with ui: 'line' on TTY to verify branch where Ink UI is bypassed
-    const lineCode = await dispatchCliCommand({
-      kind: 'run',
-      stageSource: tmpStageDir,
-      stages: ['01'],
-      feature: '',
-      ui: 'line',
-      executorHarness: 'cursor',
-      reviewerHarness: 'codex'
+    const { result: lineCode, logs: lineLogs } = await captureCliOutput(async () => {
+      return dispatchCliCommand({
+        kind: 'run',
+        stageSource: tmpStageDir,
+        stages: ['01'],
+        feature: '',
+        ui: 'line',
+        executorHarness: 'cursor',
+        reviewerHarness: 'codex'
+      });
     });
     assert.equal(lineCode, 0);
+    assert.ok(lineLogs.some((l) => l.includes('AI run completed')));
   } finally {
     Object.defineProperty(process.stdout, 'isTTY', { value: origTTY, configurable: true });
     Orchestrator.prototype.preflight = origPreflight;
@@ -771,14 +832,16 @@ test('dispatchCliCommand: run and resume execute full lifecycle', async () => {
   const origTTY = process.stdout.isTTY;
   try {
     // 1. Run with ui: 'raw'
-    const code = await dispatchCliCommand({
-      kind: 'run',
-      stageSource: tmpStageDir,
-      stages: ['01'],
-      feature: '',
-      ui: 'raw',
-      executorHarness: 'cursor',
-      reviewerHarness: 'codex'
+    const { result: code } = await captureCliOutput(async () => {
+      return dispatchCliCommand({
+        kind: 'run',
+        stageSource: tmpStageDir,
+        stages: ['01'],
+        feature: '',
+        ui: 'raw',
+        executorHarness: 'cursor',
+        reviewerHarness: 'codex'
+      });
     });
     assert.equal(code, 0);
     assert.ok(createdRunId);
@@ -857,9 +920,14 @@ test('dispatchCliCommand: run stringifies non-Error runtime failures', async () 
   const origPreflight = Orchestrator.prototype.preflight;
   const origRun = Orchestrator.prototype.run;
   const origError = console.error;
+  const origLog = console.log;
   const errorLogs: string[] = [];
+  const infoLogs: string[] = [];
   console.error = (...args: unknown[]) => {
     errorLogs.push(args.map(String).join(' '));
+  };
+  console.log = (...args: unknown[]) => {
+    infoLogs.push(args.map(String).join(' '));
   };
 
   Orchestrator.prototype.preflight = async function () {
@@ -884,8 +952,10 @@ test('dispatchCliCommand: run stringifies non-Error runtime failures', async () 
     });
     assert.equal(code, 3);
     assert.ok(errorLogs.some((l) => l.includes('plain-runtime-error')));
+    assert.ok(infoLogs.some((l) => l.includes('plain-runtime-error')));
   } finally {
     console.error = origError;
+    console.log = origLog;
     Orchestrator.prototype.preflight = origPreflight;
     Orchestrator.prototype.run = origRun;
     fs.rmSync(tmpStageDir, { recursive: true, force: true });
@@ -906,9 +976,14 @@ test('dispatchCliCommand: run handles runtime execution failure and returns exit
   const origPreflight = Orchestrator.prototype.preflight;
   const origRun = Orchestrator.prototype.run;
   const origError = console.error;
+  const origLog = console.log;
   const errorLogs: string[] = [];
+  const infoLogs: string[] = [];
   console.error = (...args: unknown[]) => {
     errorLogs.push(args.map(String).join(' '));
+  };
+  console.log = (...args: unknown[]) => {
+    infoLogs.push(args.map(String).join(' '));
   };
 
   Orchestrator.prototype.preflight = async function () {
@@ -933,10 +1008,12 @@ test('dispatchCliCommand: run handles runtime execution failure and returns exit
     });
     assert.equal(code, 3);
     assert.ok(errorLogs.some((l) => l.includes('Simulated stage run execution failure')));
+    assert.ok(infoLogs.some((l) => l.includes('Simulated stage run execution failure')));
   } finally {
     Orchestrator.prototype.preflight = origPreflight;
     Orchestrator.prototype.run = origRun;
     console.error = origError;
+    console.log = origLog;
     fs.rmSync(tmpStageDir, { recursive: true, force: true });
     try {
       const store = new RunStateStore();
@@ -962,6 +1039,10 @@ test('dispatchCliCommand: run handles SIGINT interrupt cleanly', async () => {
   const origPreflight = Orchestrator.prototype.preflight;
   const origRun = Orchestrator.prototype.run;
   const origExit = process.exit;
+  const origLog = console.log;
+  const origError = console.error;
+  console.log = () => {};
+  console.error = () => {};
 
   let createdRunId = '';
   Orchestrator.prototype.preflight = async function () {
@@ -1004,6 +1085,8 @@ test('dispatchCliCommand: run handles SIGINT interrupt cleanly', async () => {
     await runPromise;
   } finally {
     process.exit = origExit;
+    console.log = origLog;
+    console.error = origError;
     Orchestrator.prototype.preflight = origPreflight;
     Orchestrator.prototype.run = origRun;
     fs.rmSync(tmpStageDir, { recursive: true, force: true });
@@ -1025,6 +1108,10 @@ test('dispatchCliCommand: handles SIGTERM signal during run', async () => {
   const origExit = process.exit;
   const origPreflight = Orchestrator.prototype.preflight;
   const origRun = Orchestrator.prototype.run;
+  const origLog = console.log;
+  const origError = console.error;
+  console.log = () => {};
+  console.error = () => {};
 
   Orchestrator.prototype.preflight = async function () {
     return {
@@ -1066,6 +1153,8 @@ test('dispatchCliCommand: handles SIGTERM signal during run', async () => {
     await runPromise;
   } finally {
     process.exit = origExit;
+    console.log = origLog;
+    console.error = origError;
     Orchestrator.prototype.preflight = origPreflight;
     Orchestrator.prototype.run = origRun;
     fs.rmSync(tmpStageDir, { recursive: true, force: true });
@@ -1150,14 +1239,17 @@ test('dispatchCliCommand: run with fallback ui mode when isTTY is false', async 
   };
 
   try {
-    await dispatchCliCommand({
-      kind: 'run',
-      stageSource: tmpStageDir,
-      stages: ['01'],
-      feature: '',
-      executorHarness: 'cursor',
-      reviewerHarness: 'codex'
+    const { result: code } = await captureCliOutput(async () => {
+      return dispatchCliCommand({
+        kind: 'run',
+        stageSource: tmpStageDir,
+        stages: ['01'],
+        feature: '',
+        executorHarness: 'cursor',
+        reviewerHarness: 'codex'
+      });
     });
+    assert.equal(code, 0);
   } finally {
     process.stdout.isTTY = origIsTTY;
     Orchestrator.prototype.preflight = origPreflight;

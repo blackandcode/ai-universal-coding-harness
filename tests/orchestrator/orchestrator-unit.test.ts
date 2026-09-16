@@ -182,6 +182,8 @@ test('Orchestrator preflight succeeds when both harnesses report ok', async () =
   }));
 
   const orchestrator = new Orchestrator(events, { workspace: process.cwd(), registry });
+  const origExec = CONFIG.executorHarness;
+  const origRev = CONFIG.reviewerHarness;
   try {
     const res = await orchestrator.preflight({
       executor_harness: 'mock-exec',
@@ -190,7 +192,9 @@ test('Orchestrator preflight succeeds when both harnesses report ok', async () =
     assert.equal(res.executor.ok, true);
     assert.equal(res.reviewer.ok, true);
 
-    // Call without parameters to exercise stateOrInput fallback branches
+    // Call without parameters to exercise stateOrInput fallback branches using configured defaults
+    CONFIG.executorHarness = 'mock-exec';
+    CONFIG.reviewerHarness = 'mock-rev';
     const resDefault = await orchestrator.preflight({});
     assert.equal(resDefault.executor.ok, true);
     assert.equal(resDefault.reviewer.ok, true);
@@ -211,6 +215,8 @@ test('Orchestrator preflight succeeds when both harnesses report ok', async () =
     );
     assert.equal(primaryHarness.info.id, 'reviewer-router');
   } finally {
+    CONFIG.executorHarness = origExec;
+    CONFIG.reviewerHarness = origRev;
     events.close();
     fs.rmSync(eventFile, { force: true });
   }
