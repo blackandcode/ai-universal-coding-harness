@@ -219,3 +219,41 @@ test('followEventFile handles initially missing file and watcher stop', async ()
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('readRecentEvents returns empty array when target path is a directory', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'event-file-dir-'));
+  try {
+    const res = readRecentEvents(tmpDir);
+    assert.deepEqual(res, []);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('followEventFile ignores empty lines, comments, and invalid json lines', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'event-file-malformed-'));
+  const filePath = path.join(tmpDir, 'malformed.jsonl');
+  fs.writeFileSync(filePath, '');
+
+  const received: UiEvent[] = [];
+  const watcher = followEventFile(filePath, (e) => received.push(e), 20);
+
+  try {
+    fs.appendFileSync(filePath, '\n   \n{ bad json\n{"type": 123}\n');
+    fs.appendFileSync(
+      filePath,
+      JSON.stringify({ ts: '2026-09-16T00:00:00Z', type: 'custom.event', payload: {} }) + '\n'
+    );
+    await new Promise((r) => setTimeout(r, 60));
+
+    assert.equal(received.length, 1);
+    assert.equal(received[0].type, 'custom.event');
+
+    // Test followEventFile when file is removed mid-watch
+    fs.unlinkSync(filePath);
+    await new Promise((r) => setTimeout(r, 40));
+  } finally {
+    watcher.stop();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

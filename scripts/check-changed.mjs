@@ -100,6 +100,47 @@ function resolveTargetedTests(touchedFiles) {
   return Array.from(testFiles);
 }
 
+function resolveCoverageIncludes(touchedFiles) {
+  const includeFiles = new Set();
+
+  for (const file of touchedFiles) {
+    const normalized = file.replace(/\\/g, '/');
+
+    // 1. Touched source file in src/
+    if (
+      normalized.startsWith('src/') &&
+      (normalized.endsWith('.ts') || normalized.endsWith('.tsx') || normalized.endsWith('.js'))
+    ) {
+      const relToSrc = normalized.slice(4);
+      const jsRel = relToSrc.replace(/\.(ts|tsx)$/, '.js');
+      includeFiles.add(`.test-dist/src/${jsRel}`);
+      continue;
+    }
+
+    // 2. Touched test file in tests/
+    if (
+      normalized.startsWith('tests/') &&
+      (normalized.endsWith('.test.ts') || normalized.endsWith('.test.tsx'))
+    ) {
+      const relToTests = normalized.slice(6); // e.g. core/process.test.ts
+      const baseRel = relToTests.replace(/\.test\.(ts|tsx)$/, '');
+
+      // Direct match (e.g. tests/core/process.test.ts -> src/core/process.ts)
+      if (
+        fs.existsSync(`src/${baseRel}.ts`) ||
+        fs.existsSync(`src/${baseRel}.tsx`) ||
+        fs.existsSync(`src/${baseRel}.js`)
+      ) {
+        includeFiles.add(`.test-dist/src/${baseRel}.js`);
+        continue;
+      }
+    }
+  }
+
+  // Filter out any included modules that don't have matching compiled files
+  return Array.from(includeFiles).filter((f) => fs.existsSync(f));
+}
+
 const touchedFiles = getGitFiles();
 
 if (touchedFiles.length === 0) {
@@ -118,6 +159,8 @@ const oxlintExts = new Set(['.ts', '.tsx', '.js', '.mjs']);
 const formatCandidates = touchedFiles.filter((f) => oxfmtExts.has(path.extname(f)));
 const lintCandidates = touchedFiles.filter((f) => oxlintExts.has(path.extname(f)));
 const targetedTests = resolveTargetedTests(touchedFiles);
+const isCoverage = process.argv.includes('--coverage') || process.argv.includes('--coverage-gate');
+const coverageIncludes = resolveCoverageIncludes(touchedFiles);
 
 // 1. Format check
 if (formatCandidates.length > 0) {
@@ -196,7 +239,16 @@ if (targetedTests.length > 0) {
   }
 
   // Execute targeted tests via scripts/run-tests.mjs
-  const testRes = spawnSync(process.execPath, ['scripts/run-tests.mjs', ...targetedTests], {
+  const testRunnerArgs = ['scripts/run-tests.mjs'];
+  if (isCoverage && coverageIncludes.length > 0) {
+    testRunnerArgs.push('--coverage');
+    for (const inc of coverageIncludes) {
+      testRunnerArgs.push(`--include=${inc}`);
+    }
+  }
+  testRunnerArgs.push(...targetedTests);
+
+  const testRes = spawnSync(process.execPath, testRunnerArgs, {
     stdio: 'inherit',
     windowsHide: true
   });

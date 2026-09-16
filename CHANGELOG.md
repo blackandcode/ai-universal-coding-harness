@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [2.1.7] - 2026-09-16
+
+### Added
+
+- Enforced mandatory post-run coverage quality gate (lines >= 95%, branches >= 85%, functions >= 95%) in `.agents/rules/tests.mdc` and `AGENTS.md`.
+- Added targeted coverage flags `--coverage` and `--include` support to `scripts/check-changed.mjs` and `scripts/run-tests.mjs` for incremental verification of touched code.
+- Added extensive high-gain unit and integration tests across `Orchestrator`, `CursorExecutorHarness`, `PlanCoordinator`, `ProjectWorkspace`, `GitRepository`, `core/process`, `StageSource`, and `cli/dispatch`.
+
+### Changed
+
+- Updated `package.json` `check:changed` and `check:touched` scripts to include `--coverage` flag by default.
+- Increased branch coverage threshold from 84% to 85% in `scripts/run-tests.mjs` to establish 95/85/95 quality gate.
+- Updated `README.md` to require npm registry installation, documented global version updates, added command explanations in quick start, highlighted harness CLI prerequisites with adapter extensibility, and expanded resume into a dedicated section
+
 ### Fixed
 
 - Awaited ACP child process termination in `CursorAcpSession.stop()` and enabled retrying directory cleanup to eliminate Windows `EPERM` file lock errors in test suites

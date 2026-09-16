@@ -47,6 +47,25 @@ test('ProjectWorkspace assertNoActiveRun ignores stale locks with non-existent P
   } finally {
     fs.rmSync(LOCK_FILE, { force: true });
   }
+
+  // Test non-ESRCH error rethrown from process.kill
+  fs.writeFileSync(
+    LOCK_FILE,
+    JSON.stringify({ pid: 12345, run_id: 'test-perm', branch: 'test-branch' })
+  );
+  const origKill = process.kill;
+  (process as unknown as { kill: (pid: number, sig: number) => void }).kill = () => {
+    const err = new Error('Permission denied');
+    (err as unknown as { code: string }).code = 'EPERM';
+    throw err;
+  };
+  try {
+    // Should be handled gracefully without unhandled exception
+    ws.assertNoActiveRun();
+  } finally {
+    process.kill = origKill;
+    fs.rmSync(LOCK_FILE, { force: true });
+  }
 });
 
 test('ProjectWorkspace: init creates workspace structure and is idempotent', () => {
@@ -199,4 +218,51 @@ test('ProjectWorkspace: ensureGitExclude is idempotent', () => {
   ws.init(false);
   ws.ensureGitExclude();
   ws.ensureGitExclude();
+});
+
+test('ProjectWorkspace: init(force=true) overwrites existing templates', () => {
+  const ws = new ProjectWorkspace();
+  const res = ws.init(true);
+  assert.ok(fs.existsSync(res.root));
+  assert.ok(fs.existsSync(res.config));
+  assert.ok(fs.existsSync(res.permissions));
+});
+
+test('ProjectWorkspace: init throws error when not inside a git repository', () => {
+  const ws = new ProjectWorkspace();
+  const orig = ws.isGitRepository.bind(ws);
+  ws.isGitRepository = () => false;
+  try {
+    assert.throws(() => ws.init(), /requires a Git repository/);
+  } finally {
+    ws.isGitRepository = orig;
+  }
+});
+
+test('ProjectWorkspace: resetRuns throws without force flag', () => {
+  const ws = new ProjectWorkspace();
+  ws.init(false);
+  assert.throws(() => ws.resetRuns(false), /without --force/);
+
+  // Test requireInitialized throws when not initialized
+  const origIsInit = ws.isInitialized.bind(ws);
+  ws.isInitialized = () => false;
+  try {
+    assert.throws(() => ws.requireInitialized(), /Project is not initialized/);
+  } finally {
+    ws.isInitialized = origIsInit;
+  }
+
+  // Test deleteRun when no remaining runs clears latest pointer
+  const soleRun = `sole-run-${Date.now()}`;
+  const soleDir = path.join(RUNS_ROOT, soleRun);
+  fs.mkdirSync(soleDir, { recursive: true });
+  fs.writeFileSync(path.join(soleDir, 'run.json'), JSON.stringify({ run_id: soleRun }));
+  fs.writeFileSync(LATEST_FILE, soleRun + '\n');
+  try {
+    ws.deleteRun(soleRun, true);
+    assert.equal(fs.existsSync(LATEST_FILE), false);
+  } finally {
+    if (fs.existsSync(soleDir)) fs.rmSync(soleDir, { recursive: true, force: true });
+  }
 });

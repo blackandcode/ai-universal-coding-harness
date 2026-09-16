@@ -198,3 +198,19 @@ test('isRecord accurately differentiates objects from primitives and arrays', ()
   assert.equal(isRecord(42), false);
   assert.equal(isRecord(true), false);
 });
+
+test('AcpToolAccumulator: clear resets state and sequence counters', () => {
+  const acc = new AcpToolAccumulator();
+  acc.stepSequence();
+  acc.stepSequence();
+  assert.equal(acc.currentSequence(), 2);
+  acc.markMutation(2);
+  assert.equal(acc.lastMutationSeq(), 2);
+  acc.processUpdate({ toolCallId: 'c1', title: 'Edit', kind: 'edit' }, { workspace: '/tmp' });
+  assert.equal(acc.currentSequence(), 3);
+  assert.equal(acc.lastMutationSeq(), 3);
+
+  acc.clear();
+  assert.equal(acc.currentSequence(), 0);
+  assert.equal(acc.lastMutationSeq(), 0);
+});

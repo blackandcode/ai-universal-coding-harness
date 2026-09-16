@@ -10,7 +10,8 @@ import {
   runProcess,
   runShellCommand,
   commandExists,
-  normalizeSpawnArgs
+  normalizeSpawnArgs,
+  createProcessResult
 } from '../../src/core/process.js';
 import { ProcessExecutionError } from '../../src/errors.js';
 
@@ -179,4 +180,73 @@ test('runShellCommand: handles timeout and pre-aborted signal', async () => {
       return true;
     }
   );
+});
+
+test('runShellCommand: rejects when signal aborts during execution', async () => {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort('aborted-during-shell'), 50);
+
+  await assert.rejects(
+    async () => {
+      await runShellCommand(`"${process.execPath}" -e "setTimeout(()=>{}, 5000)"`, {
+        signal: controller.signal
+      });
+    },
+    (err: unknown) => {
+      assert.ok(err instanceof ProcessExecutionError);
+      assert.equal(err.signal, 'SIGTERM');
+      assert.ok(err.message.includes('Command aborted by signal'));
+      return true;
+    }
+  );
+});
+
+test('runShellCommand: captures stderr lines via onStderrLine callback', async () => {
+  const stderrLines: string[] = [];
+  const res = await runShellCommand(
+    `"${process.execPath}" -e "console.error('shell-err-line-1'); console.error('shell-err-line-2');"`,
+    {
+      onStderrLine: (line) => stderrLines.push(line)
+    }
+  );
+  assert.equal(res.exitCode, 0);
+  assert.ok(stderrLines.includes('shell-err-line-1'));
+  assert.ok(stderrLines.includes('shell-err-line-2'));
+});
+
+test('runProcess: rejects with ProcessExecutionError when spawn emits error (e.g. invalid path/dir)', async () => {
+  await assert.rejects(
+    async () => {
+      await runProcess(process.cwd(), []);
+    },
+    (err: unknown) => {
+      assert.ok(err instanceof ProcessExecutionError);
+      return true;
+    }
+  );
+});
+
+test('runProcess: rejects with timeout when opts.timeoutMs elapses and kills child', async () => {
+  await assert.rejects(
+    async () => {
+      await runProcess(process.execPath, ['-e', 'setTimeout(()=>{}, 5000)'], {
+        timeoutMs: 50
+      });
+    },
+    (err: unknown) => {
+      assert.ok(err instanceof ProcessExecutionError);
+      assert.equal(err.timedOut, true);
+      assert.match(err.message, /Command timed out after 50ms/);
+      return true;
+    }
+  );
+});
+
+test('commandExists returns false for non-existent slash-delimited paths', () => {
+  assert.equal(commandExists('./nonexistent/binary/path'), false);
+  assert.equal(commandExists('/invalid/absolute/path/to/binary'), false);
+
+  // Test createProcessResult code fallback when exitCode is null
+  const nullExitRes = createProcessResult(null, 'SIGTERM', '', '', false);
+  assert.equal(nullExitRes.code, 1);
 });

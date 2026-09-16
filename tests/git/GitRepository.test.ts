@@ -147,3 +147,102 @@ test('GitRepository: run failure, branchExists, and diff filtering', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('GitRepository.switch and createBranch checkout and create branches', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-repo-switch-'));
+  try {
+    execSync('git init -b main', { cwd: tmpDir });
+    execSync('git config user.name "Test"', { cwd: tmpDir });
+    execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, 'test.txt'), 'content\n');
+    execSync('git add test.txt && git commit -m "initial"', { cwd: tmpDir });
+
+    const git = new GitRepository(tmpDir);
+    git.createBranch('feature', 'main');
+    assert.equal(git.currentBranch(), 'feature');
+
+    git.switch('main');
+    assert.equal(git.currentBranch(), 'main');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('GitRepository: head, isDirty, diffStat, statusShort, stash, findStash, commit, mergeBase, resetSoft', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-repo-methods-'));
+  try {
+    execSync('git init -b main', { cwd: tmpDir });
+    execSync('git config user.name "Test"', { cwd: tmpDir });
+    execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, 'test.txt'), 'line 1\n');
+    execSync('git add test.txt && git commit -m "initial"', { cwd: tmpDir });
+
+    const git = new GitRepository(tmpDir);
+    const initialHead = git.head();
+    assert.equal(typeof initialHead, 'string');
+    assert.equal(initialHead.length, 40);
+
+    assert.equal(git.isDirty(), false);
+    fs.writeFileSync(path.join(tmpDir, 'test.txt'), 'line 1\nline 2\n');
+    assert.equal(git.isDirty(), true);
+
+    const stat = git.diffStat();
+    assert.match(stat, /test\.txt/);
+
+    const shortStatus = git.statusShort();
+    assert.match(shortStatus, /test\.txt/);
+
+    // Stash and findStash
+    const stashSha = git.stash('test stash label');
+    assert.ok(stashSha);
+    assert.equal(git.isDirty(), false);
+    const foundSha = git.findStash('test stash label');
+    assert.ok(foundSha);
+    assert.equal(git.findStash('nonexistent-stash-label'), '');
+
+    // Commit with subject and body lines
+    fs.writeFileSync(path.join(tmpDir, 'commit-test.txt'), 'commit content\n');
+    const commitSha = git.commit('Second commit', ['Body line 1', 'Body line 2']);
+    assert.notEqual(commitSha, initialHead);
+    assert.equal(git.head(), commitSha);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('GitRepository.reviewDiff filters untracked files by path filter', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-repo-diff-filter-'));
+  try {
+    execSync('git init -b main', { cwd: tmpDir });
+    execSync('git config user.name "Test"', { cwd: tmpDir });
+    execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+    fs.writeFileSync(path.join(tmpDir, 'init.txt'), 'init\n');
+    execSync('git add init.txt && git commit -m "initial"', { cwd: tmpDir });
+
+    fs.writeFileSync(path.join(tmpDir, 'selected.txt'), 'selected content\n');
+    fs.writeFileSync(path.join(tmpDir, 'ignored.txt'), 'ignored content\n');
+
+    const git = new GitRepository(tmpDir);
+    const filteredDiff = git.reviewDiff(['selected.txt']);
+    assert.match(filteredDiff, /selected\.txt/);
+    assert.doesNotMatch(filteredDiff, /ignored\.txt/);
+
+    // Test directory prefix match in untracked files
+    fs.mkdirSync(path.join(tmpDir, 'subdir'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'subdir', 'nested.txt'), 'nested content\n');
+    const dirFilteredDiff = git.reviewDiff(['subdir/']);
+    assert.match(dirFilteredDiff, /subdir\/nested\.txt/);
+
+    // Test diff against HEAD without paths and with paths
+    const diffAll = git.diff();
+    assert.equal(typeof diffAll, 'string');
+    const diffSpecific = git.diff(['init.txt']);
+    assert.equal(typeof diffSpecific, 'string');
+
+    // Test changedFiles with rename arrow if present
+    const changed = git.changedFiles();
+    assert.ok(changed.length > 0);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

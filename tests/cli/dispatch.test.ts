@@ -176,6 +176,27 @@ test('dispatchCliCommand: list-stages, inspect, and validate against stage sourc
       assert.equal(code, 0);
     });
     assert.ok(validateLogs.some((l) => l.includes('✓ stage-01-example')));
+
+    // validate without stages validates all discovered stages
+    const validateAllCode = await dispatchCliCommand({
+      kind: 'validate',
+      stageSource: tmpDir,
+      stages: []
+    });
+    assert.equal(validateAllCode, 0);
+
+    // validate on empty directory returns 2
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'empty-stage-dir-'));
+    try {
+      const emptyCode = await dispatchCliCommand({
+        kind: 'validate',
+        stageSource: emptyDir,
+        stages: []
+      });
+      assert.equal(emptyCode, 2);
+    } finally {
+      fs.rmSync(emptyDir, { recursive: true, force: true });
+    }
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -278,6 +299,25 @@ test('dispatchCliCommand: tail invokes followInkUi when stdout is TTY', async (t
     const code = await dispatchCliCommand({ kind: 'tail', runId: testRunId });
     assert.equal(code, 0);
     assert.equal(followCalled, true);
+
+    // Also test tail when stdout is NOT TTY and event file exists
+    process.stdout.isTTY = false;
+    fs.writeFileSync(path.join(runDir, 'ui-events.jsonl'), '{"type":"test"}\n');
+    const nonTtyCode = await dispatchCliCommand({ kind: 'tail', runId: testRunId });
+    assert.equal(nonTtyCode, 0);
+
+    // Also test preflight with stageSource and empty stages array
+    const tmpStageFixture = fs.mkdtempSync(path.join(os.tmpdir(), 'preflight-stage-'));
+    try {
+      const preflightCode = await dispatchCliCommand({
+        kind: 'preflight',
+        stageSource: tmpStageFixture,
+        stages: []
+      });
+      assert.equal(preflightCode, 0);
+    } finally {
+      removeTree(tmpStageFixture);
+    }
   } finally {
     process.stdout.isTTY = origTTY;
     removeTree(runDir);
@@ -374,6 +414,15 @@ test('dispatchCliCommand: recover command outputs recovery audit trail', async (
       assert.equal(code, 0);
     });
     assert.ok(recoverLogs.some((l) => l.includes(testRunId)));
+
+    // Test recover failure returns 1
+    const failCode = await dispatchCliCommand({
+      kind: 'recover',
+      runId: 'non-existent-run-id-999',
+      apply: true,
+      force: false
+    });
+    assert.equal(failCode, 1);
   } finally {
     fs.rmSync(runDir, { recursive: true, force: true });
   }
@@ -456,6 +505,18 @@ test('dispatchCliCommand: run with compact UI on TTY starts Ink UI and closes on
     assert.equal(code, 0);
     assert.equal(inkStarted, true);
     assert.equal(inkClosed, true);
+
+    // Also run with ui: 'line' on TTY to verify branch where Ink UI is bypassed
+    const lineCode = await dispatchCliCommand({
+      kind: 'run',
+      stageSource: tmpStageDir,
+      stages: ['01'],
+      feature: '',
+      ui: 'line',
+      executorHarness: 'cursor',
+      reviewerHarness: 'codex'
+    });
+    assert.equal(lineCode, 0);
   } finally {
     Object.defineProperty(process.stdout, 'isTTY', { value: origTTY, configurable: true });
     Orchestrator.prototype.preflight = origPreflight;
@@ -939,4 +1000,167 @@ test('dispatchCliCommand: run handles SIGINT interrupt cleanly', async () => {
       removeTree(path.join(RUNS_ROOT, createdRunId));
     }
   }
+});
+
+test('dispatchCliCommand: handles SIGTERM signal during run', async () => {
+  const tmpStageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-sigterm-stages-'));
+  const stageDir = path.join(tmpStageDir, 'stage-01-sigterm');
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.writeFileSync(path.join(stageDir, 'functional-spec.md'), '# Spec\n\nContent\n');
+  fs.writeFileSync(path.join(stageDir, 'technical-spec.md'), '# Tech\n\nContent\n');
+  fs.writeFileSync(path.join(stageDir, 'prompt.md'), '# Prompt\n\nContent\n');
+
+  let createdRunId: string | null = null;
+  const origExit = process.exit;
+  const origPreflight = Orchestrator.prototype.preflight;
+  const origRun = Orchestrator.prototype.run;
+
+  Orchestrator.prototype.preflight = async function () {
+    return {
+      executor: { ok: true, details: [] },
+      reviewer: { ok: true, details: [] }
+    };
+  };
+  let exitResolve!: (code: number) => void;
+  const exitPromise = new Promise<number>((resolve) => {
+    exitResolve = resolve;
+  });
+
+  Orchestrator.prototype.run = async function (st: RunState): Promise<RunState> {
+    createdRunId = st.run_id;
+    setTimeout(() => {
+      process.emit('SIGTERM');
+    }, 10);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return st;
+  };
+
+  process.exit = ((code?: number) => {
+    exitResolve(code ?? 0);
+  }) as unknown as typeof process.exit;
+
+  try {
+    const runPromise = dispatchCliCommand({
+      kind: 'run',
+      stageSource: tmpStageDir,
+      stages: ['01'],
+      feature: '',
+      ui: 'line',
+      executorHarness: 'cursor',
+      reviewerHarness: 'codex'
+    });
+
+    const exitCode = await exitPromise;
+    assert.equal(exitCode, 143);
+    await runPromise;
+  } finally {
+    process.exit = origExit;
+    Orchestrator.prototype.preflight = origPreflight;
+    Orchestrator.prototype.run = origRun;
+    fs.rmSync(tmpStageDir, { recursive: true, force: true });
+    if (createdRunId) {
+      removeTree(path.join(RUNS_ROOT, createdRunId));
+    }
+  }
+});
+
+test('dispatchCliCommand: run with raw UI mode', async () => {
+  const tmpStageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-raw-stages-'));
+  const stageDir = path.join(tmpStageDir, 'stage-01-raw');
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.writeFileSync(path.join(stageDir, 'functional-spec.md'), '# Spec\n\nContent\n');
+  fs.writeFileSync(path.join(stageDir, 'technical-spec.md'), '# Tech\n\nContent\n');
+  fs.writeFileSync(path.join(stageDir, 'prompt.md'), '# Prompt\n\nContent\n');
+
+  let createdRunId: string | null = null;
+  const origPreflight = Orchestrator.prototype.preflight;
+  const origRun = Orchestrator.prototype.run;
+
+  Orchestrator.prototype.preflight = async function () {
+    return {
+      executor: { ok: true, details: [] },
+      reviewer: { ok: true, details: [] }
+    };
+  };
+
+  Orchestrator.prototype.run = async function (st: RunState): Promise<RunState> {
+    createdRunId = st.run_id;
+    this.events.emit('run.started', { runId: st.run_id });
+    return { ...st, status: 'completed' };
+  };
+
+  try {
+    const logs = await captureLog(async () => {
+      await dispatchCliCommand({
+        kind: 'run',
+        stageSource: tmpStageDir,
+        stages: ['01'],
+        feature: '',
+        ui: 'raw',
+        executorHarness: 'cursor',
+        reviewerHarness: 'codex'
+      });
+    });
+    assert.ok(logs.some((l) => l.includes('run.started')));
+  } finally {
+    Orchestrator.prototype.preflight = origPreflight;
+    Orchestrator.prototype.run = origRun;
+    fs.rmSync(tmpStageDir, { recursive: true, force: true });
+    if (createdRunId) {
+      removeTree(path.join(RUNS_ROOT, createdRunId));
+    }
+  }
+});
+
+test('dispatchCliCommand: run with fallback ui mode when isTTY is false', async () => {
+  const tmpStageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-notty-stages-'));
+  const stageDir = path.join(tmpStageDir, 'stage-01-notty');
+  fs.mkdirSync(stageDir, { recursive: true });
+  fs.writeFileSync(path.join(stageDir, 'functional-spec.md'), '# Spec\n\nContent\n');
+  fs.writeFileSync(path.join(stageDir, 'technical-spec.md'), '# Tech\n\nContent\n');
+  fs.writeFileSync(path.join(stageDir, 'prompt.md'), '# Prompt\n\nContent\n');
+
+  let createdRunId: string | null = null;
+  const origPreflight = Orchestrator.prototype.preflight;
+  const origRun = Orchestrator.prototype.run;
+  const origIsTTY = process.stdout.isTTY;
+  process.stdout.isTTY = false;
+
+  Orchestrator.prototype.preflight = async function () {
+    return {
+      executor: { ok: true, details: [] },
+      reviewer: { ok: true, details: [] }
+    };
+  };
+
+  Orchestrator.prototype.run = async function (st: RunState): Promise<RunState> {
+    createdRunId = st.run_id;
+    return { ...st, status: 'completed' };
+  };
+
+  try {
+    await dispatchCliCommand({
+      kind: 'run',
+      stageSource: tmpStageDir,
+      stages: ['01'],
+      feature: '',
+      executorHarness: 'cursor',
+      reviewerHarness: 'codex'
+    });
+  } finally {
+    process.stdout.isTTY = origIsTTY;
+    Orchestrator.prototype.preflight = origPreflight;
+    Orchestrator.prototype.run = origRun;
+    fs.rmSync(tmpStageDir, { recursive: true, force: true });
+    if (createdRunId) {
+      removeTree(path.join(RUNS_ROOT, createdRunId));
+    }
+  }
+});
+
+test('dispatchCliCommand: unsupported command throws or falls back', async () => {
+  const code = await dispatchCliCommand({
+    kind: 'unsupported-command'
+  } as unknown as Parameters<typeof dispatchCliCommand>[0]);
+  assert.equal(code, 0);
 });

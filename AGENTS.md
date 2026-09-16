@@ -42,7 +42,13 @@ For day-to-day iterative code changes, agents must run the fast incremental qual
 npm run check:changed
 ```
 
-This performs Oxfmt formatting check, Oxlint linting, full TypeScript typechecking, and targeted test execution only on modified/touched parts of the codebase.
+This performs Oxfmt formatting check, Oxlint linting, full TypeScript typechecking, and targeted test execution with coverage verification only on modified/touched parts of the codebase.
+
+**Mandatory Post-Run Agent Gate**: Upon completing modifications, agents must execute `npm run check:changed` and ensure that all targeted tests pass and coverage metrics meet or exceed the mandatory thresholds:
+
+- Line coverage: `>= 95%`
+- Branch coverage: `>= 85%`
+- Function coverage: `>= 95%`
 
 **Agent Directive**: Agents must NOT run the full test suite (`npm test`, `npm run test:coverage`, `npm run verify`, `npm pack --dry-run`) during routine iterations unless explicitly requested by the user.
 

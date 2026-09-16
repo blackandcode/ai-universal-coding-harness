@@ -317,13 +317,13 @@ test('App renders initial events and responds to keyboard navigation', async () 
   frame = lastFrame() ?? '';
   assert.ok(frame.includes('Agent Focus · full stream'));
 
-  // 3. Press 'Esc' to return to main dashboard
-  stdin.write('\u001B');
+  // Toggle 'f' again to return to main dashboard
+  stdin.write('f');
   await new Promise((r) => setTimeout(r, 40));
   frame = lastFrame() ?? '';
   assert.ok(frame.includes('AI Universal Coding Harness'));
 
-  // 4. Press 't' to open Todos Panel
+  // 3. Press 't' to open Todos Panel, and 't' again to toggle back
   stdin.write('t');
   await new Promise((r) => setTimeout(r, 40));
   frame = lastFrame() ?? '';
@@ -331,19 +331,36 @@ test('App renders initial events and responds to keyboard navigation', async () 
   assert.ok(frame.includes('Migrate to TSX'));
   assert.ok(frame.includes('Write tests'));
 
-  // 5. Press 'd' to open Changed Files Panel
+  stdin.write('t');
+  await new Promise((r) => setTimeout(r, 40));
+  frame = lastFrame() ?? '';
+  assert.ok(frame.includes('AI Universal Coding Harness'));
+
+  // 4. Press 'd' to open Changed Files Panel, and 'd' again to toggle back
   stdin.write('d');
   await new Promise((r) => setTimeout(r, 40));
   frame = lastFrame() ?? '';
   assert.ok(frame.includes('Changed Files'));
 
-  // 6. Press 'l' to open Logs Panel
+  stdin.write('d');
+  await new Promise((r) => setTimeout(r, 40));
+  frame = lastFrame() ?? '';
+  assert.ok(frame.includes('AI Universal Coding Harness'));
+
+  // 5. Press 'l' to open Logs Panel, and 'l' again to toggle back
   stdin.write('l');
   await new Promise((r) => setTimeout(r, 40));
   frame = lastFrame() ?? '';
   assert.ok(frame.includes('Recent Logs'));
 
-  // Return to main dashboard from logs
+  stdin.write('l');
+  await new Promise((r) => setTimeout(r, 40));
+  frame = lastFrame() ?? '';
+  assert.ok(frame.includes('AI Universal Coding Harness'));
+
+  // 6. Test Esc key from a panel
+  stdin.write('f');
+  await new Promise((r) => setTimeout(r, 40));
   stdin.write('\u001B');
   await new Promise((r) => setTimeout(r, 40));
   frame = lastFrame() ?? '';
@@ -393,6 +410,47 @@ test('App responds to live events emitted through EventEmitter', async () => {
   unmount();
 });
 
+test('App renders active task with title and completed todo states', async () => {
+  const { lastFrame: f1, unmount: u1 } = render(
+    <App
+      initialEvents={[
+        {
+          ts: '2026-09-16T00:00:00Z',
+          type: 'executor.todos',
+          payload: {
+            todos: [{ id: '1', title: 'Task with title only', status: 'in_progress' }]
+          }
+        }
+      ]}
+    />
+  );
+  let frame = f1() ?? '';
+  assert.ok(frame.includes('Task with title only'));
+  u1();
+
+  const { lastFrame: f2, unmount: u2 } = render(
+    <App
+      initialEvents={[
+        {
+          ts: '2026-09-16T00:00:00Z',
+          type: 'executor.todos',
+          payload: {
+            todos: [{ id: '1', content: 'Done task', status: 'completed' }]
+          }
+        }
+      ]}
+    />
+  );
+  frame = f2() ?? '';
+  assert.ok(frame.includes('✓ Todos 1/1'));
+  u2();
+
+  const { lastFrame: f3, unmount: u3 } = render(<App initialEvents={[]} />);
+  frame = f3() ?? '';
+  assert.ok(frame.includes('No active todo'));
+  u3();
+});
+
 test('App handles focus stream scrolling keys', async () => {
   const lines = Array.from({ length: 40 }, (_, i) => `Log entry #${i + 1}`).join('\n');
   const initialEvents: UiEvent[] = [
@@ -436,5 +494,57 @@ test('App handles focus stream scrolling keys', async () => {
   frame = lastFrame() ?? '';
   assert.ok(frame.includes('following'));
 
+  // Test 'q' to toggle quiet mode
+  stdin.write('\u001B'); // exit focus panel
+  await new Promise((r) => setTimeout(r, 40));
+  stdin.write('q');
+  await new Promise((r) => setTimeout(r, 40));
+  stdin.write('q');
+  await new Promise((r) => setTimeout(r, 40));
+
   unmount();
+});
+
+test('App handles Home key and Ctrl+C key events', async () => {
+  const lines = Array.from({ length: 40 }, (_, i) => `Log entry #${i + 1}`).join('\n');
+  const initialEvents: UiEvent[] = [
+    {
+      ts: '2026-09-16T00:00:00Z',
+      type: 'executor.focus.delta',
+      payload: { text: lines }
+    }
+  ];
+
+  const { lastFrame, stdin, unmount } = render(<App initialEvents={initialEvents} />);
+
+  // Switch to focus panel
+  stdin.write('f');
+  await new Promise((r) => setTimeout(r, 40));
+
+  // Press Home key to jump to top
+  stdin.write('\u001B[H');
+  await new Promise((r) => setTimeout(r, 40));
+  let frame = lastFrame() ?? '';
+  assert.ok(frame.includes('paused'));
+
+  // Press End key to jump to bottom and follow
+  stdin.write('\u001B[F');
+  await new Promise((r) => setTimeout(r, 40));
+  frame = lastFrame() ?? '';
+  assert.ok(frame.includes('following'));
+
+  // Test Ctrl+C
+  let sigintReceived = false;
+  const origKill = process.kill;
+  (process as unknown as { kill: (pid: number, sig: string) => void }).kill = (pid, sig) => {
+    if (sig === 'SIGINT') sigintReceived = true;
+  };
+  try {
+    stdin.write('\u0003');
+    await new Promise((r) => setTimeout(r, 40));
+    assert.equal(sigintReceived, true);
+  } finally {
+    process.kill = origKill;
+    unmount();
+  }
 });

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This package reviews the original five-stage modernization plan against the supplied `2.1.6` source tree and defines only the remaining corrective work.
+This package reviews the original five-stage modernization plan against the supplied `2.1.7` source tree and defines only the remaining corrective work.
 
 The modernization is substantially complete. The remaining work is concentrated in four areas:
 
@@ -17,7 +17,7 @@ This is intentionally a **four-stage closure plan**, not another rewrite.
 
 - Original modernization plan: `ai-universal-coding-harness-modernization-rewrite-plan(1).zip`
 - Current implementation: `ai-universal-coding-harness-2.1.2.zip`
-- Current package version: `2.1.6`
+- Current package version: `2.1.7`
 - Node engine: `>=24.18.0`
 - TypeScript: `7.0.2`
 - React: `19.2.8`
@@ -29,7 +29,7 @@ The modernization-plan README says it analyzed package version `1.0.2`, while th
 
 ## What was successfully completed
 
-The current 2.1.6 implementation successfully delivers most of the original plan:
+The current 2.1.7 implementation successfully delivers most of the original plan:
 
 - Node 24.18+ runtime floor and `.nvmrc`;
 - TypeScript 7, ES2024, NodeNext, strict mode;

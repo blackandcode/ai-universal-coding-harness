@@ -207,3 +207,97 @@ test('StageSource: validateDir flags invalid stage structures and corrupted file
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('StageSource: walks and lists stage when root directory is directly a stage folder', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stage-root-direct-'));
+  const stageRoot = path.join(tmpDir, 'stage-01-direct');
+  fs.mkdirSync(stageRoot);
+  try {
+    const src = new StageSource(stageRoot);
+    const stages = src.list();
+    assert.equal(stages.length, 1);
+    assert.equal(stages[0], stageRoot);
+    src.close();
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('StageSource: walk skips ignored directories .git, node_modules, vendor, and .ai-orchestrator', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stage-ignored-'));
+  try {
+    for (const ignored of ['.git', 'node_modules', 'vendor', '.ai-orchestrator']) {
+      const ignoredStage = path.join(tmpDir, ignored, 'stage-01-nested');
+      fs.mkdirSync(ignoredStage, { recursive: true });
+    }
+    const validStage = path.join(tmpDir, 'feature', 'stage-01-valid');
+    fs.mkdirSync(validStage, { recursive: true });
+
+    const src = new StageSource(tmpDir);
+    const stages = src.list();
+    assert.equal(stages.length, 1);
+    assert.equal(stages[0], validStage);
+    src.close();
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('StageSource: validateDir flags symlinks and whitespace-only markdown specs', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stage-symlink-'));
+  try {
+    const realDir = path.join(tmpDir, 'real-stage');
+    fs.mkdirSync(realDir);
+    const symlinkDir = path.join(tmpDir, 'stage-01-symlink');
+    try {
+      fs.symlinkSync(realDir, symlinkDir, 'dir');
+    } catch {
+      // Symlinks may require elevated privileges on Windows
+      return;
+    }
+
+    const src = new StageSource(tmpDir);
+    const rSymlink = src.validateDir(symlinkDir);
+    assert.equal(rSymlink.valid, false);
+    assert.ok(rSymlink.issues.some((i) => i.message.includes('must not be a symbolic link')));
+
+    // Whitespace only file
+    const stageDir = path.join(tmpDir, 'stage-02-whitespace');
+    fs.mkdirSync(stageDir);
+    fs.writeFileSync(path.join(stageDir, 'functional-spec.md'), '   \n  \t  \n');
+    const rWs = src.validateDir(stageDir);
+    assert.equal(rWs.valid, false);
+    assert.ok(rWs.issues.some((i) => i.message.includes('contains no meaningful content')));
+
+    // Subdirectory in place of required spec file
+    fs.mkdirSync(path.join(stageDir, 'technical-spec.md'));
+    const rNotFile = src.validateDir(stageDir);
+    assert.equal(rNotFile.valid, false);
+    assert.ok(rNotFile.issues.some((i) => i.message.includes('must be a regular file.')));
+
+    // Symbolic link spec file
+    const realSpec = path.join(tmpDir, 'real-spec.md');
+    fs.writeFileSync(realSpec, '# Real spec\n');
+    const symlinkSpec = path.join(stageDir, 'prompt.md');
+    try {
+      fs.symlinkSync(realSpec, symlinkSpec);
+      const rSymSpec = src.validateDir(stageDir);
+      assert.equal(rSymSpec.valid, false);
+      assert.ok(
+        rSymSpec.issues.some((i) =>
+          i.message.includes('must be a regular file, not a symbolic link.')
+        )
+      );
+    } catch {}
+
+    // Filter with feature path matching segment
+    fs.mkdirSync(path.join(tmpDir, 'my-feat', 'stage-03-feat'), { recursive: true });
+    const featStages = src.list('my-feat');
+    assert.equal(featStages.length, 1);
+    assert.ok(featStages[0].includes('stage-03-feat'));
+
+    src.close();
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

@@ -1,14 +1,14 @@
-# Modernization Audit — Original Plan vs 2.1.6
+# Modernization Audit — Original Plan vs 2.1.7
 
 ## Executive assessment
 
-The 2.1.6 codebase is not missing another broad modernization. Most of the five-stage plan was implemented well. The remaining issues are concentrated around places where static TypeScript strictness can give a false sense of safety while `any`, casts, shallow runtime validation, or incomplete evidence scoping still bypass the intended contracts.
+The 2.1.7 codebase is not missing another broad modernization. Most of the five-stage plan was implemented well. The remaining issues are concentrated around places where static TypeScript strictness can give a false sense of safety while `any`, casts, shallow runtime validation, or incomplete evidence scoping still bypass the intended contracts.
 
 ## 1. Toolchain and modern runtime
 
 **Status: substantially complete.**
 
-Confirmed in 2.1.6:
+Confirmed in 2.1.7:
 
 - `engines.node = >=24.18.0`;
 - `.nvmrc = 24.18.0`;
@@ -220,7 +220,7 @@ The root `DECISIONS.md` states that the authoritative decision log exists at:
 ai-universal-coding-harness-rewrite-plan/DECISIONS.md
 ```
 
-but that directory is absent from the supplied 2.1.6 tree. This leaves a broken repository-relative link and loses the claimed detailed decision history.
+but that directory is absent from the supplied 2.1.7 tree. This leaves a broken repository-relative link and loses the claimed detailed decision history.
 
 The initial rewrite plan also required `IMPLEMENTATION-STATUS.md` updates during every stage, but the current repository contains no such file.
 
@@ -235,7 +235,7 @@ Recommended outcome:
 
 **Status: gaps remain (Stage 04).**
 
-A follow-up audit of `config.example.jsonc` against the 2.1.6+ tree found that most Stage 06 reviewer routing, fallback, and UI budget keys are implemented. Three contract gaps remain:
+A follow-up audit of `config.example.jsonc` against the 2.1.7+ tree found that most Stage 06 reviewer routing, fallback, and UI budget keys are implemented. Three contract gaps remain:
 
 | ID   | Summary                                                                                                                                                                                 |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

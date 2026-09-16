@@ -54,6 +54,24 @@ test('Orchestrator questionDecision caches ANSWER verdicts and falls back to fir
     const second = await questionDecision(reviewer, payload, cache, 'stage-01', state);
     assert.deepEqual(second.answers[0].selectedOptionIds, ['opt1']);
     assert.equal(calls, 1);
+
+    // Test question with empty questions and title omitted
+    const emptyPayload = {};
+    const emptyRes = await questionDecision(reviewer, emptyPayload, cache, 'stage-01', state);
+    assert.deepEqual(emptyRes.answers, []);
+
+    // Test question with reviewer returning verdict !== ANSWER
+    const reviewerOther = {
+      answerQuestions: async () => ({ verdict: 'DEFER', rationale: 'deferred' })
+    };
+    const deferRes = await questionDecision(
+      reviewerOther,
+      { questions: [{ id: 'q2', prompt: 'Choose 2?', options: [] }] },
+      cache,
+      'stage-01',
+      state
+    );
+    assert.deepEqual(deferRes.answers, [{ questionId: 'q2', selectedOptionIds: [] }]);
   } finally {
     events.close();
     fs.rmSync(eventFile, { force: true });
@@ -93,6 +111,29 @@ test('Orchestrator permissionDecision uses reviewer when deterministic policy is
     );
     assert.equal(decision.allow, true);
     assert.match(decision.reason, /Reviewer|allowed/i);
+
+    // Call again to hit the cached decision branch
+    const cachedDecision = await permissionDecision(
+      engine,
+      reviewer,
+      { command: 'my-tool --custom', raw: { command: 'my-tool --custom' } },
+      'stage-01',
+      state
+    );
+    assert.equal(cachedDecision.allow, true);
+
+    // Test permission with inconclusive command and empty reason from reviewer
+    const reviewerNoReason = {
+      decidePermission: async () => ({ verdict: 'DENY' })
+    };
+    const deniedDecision = await permissionDecision(
+      engine,
+      reviewerNoReason,
+      { command: 'my-inconclusive-command', raw: {} },
+      'stage-01',
+      state
+    );
+    assert.equal(deniedDecision.allow, false);
   } finally {
     events.close();
     fs.rmSync(repoDir, { recursive: true, force: true });

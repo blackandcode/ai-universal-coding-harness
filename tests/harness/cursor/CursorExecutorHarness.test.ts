@@ -173,6 +173,12 @@ test('CursorAcpSession: creates session and manages state and epochs', () => {
     // Sets quality epoch without error
     session.setQualityEpoch('epoch-1');
     assert.equal(session.currentSequence(), 0);
+
+    const normalizer = (
+      session as unknown as { normalizer: { options: { onAgentText?: (text: string) => void } } }
+    ).normalizer;
+    normalizer.options.onAgentText?.('post-epoch text');
+    assert.equal((session as unknown as { agentText: string }).agentText, 'post-epoch text');
   } finally {
     safeRm(tmpDir);
   }
@@ -187,6 +193,9 @@ const args = process.argv.slice(2);
 if (args[0] === 'models') {
   if (process.env.TEST_CURSOR_MODELS === 'none') {
     console.log('other-unrelated-model');
+  } else if (process.env.TEST_CURSOR_MODELS === 'fail') {
+    console.error('failed listing models');
+    process.exit(1);
   } else {
     console.log('gemini-3.8-flash\\nclaude-3.5-sonnet');
   }
@@ -278,6 +287,10 @@ if (args.includes('acp')) {
           method: 'cursor/create_plan',
           params: { name: 'plan-01', plan: 'Step 1: Test plan' }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-empty-plan') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -285,6 +298,10 @@ if (args.includes('acp')) {
           method: 'cursor/create_plan',
           params: { name: 'empty-plan', plan: '' }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-question') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -292,6 +309,10 @@ if (args.includes('acp')) {
           method: 'cursor/ask_question',
           params: { title: 'Q', questions: [{ prompt: 'Which option?' }] }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-replan') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -299,6 +320,10 @@ if (args.includes('acp')) {
           method: 'cursor/create_plan',
           params: { name: 'plan-replan', plan: 'Plan needing changes' }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-question-err') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -306,6 +331,10 @@ if (args.includes('acp')) {
           method: 'cursor/ask_question',
           params: { title: 'Q err', questions: [{ prompt: 'Question throwing' }] }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-perm-err') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -316,6 +345,10 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-deny', name: 'reject' }]
           }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-permission-allow') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -329,6 +362,10 @@ if (args.includes('acp')) {
             ]
           }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-permission-deny') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -339,6 +376,10 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-deny', name: 'reject' }]
           }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { status: 'completed' } }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-permission-broker-git') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -355,7 +396,7 @@ if (args.includes('acp')) {
             id: msg.id,
             result: { status: 'completed' }
           }));
-        }, 150);
+        }, 50);
         return;
       } else if (promptText === 'trigger-plan-throw') {
         console.log(JSON.stringify({
@@ -364,6 +405,14 @@ if (args.includes('acp')) {
           method: 'cursor/create_plan',
           params: { name: 'bad-plan', plan: 'Plan that throws' }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { status: 'completed' }
+          }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-allow-always') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -374,6 +423,14 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-aa', name: 'allow_always' }]
           }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { status: 'completed' }
+          }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-allow-session') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -384,6 +441,14 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-as', name: 'allow_session' }]
           }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { status: 'completed' }
+          }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-perm-cancel') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -394,6 +459,14 @@ if (args.includes('acp')) {
             options: [{ optionId: 'opt-x', name: 'unrelated' }]
           }
         }));
+        setTimeout(() => {
+          console.log(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { status: 'completed' }
+          }));
+        }, 50);
+        return;
       } else if (promptText === 'trigger-broker-fail') {
         console.log(JSON.stringify({
           jsonrpc: '2.0',
@@ -410,9 +483,10 @@ if (args.includes('acp')) {
             id: msg.id,
             result: { status: 'completed' }
           }));
-        }, 150);
+        }, 50);
         return;
       } else if (promptText === 'trigger-hang') {
+        // don't respond, let it time out
         return;
       } else if (promptText === 'trigger-exit') {
         process.exit(9);
@@ -457,7 +531,7 @@ if (args.includes('acp')) {
             id: msg.id,
             result: { status: 'completed' }
           }));
-        }, 150);
+        }, 50);
         return;
       } else {
         console.log(JSON.stringify({
@@ -487,12 +561,23 @@ if (args.includes('acp')) {
     }
 
     if (msg.method === 'session/cancel') {
+      console.log(JSON.stringify({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: {}
+      }));
       return;
     }
   });
 
   rl.on('close', () => process.exit(0));
-  process.on('SIGTERM', () => process.exit(0));
+  process.on('SIGTERM', () => {
+    if (process.env.TEST_CURSOR_IGNORE_SIGTERM === '1') {
+      // Do nothing, let SIGKILL handle it
+      return;
+    }
+    process.exit(0);
+  });
   process.on('SIGINT', () => process.exit(0));
 }
 `;
@@ -521,6 +606,15 @@ test('CursorExecutorHarness: preflight succeeds when model available and fails w
     const missingResult = await missingHarness.preflight();
     assert.equal(missingResult.ok, false);
     assert.ok(missingResult.details.some((d) => d.includes('not available')));
+
+    process.env.TEST_CURSOR_MODELS = 'fail';
+    const failHarness = new CursorExecutorHarness({
+      executorBinary: mockBinary,
+      executorModel: 'gemini-3.8-flash'
+    });
+    const failResult = await failHarness.preflight();
+    assert.equal(failResult.ok, false);
+    assert.ok(failResult.details.some((d) => d.includes('not available')));
   } finally {
     delete process.env.TEST_CURSOR_MODELS;
     safeRm(tmpDir);
@@ -893,6 +987,63 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
     await loadSession.stop();
     delete process.env.TEST_CURSOR_LOAD_FAIL;
 
+    // Test loadSession with agentCapabilities having snake_case load_session: true
+    const loadSnakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-load-snake-'));
+    const mockSnake = createMockCursorBinary(loadSnakeDir);
+    const busSnake = new EventBus(path.join(loadSnakeDir, 'bus.jsonl'), true);
+    try {
+      const snakeSession = new CursorAcpSession(
+        baseSessionOptions(loadSnakeDir, mockSnake, busSnake, {
+          resumeSessionId: 'sess-snake-load'
+        })
+      );
+      (snakeSession as unknown as { request: (m: string) => Promise<unknown> }).request = async (
+        m: string
+      ) => {
+        if (m === 'initialize') return { agent_capabilities: { load_session: true } };
+        if (m === 'authenticate') return {};
+        if (m === 'session/load')
+          return {
+            sessionId: 'sess-snake-load',
+            config_options: [{ id: 'thinking', options: [{ id: 'high' }] }]
+          };
+        if (m === 'session/set_config_option') return {};
+        return {};
+      };
+      await snakeSession.start();
+      assert.equal(snakeSession.id, 'sess-snake-load');
+      await snakeSession.stop();
+    } finally {
+      busSnake.close();
+      safeRm(loadSnakeDir);
+    }
+
+    // Test loadSession with agentCapabilities having loadSession: false (falls back to session/new)
+    const loadFallbackDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-load-fb-'));
+    const mockFb = createMockCursorBinary(loadFallbackDir);
+    const busFb = new EventBus(path.join(loadFallbackDir, 'bus.jsonl'), true);
+    try {
+      const fbSession = new CursorAcpSession(
+        baseSessionOptions(loadFallbackDir, mockFb, busFb, {
+          resumeSessionId: 'sess-fb-load'
+        })
+      );
+      (fbSession as unknown as { request: (m: string) => Promise<unknown> }).request = async (
+        m: string
+      ) => {
+        if (m === 'initialize') return { agentCapabilities: { loadSession: false } };
+        if (m === 'authenticate') return {};
+        if (m === 'session/new') return { sessionId: 'sess-new-created', configOptions: [] };
+        return {};
+      };
+      await fbSession.start();
+      assert.equal(fbSession.id, 'sess-new-created');
+      await fbSession.stop();
+    } finally {
+      busFb.close();
+      safeRm(loadFallbackDir);
+    }
+
     process.env.TEST_CURSOR_NO_THINKING = '1';
     const thinkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-think-'));
     const mockThink = createMockCursorBinary(thinkDir);
@@ -933,10 +1084,14 @@ test('CursorAcpSession: prompt timeout and child exit reject in-flight requests'
 
   try {
     const hangSession = new CursorAcpSession(
-      baseSessionOptions(tmpDir, mockBinary, eventsBus, { turnTimeoutMinutes: 0.0005 })
+      baseSessionOptions(tmpDir, mockBinary, eventsBus, { turnTimeoutMinutes: 0.0001 })
     );
     await hangSession.start();
     await assert.rejects(() => hangSession.prompt('trigger-hang'), /timed out/i);
+    // Explicitly kill the child before stop
+    (hangSession as unknown as { child: import('node:child_process').ChildProcess }).child.kill(
+      'SIGKILL'
+    );
     await hangSession.stop();
 
     const exitSession = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
@@ -1005,6 +1160,396 @@ test('CursorAcpSession: setQualityEpoch rebuilds normalizer and records epoch on
     await session.prompt('trigger-permission-broker-git');
     const obs = session.observedCommands();
     assert.ok(obs.some((o) => o.quality_epoch_id === 'quality-epoch-42'));
+    await session.stop();
+  } finally {
+    eventsBus.close();
+    safeRm(tmpDir);
+  }
+});
+
+test('CursorAcpSession: handles post-epoch normalizer callbacks and session queries', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-epoch-callbacks-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+
+  try {
+    const session = new CursorAcpSession(
+      baseSessionOptions(tmpDir, mockBinary, eventsBus, {
+        runId: 'run-post-epoch',
+        stageName: 'stage-01',
+        attempt: 1,
+        callbacks: {
+          onPlan: async () => ({
+            accepted: true,
+            outcome: 'accepted',
+            status: 'APPROVE'
+          }),
+          onQuestion: async () => ({
+            answers: [{ questionId: 'q1', selectedOptionIds: ['o1'] }],
+            rationale: 'opt1'
+          }),
+          onPermission: async () => ({
+            allow: true,
+            reason: 'allowed'
+          })
+        }
+      })
+    );
+    await session.start();
+
+    // Query sequence methods
+    assert.equal(typeof session.currentSequence(), 'number');
+    assert.equal(typeof session.lastMutationSeq(), 'number');
+    assert.ok(Array.isArray(session.observedCommands()));
+
+    // Stdin error handling: both non-EPIPE and EPIPE
+    const childStdin = (
+      session as unknown as { child: { stdin: import('node:events').EventEmitter } }
+    ).child.stdin;
+    childStdin.emit('error', new Error('mock socket failure'));
+    childStdin.emit('error', Object.assign(new Error('broken pipe'), { code: 'EPIPE' }));
+
+    const handleLine = (
+      session as unknown as { handleLine: (line: string) => Promise<void> }
+    ).handleLine.bind(session);
+
+    // Callbacks on the normalizer created during start()
+    await handleLine(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: 's1',
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'Pre-epoch agent response' }
+          }
+        }
+      })
+    );
+    await handleLine(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: 's1',
+          update: {
+            sessionUpdate: 'focus_delta',
+            content: { type: 'text', text: 'Pre-epoch focus delta\n' }
+          }
+        }
+      })
+    );
+    await handleLine(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 601,
+        method: 'cursor/create_plan',
+        params: { plan: 'Pre-epoch plan' }
+      })
+    );
+    await handleLine(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 602,
+        method: 'cursor/ask_question',
+        params: {
+          title: 'Question',
+          questions: [{ id: 'q1', prompt: 'Which?', options: [{ id: 'o1', label: 'One' }] }]
+        }
+      })
+    );
+    await handleLine(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 603,
+        method: 'session/request_permission',
+        params: {
+          command: 'npm run test',
+          options: [{ id: 'allow_once' }, { id: 'deny' }]
+        }
+      })
+    );
+
+    // Now set quality epoch (creates second normalizer instance)
+    session.setQualityEpoch('epoch-test-42');
+
+    // 1. Agent message chunk
+    await handleLine(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: 's1',
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'Agent response chunk' }
+          }
+        }
+      })
+    );
+
+    // 2. Focus delta
+    await handleLine(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: 's1',
+          update: {
+            sessionUpdate: 'focus_delta',
+            content: { type: 'text', text: 'Focus delta line\n' }
+          }
+        }
+      })
+    );
+
+    // 3. Plan request
+    await handleLine(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 701,
+        method: 'cursor/create_plan',
+        params: { plan: 'Stage implementation plan' }
+      })
+    );
+
+    // 4. Question request
+    await handleLine(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 702,
+        method: 'cursor/ask_question',
+        params: {
+          title: 'Question',
+          questions: [{ id: 'q1', prompt: 'Which?', options: [{ id: 'o1', label: 'One' }] }]
+        }
+      })
+    );
+
+    // 5. Permission request
+    await handleLine(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 703,
+        method: 'session/request_permission',
+        params: {
+          command: 'npm run test',
+          options: [{ id: 'allow_once' }, { id: 'deny' }]
+        }
+      })
+    );
+
+    await session.stop();
+  } finally {
+    eventsBus.close();
+    safeRm(tmpDir);
+  }
+});
+
+test('CursorAcpSession: stop gracefully handles child.kill error', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-stop-err-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+
+  try {
+    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    await session.start();
+    const child = (session as unknown as { child: import('node:child_process').ChildProcess })
+      .child;
+    const origKill = child.kill.bind(child);
+    child.kill = () => {
+      throw new Error('kill failed');
+    };
+    await session.stop();
+    try {
+      origKill('SIGKILL');
+    } catch {}
+  } finally {
+    eventsBus.close();
+    safeRm(tmpDir);
+  }
+});
+
+test('CursorAcpSession: routes stderr lines to event logger and run log', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-stderr-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  let warned = false;
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  eventsBus.emitter.on('event', (ev: { payload?: { message?: string } }) => {
+    if (ev.payload?.message?.includes('test stderr line')) warned = true;
+  });
+
+  try {
+    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    await session.start();
+    const childStderr = (
+      session as unknown as { child: { stderr: import('node:events').EventEmitter } }
+    ).child.stderr;
+    childStderr.emit('data', Buffer.from('test stderr line\n'));
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(warned, true);
+    await session.stop();
+  } finally {
+    eventsBus.close();
+    safeRm(tmpDir);
+  }
+});
+
+test('CursorAcpSession: setMode logs warning when session/set_mode rejects', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-setmode-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  let modeWarned = false;
+  eventsBus.emitter.on('event', (ev: { payload?: { message?: string } }) => {
+    if (ev.payload?.message?.includes('Unable to set executor mode')) modeWarned = true;
+  });
+
+  try {
+    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    await session.start();
+    const origRequest = (
+      session as unknown as { request: (...args: unknown[]) => Promise<unknown> }
+    ).request.bind(session);
+    (
+      session as unknown as {
+        request: (m: string, p: unknown, t?: number) => Promise<unknown>;
+      }
+    ).request = async (m, p, t) => {
+      if (m === 'session/set_mode') throw new Error('mode rejected');
+      return origRequest(m, p, t);
+    };
+    await session.setMode('plan');
+    assert.equal(modeWarned, true);
+    await session.stop();
+  } finally {
+    eventsBus.close();
+    safeRm(tmpDir);
+  }
+});
+
+test('CursorAcpSession: replayHistoricalEvents catches read error when eventsFile is directory', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-replay-err-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  const badEventsDir = path.join(tmpDir, 'events-dir');
+  fs.mkdirSync(badEventsDir);
+
+  try {
+    const session = new CursorAcpSession(
+      baseSessionOptions(tmpDir, mockBinary, eventsBus, {
+        eventsFile: badEventsDir,
+        resumeSessionId: 'sess-dir'
+      })
+    );
+    (session as unknown as { replayHistoricalEvents: () => void }).replayHistoricalEvents();
+  } finally {
+    eventsBus.close();
+    safeRm(tmpDir);
+  }
+});
+
+test('CursorAcpSession: stop finishes immediately when child exits cleanly', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-stop-clean-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+
+  try {
+    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    await session.start();
+    const child = (session as unknown as { child: import('node:child_process').ChildProcess })
+      .child;
+    const origKill = child.kill.bind(child);
+    child.kill = (sig) => {
+      // Simulate child immediately emitting exit upon receiving SIGTERM
+      setTimeout(() => child.emit('exit', 0, null), 5);
+      return origKill(sig);
+    };
+    await session.stop();
+  } finally {
+    eventsBus.close();
+    safeRm(tmpDir);
+  }
+});
+
+test('CursorAcpSession: constructor initializes onAgentText callback', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-init-cb-'));
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+  try {
+    const session = new CursorAcpSession(baseSessionOptions(tmpDir, 'dummy', eventsBus));
+    const normalizer = (
+      session as unknown as { normalizer: { options: { onAgentText?: (text: string) => void } } }
+    ).normalizer;
+    assert.ok(normalizer.options.onAgentText);
+    normalizer.options.onAgentText('hello init');
+    const agentText = (session as unknown as { agentText: string }).agentText;
+    assert.equal(agentText, 'hello init');
+  } finally {
+    eventsBus.close();
+    safeRm(tmpDir);
+  }
+});
+
+test('CursorAcpSession: stop times out SIGTERM and issues SIGKILL', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-stop-kill-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+
+  try {
+    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    await session.start();
+
+    // Fast resolution: simulate immediate exit on kill
+    const child = (session as unknown as { child: import('node:child_process').ChildProcess })
+      .child;
+    const origKill = child.kill.bind(child);
+    child.kill = (sig) => {
+      setTimeout(() => child.emit('exit', 0, sig), 5);
+      return origKill(sig);
+    };
+
+    await session.stop();
+  } finally {
+    eventsBus.close();
+    safeRm(tmpDir);
+  }
+});
+
+test('CursorAcpSession: handleLine appends agentText when onAgentText callback runs', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cursor-agent-text-'));
+  const mockBinary = createMockCursorBinary(tmpDir);
+  const eventsBus = new EventBus(path.join(tmpDir, 'bus.jsonl'), true);
+
+  try {
+    const session = new CursorAcpSession(baseSessionOptions(tmpDir, mockBinary, eventsBus));
+    await session.start();
+    const handleLine = (
+      session as unknown as { handleLine: (line: string) => Promise<void> }
+    ).handleLine.bind(session);
+
+    await handleLine(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'session/update',
+        params: {
+          sessionId: 's1',
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { type: 'text', text: 'accumulated test agent text' }
+          }
+        }
+      })
+    );
+
+    const agentText = (session as unknown as { agentText: string }).agentText;
+    assert.equal(agentText, 'accumulated test agent text');
+
+    // Test cancel without child: store child first so we can stop it cleanly afterwards
+    const realChild = (session as unknown as { child: import('node:child_process').ChildProcess })
+      .child;
+    (session as unknown as { child: unknown }).child = null;
+    await session.cancel();
+    (session as unknown as { child: unknown }).child = realChild;
     await session.stop();
   } finally {
     eventsBus.close();

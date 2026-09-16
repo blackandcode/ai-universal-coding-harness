@@ -12,52 +12,77 @@ AI Universal Coding Harness connects an **executor** that plans/codes/tests with
 Stage specs → plan → implement → quality gate → review → one Git commit per stage
 ```
 
-## Install
+## Prerequisites
+
+The host machine must have the required agent harness CLIs installed and authenticated on `PATH`:
+
+- **Current implementation**: Requires **Codex CLI** (`codex`) and **Cursor CLI** (`cursor` / Cursor Agent ACP).
+- **Pluggable harness adapters**: In later versions, support for other agent harnesses will be added. Support has been developed using modular **harness adapters** (`src/harness/`), making it straightforward to integrate new agent CLIs and protocol runtimes.
+- **System requirements**: Requires **Node.js 24.18+** and **Git**.
+
+## Installation
+
+Only npm is supported for installation (installing directly from Git is not supported).
+
+### Global Installation
+
+Install the package globally:
 
 ```bash
 npm install --global ai-universal-coding-harness
 ```
 
-Or directly from GitHub:
+### Updating to New Versions
+
+Keep your global installation up to date with the latest releases:
 
 ```bash
-npm install --global git+https://github.com/blackandcode/ai-universal-coding-harness.git
-```
+# Update to the latest published version
+npm update --global ai-universal-coding-harness
 
-Requires **Node.js 24.18+**, Git, and the configured harness CLIs.
+# Or reinstall the latest version explicitly
+npm install --global ai-universal-coding-harness@latest
+
+# Verify the installed version
+ai-harness --version
+```
 
 ## Quick start
 
 ```bash
+# Navigate to your target Git repository
 cd /path/to/your/repository
 
+# Initialize the local .ai-orchestrator/ workspace without touching tracked project files
 ai-harness init
 
+# Validate stage specifications and prompt contracts before running
 ai-harness validate \
   --stage-source docs/specifications/my-feature \
   --stage 06
 
+# Run preflight checks to verify Git working tree cleanliness, tools, and harness availability
 ai-harness preflight \
   --stage-source docs/specifications/my-feature \
   --stage 06
 
+# Execute stages sequentially on a dedicated AI branch and create approved stage commits
 ai-harness run \
   --stage-source docs/specifications/my-feature \
   --stage 06 \
   --stage 07
 ```
 
-Resume or inspect:
+### Inspecting and Managing Runs
 
 ```bash
+# Display the current run progress, stage phases, active locks, and review verdicts
 ai-harness status
+
+# Stream live execution logs and semantic agent events from the active run
 ai-harness tail
-ai-harness resume
-```
 
-Clear local run history while keeping project configuration:
-
-```bash
+# Reset local run history and runtime artifacts while preserving configuration
 ai-harness runs reset --force
 ```
 
@@ -114,6 +139,40 @@ npm run check          # Alias for verify
 - No automatic push or merge.
 - Cross-platform: Linux, macOS, Windows, and WSL.
 
+## Resume and Recovery
+
+`ai-harness` persists all run metadata, stage phases, and evidence under `.ai-orchestrator/`, allowing interrupted or stalled workflows to safely pick up where they left off without repeating completed work.
+
+### Resuming a Run
+
+To resume execution after an interruption, network issue, or review pause:
+
+```bash
+# Automatically resume the latest active or interrupted run
+ai-harness resume
+
+# Or resume a specific run by its run ID
+ai-harness resume --run <run-id>
+```
+
+- **Phase re-entry**: The engine tracks five stage phases (`plan`, `implementation`, `quality`, `review`, and `commit`). Resuming re-enters execution at the last valid phase rather than restarting from scratch.
+- **Smart artifact reuse**: If stage specifications have not changed, the approved plan is reused. If workspace edits match corroborated evidence, implementation is skipped and the run proceeds directly to review.
+- **Native harness session continuation**: Harness session identifiers and conversation epochs are persisted so executor sessions continue without losing context.
+
+### Recovery from Inconsistent States
+
+If a process was terminated abruptly or halted due to external dependency issues:
+
+```bash
+# Preview proposed state corrections without modifying state or Git
+ai-harness recover --dry-run
+
+# Apply state repair with automatic timestamped backup creation
+ai-harness recover --apply
+```
+
+For deeper architectural details and state flow diagrams, see [docs/state-and-resume.md](docs/state-and-resume.md).
+
 ## Documentation
 
 Start with [docs/README.md](docs/README.md).
@@ -131,7 +190,7 @@ Start with [docs/README.md](docs/README.md).
 
 ## Release
 
-Current version: **2.1.6**. See [CHANGELOG.md](CHANGELOG.md).
+Current version: **2.1.7**. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

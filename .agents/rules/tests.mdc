@@ -10,6 +10,7 @@ alwaysApply: false
 - Tests reside in `tests/` mirroring `src/`, keeping `src/` clean for production code.
 - Production code compiles to `dist/`; tests compile separately to `.test-dist/` via `tsconfig.test.json`.
 - For day-to-day changes, agents must run `npm run check:changed` on touched files. Do NOT run the full test suite (`npm test`, `npm run verify`) unless explicitly requested by the user or preparing for a release/push.
+- Mandatory post-run quality gate: After finishing modifications, agents MUST run `npm run check:changed` and verify that all targeted tests pass and coverage scores meet or exceed required thresholds: lines >= 95%, branches >= 85%, and functions >= 95%.
 - Pre-push safeguard: Git push runs full verification via `scripts/pre-push.mjs` (`.githooks/pre-push`) and halts the push if any test or check fails.
 - `npm run test:unit` ensures test build freshness by compiling prior to running tests.
 - `npm run test:coverage` runs Node test runner with `--experimental-test-coverage`.
