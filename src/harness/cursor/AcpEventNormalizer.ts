@@ -1,28 +1,52 @@
 /**
- * @fileoverview Normalizes unknown ACP protocol payloads into semantic domain events.
+ * @fileoverview Normalizes untrusted ACP protocol payloads into semantic domain events.
  *
  * Inspects untrusted JSON-RPC 2.0 messages received from Cursor CLI, routes notifications,
- * delegates tool tracking to AcpToolAccumulator, and emits typed UI events.
+ * delegates tool tracking to {@link AcpToolAccumulator}, and emits typed UI events.
+ *
+ * @remarks
+ * Protocol Boundary Invariants:
+ * - External ACP data enters the system as `unknown` / untrusted payload structures.
+ * - Runtime message shape checks are performed before dispatching domain events.
+ * - Interactive requests (`create_plan`, `ask_question`, `request_permission`) are delegated
+ *   to asynchronous callbacks wired to orchestrator services.
+ * - Command executions detected from tool calls are recorded durably in the {@link ObservationJournal}.
  */
 
 import type { AcpToolAccumulator } from './AcpToolAccumulator.js';
 import type { ObservationJournal } from './ObservationJournal.js';
 
-/** Callbacks and context wired into ACP message normalization. */
+/**
+ * Callbacks and context options wired into ACP message normalization.
+ */
 export interface AcpEventNormalizerOptions {
+  /** Event bus instance for UI event emission. */
   events: any;
+  /** Streaming tool accumulator tracking multi-chunk tool calls. */
   accumulator: AcpToolAccumulator;
+  /** Journal recording authoritative command observations for corroboration. */
   journal: ObservationJournal;
+  /** Default session identifier to associate with incoming events. */
   defaultSessionId?: string;
+  /** Active run identifier. */
   runId?: string;
+  /** Canonical name of the active stage. */
   stageName?: string;
+  /** Current stage attempt counter. */
   attempt?: number;
+  /** Target workspace root directory. */
   workspace?: string;
+  /** Quality epoch identifier if currently executing quality checks. */
   qualityEpochId?: string;
+  /** Callback invoked when new agent thoughts or progress deltas arrive. */
   onFocusDelta?: (text: string) => void;
+  /** Callback invoked when streaming agent text chunks arrive. */
   onAgentText?: (text: string) => void;
+  /** Callback invoked when the agent requests plan evaluation. */
   onPlanRequest?: (payload: any) => Promise<void>;
+  /** Callback invoked when the agent asks blocking questions. */
   onQuestionRequest?: (payload: any) => Promise<void>;
+  /** Callback invoked when the agent requests command or file permissions. */
   onPermissionRequest?: (payload: any) => Promise<void>;
 }
 
@@ -36,9 +60,13 @@ export class AcpEventNormalizer {
   constructor(private options: AcpEventNormalizerOptions) {}
 
   /**
-   * Normalizes and handles a parsed server message.
+   * Normalizes and handles a parsed server message from the ACP transport.
    *
-   * @param message - Parsed JSON object from Cursor ACP stdout
+   * @remarks
+   * External ACP messages enter as `unknown` / untrusted data.
+   * Direct type assertions bypassing structure inspection are prohibited.
+   *
+   * @param message - Untrusted parsed JSON object received from Cursor ACP stdout.
    */
   async handleMessage(message: any): Promise<void> {
     if (!message || typeof message !== 'object') return;
@@ -87,7 +115,7 @@ export class AcpEventNormalizer {
   /**
    * Dispatches updates within a `session/update` notification.
    *
-   * @param u - Session update payload (`sessionUpdate` / tool call fields).
+   * @param u - Untrusted session update payload containing message chunks or tool call structures.
    */
   private handleSessionUpdate(u: any): void {
     if (!u) return;

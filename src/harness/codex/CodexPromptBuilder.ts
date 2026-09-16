@@ -3,6 +3,10 @@
  *
  * Constructs structured, schema-constrained Markdown prompts enforcing role boundaries,
  * providing frozen stage inputs and relevant skills digests, and formatting decision payloads.
+ *
+ * @remarks
+ * Invariant: Prompts explicitly instruct the reviewer model that it acts strictly as
+ * an evaluator and decision maker, barring code execution, shell commands, and file mutations.
  */
 
 import type { PromptBuilderOptions } from './types.js';
@@ -14,8 +18,12 @@ export class CodexPromptBuilder {
   /**
    * Builds the complete prompt text for a reviewer decision.
    *
-   * @param options - Prompt construction parameters
-   * @returns Formatted prompt string
+   * @remarks
+   * Formats immutable stage specifications, skill guidelines, decision type,
+   * and serialized domain payload into a structured Markdown prompt.
+   *
+   * @param options - Prompt construction parameters including stage context, skills digest, and payload.
+   * @returns Formatted prompt string ready for delivery to Codex CLI stdin.
    */
   static buildPrompt(options: PromptBuilderOptions): string {
     const toolPolicy = options.readonlyProject

@@ -26,7 +26,8 @@ import { ConfigError } from '../errors.js';
  *
  * @param file - Absolute path to a `.jsonc` configuration file.
  * @returns Parsed object layer; non-objects yield `{}`.
- * @throws ConfigError when JSONC syntax is invalid.
+ * @throws {@link ConfigError}
+ * Thrown when JSONC syntax is invalid.
  */
 export function readJsonc(file: string): Record<string, unknown> {
   if (!fs.existsSync(file)) return {};
@@ -168,7 +169,8 @@ export function harnessNumber(
  * @param overwrite - When false, throws if the file already exists.
  * @param content - JSONC template body (defaults to global `configTemplate()`).
  * @returns The written file path.
- * @throws ConfigError when the file exists and `overwrite` is false.
+ * @throws {@link ConfigError}
+ * Thrown when the target file already exists and `overwrite` is false.
  */
 export function writeConfig(file: string, overwrite = false, content = configTemplate()): string {
   if (fs.existsSync(file) && !overwrite) {

@@ -20,13 +20,22 @@ import { CodexResultParser } from './CodexResultParser.js';
 
 /**
  * Runs Codex CLI reviewer subprocesses in isolated sandboxes and persists decision artifacts.
+ *
+ * @remarks
+ * Invariants:
+ * - Operates in an ephemeral temporary directory with a clean initialized Git repo.
+ * - Enforces `--sandbox read-only` and passes JSON schema constraints via `--output-schema`.
+ * - Monitors event streams for reviewer role violations (e.g. attempted file edits or shell commands).
  */
 export class CodexProcessRunner {
   /**
-   * Executes Codex CLI with structured JSON-RPC / schema-constrained arguments.
+   * Executes Codex CLI with structured JSON schema-constrained arguments.
    *
-   * @param options - Execution configuration and prompt
-   * @returns Execution result with parsed verdict and output artifact paths
+   * @typeParam T - Expected domain verdict type.
+   * @param options - Execution configuration including model, prompt, schema file, and timeout.
+   * @returns Execution result containing parsed verdict and recorded artifact paths.
+   * @throws {@link ProcessExecutionError}
+   * Thrown if the subprocess exits with an unexpected code, times out, or violates reviewer role boundaries.
    */
   static async run<T>(options: CodexExecutionOptions): Promise<CodexExecutionResult<T>> {
     const decisionDir = path.join(

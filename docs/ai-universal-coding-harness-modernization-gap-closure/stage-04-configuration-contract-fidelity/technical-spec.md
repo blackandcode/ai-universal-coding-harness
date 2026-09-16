@@ -74,12 +74,12 @@ role context value
 
 ### Minimum test matrix
 
-| Area | Assertion |
-| ---- | --------- |
-| Validation | `maxUniqueQuestionsPerStage` clamps to `>= 1` and surfaces on merged config |
-| Router | `resolveHarness('primary')` with `reviewer.primary.reasoningEffort: 'high'` yields Codex runner options reflecting `high` when harness is `codex` |
-| Orchestrator | Synthetic question stream exceeding cap does not call reviewer after cap |
-| Examples | `configTemplate()` / `projectPlaceholderConfigTemplate()` parse as JSONC; keys in example match validation schema |
+| Area         | Assertion                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Validation   | `maxUniqueQuestionsPerStage` clamps to `>= 1` and surfaces on merged config                                                                       |
+| Router       | `resolveHarness('primary')` with `reviewer.primary.reasoningEffort: 'high'` yields Codex runner options reflecting `high` when harness is `codex` |
+| Orchestrator | Synthetic question stream exceeding cap does not call reviewer after cap                                                                          |
+| Examples     | `configTemplate()` / `projectPlaceholderConfigTemplate()` parse as JSONC; keys in example match validation schema                                 |
 
 Optional: generate a manifest of known config keys from `src/config/types.ts` and assert every key in `config.example.jsonc` (uncommented) is in the manifest.
 

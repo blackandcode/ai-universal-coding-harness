@@ -9,10 +9,17 @@ import { atomicCreate, readJson, writeJson } from '../core/fs.js';
 import { iso } from '../core/time.js';
 import { LockConflictError } from '../errors.js';
 
+/**
+ * Structured payload persisted to `.ai-orchestrator/orchestrator.lock`.
+ */
 export interface LockPayload {
+  /** Operating system process identifier holding the lock. */
   pid: number;
+  /** Active run identifier. */
   run_id: string;
+  /** Dedicated AI branch name used by the active run. */
   branch: string;
+  /** ISO 8601 timestamp when the lock was acquired. */
   started_at: string;
 }
 
@@ -38,7 +45,12 @@ function pidAlive(pid: number): boolean {
 }
 
 /**
- * Process-scoped lock file preventing concurrent orchestrator runs in one workspace.
+ * Process-scoped lock file coordinator preventing concurrent orchestrator runs in one workspace.
+ *
+ * @remarks
+ * Invariant: Exactly one active orchestration run per workspace at any time.
+ * Evaluates PID liveness using POSIX signal 0 to automatically reclaim stale lock files
+ * left behind by abruptly terminated processes.
  */
 export class RunLock {
   /** True after this process successfully created the lock file. */

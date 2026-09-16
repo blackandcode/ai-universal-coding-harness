@@ -1,6 +1,13 @@
 /**
  * @fileoverview Pluggable registry and dynamic loader for executor and reviewer harnesses.
+ *
  * Coordinates built-in adapters (Cursor executor, Codex reviewer) and external harness modules.
+ *
+ * @remarks
+ * Architectural Invariants:
+ * - The orchestrator engine remains harness-neutral; all harness instances are created via this registry.
+ * - External harness modules are dynamically imported using ESM `import()` and must export
+ *   either a named `registerHarnesses(registry)` function or a default function.
  */
 
 import path from 'node:path';
@@ -15,6 +22,10 @@ import { PROJECT_ROOT, CONFIG } from '../core/config.js';
 
 /**
  * Registry managing factory constructors for executor and reviewer harnesses.
+ *
+ * @remarks
+ * Maintains isolated factory maps for executor and reviewer roles.
+ * Provides pre-configured default adapters for Cursor and Codex out-of-the-box.
  */
 export class HarnessRegistry {
   private executors = new Map<string, (ctx: HarnessContext) => ExecutorHarness>();
@@ -22,7 +33,7 @@ export class HarnessRegistry {
   private loaded = new Set<string>();
 
   /**
-   * Initializes the registry with default built-in adapters: Cursor and Codex.
+   * Initializes the registry and registers default built-in adapters: Cursor and Codex.
    */
   constructor() {
     this.registerExecutor('cursor', (ctx) => new CursorExecutorHarness(ctx));
@@ -33,8 +44,8 @@ export class HarnessRegistry {
   /**
    * Registers a factory function for creating an executor harness.
    *
-   * @param id - Unique identifier for the executor harness.
-   * @param f - Factory function returning an ExecutorHarness instance.
+   * @param id - Unique identifier for the executor harness (e.g. `'cursor'`).
+   * @param f - Factory function accepting {@link HarnessContext} and returning an {@link ExecutorHarness}.
    */
   registerExecutor(id: string, f: (ctx: HarnessContext) => ExecutorHarness): void {
     this.executors.set(id, f);
@@ -43,8 +54,8 @@ export class HarnessRegistry {
   /**
    * Registers a factory function for creating a reviewer harness.
    *
-   * @param id - Unique identifier for the reviewer harness.
-   * @param f - Factory function returning a ReviewerHarness instance.
+   * @param id - Unique identifier for the reviewer harness (e.g. `'codex'`).
+   * @param f - Factory function accepting {@link HarnessContext} and returning a {@link ReviewerHarness}.
    */
   registerReviewer(id: string, f: (ctx: HarnessContext) => ReviewerHarness): void {
     this.reviewers.set(id, f);
@@ -53,10 +64,11 @@ export class HarnessRegistry {
   /**
    * Instantiates an executor harness by identifier.
    *
-   * @param id - Identifier of the registered executor harness.
-   * @param ctx - Context options passed to the harness constructor.
-   * @returns An instantiated ExecutorHarness.
-   * @throws Error if the specified executor ID is not registered.
+   * @param id - Unique identifier of the registered executor harness.
+   * @param ctx - Execution context passed to the harness factory.
+   * @returns An instantiated {@link ExecutorHarness}.
+   * @throws Error
+   * Thrown when no executor adapter is registered under the specified `id`.
    */
   executor(id: string, ctx: HarnessContext): ExecutorHarness {
     const f = this.executors.get(id);
@@ -71,10 +83,11 @@ export class HarnessRegistry {
   /**
    * Instantiates a reviewer harness by identifier.
    *
-   * @param id - Identifier of the registered reviewer harness.
-   * @param ctx - Context options passed to the harness constructor.
-   * @returns An instantiated ReviewerHarness.
-   * @throws Error if the specified reviewer ID is not registered.
+   * @param id - Unique identifier of the registered reviewer harness.
+   * @param ctx - Execution context passed to the harness factory.
+   * @returns An instantiated {@link ReviewerHarness}.
+   * @throws Error
+   * Thrown when no reviewer adapter is registered under the specified `id`.
    */
   reviewer(id: string, ctx: HarnessContext): ReviewerHarness {
     const f = this.reviewers.get(id);
@@ -89,7 +102,7 @@ export class HarnessRegistry {
   /**
    * Lists the IDs of all currently registered executor and reviewer harnesses.
    *
-   * @returns Lists of registered executor and reviewer IDs.
+   * @returns Object containing arrays of registered executor IDs and reviewer IDs.
    */
   list(): { executors: string[]; reviewers: string[] } {
     return { executors: [...this.executors.keys()], reviewers: [...this.reviewers.keys()] };
@@ -98,7 +111,7 @@ export class HarnessRegistry {
   /**
    * Loads and registers all external harness modules configured in settings.
    *
-   * @param modules - Array of package names or module paths to import.
+   * @param modules - Array of package names or module paths to import (defaults to configured harness modules).
    */
   async loadConfigured(modules: string[] = CONFIG.harnessModules): Promise<void> {
     for (const spec of modules) {
@@ -109,8 +122,12 @@ export class HarnessRegistry {
   /**
    * Dynamically imports an external harness module and invokes its registration hook.
    *
-   * @param spec - Package name or relative/absolute path to the module.
-   * @throws Error if the module cannot be resolved or does not export a registration function.
+   * @remarks
+   * Resolves paths relative to the project root or via Node module resolution.
+   *
+   * @param spec - Package name or relative/absolute path to the external module.
+   * @throws Error
+   * Thrown if the module cannot be resolved or does not export a valid registration function.
    */
   async loadModule(spec: string): Promise<void> {
     if (this.loaded.has(spec)) return;

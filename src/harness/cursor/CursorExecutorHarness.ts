@@ -30,6 +30,12 @@ import { AcpEventNormalizer } from './AcpEventNormalizer.js';
 
 /**
  * Cursor CLI adapter implementing {@link ExecutorHarness} and spawning {@link CursorAcpSession} instances.
+ *
+ * @remarks
+ * Invariants:
+ * - Executes Cursor CLI subprocesses via the Agent Client Protocol (ACP) over standard input/output.
+ * - The executor harness drives agent turns and quality check executions in the target workspace.
+ * - The harness must NEVER manage Git branch lifecycle, push to remotes, or perform merges.
  */
 export class CursorExecutorHarness implements ExecutorHarness {
   static defaults = {
@@ -53,14 +59,20 @@ export class CursorExecutorHarness implements ExecutorHarness {
     model: this.model
   };
 
-  /** @param ctx - Harness context (events bus, optional binary/model overrides). */
+  /**
+   * @param ctx - Harness context containing semantic event bus and optional model/binary overrides.
+   */
   constructor(private ctx: any) {
     this.binary = ctx?.executorBinary || this.binary;
     this.model = ctx?.executorModel || this.model;
     this.info = { ...this.info, model: this.model, label: `${this.model} ${this.thinking}` };
   }
 
-  /** Verifies the Cursor agent binary exists and advertises the configured model. */
+  /**
+   * Verifies that the Cursor agent binary is installed, runnable, and supports the configured model.
+   *
+   * @returns Preflight result indicating binary and model availability.
+   */
   async preflight(): Promise<HarnessPreflightResult> {
     if (!commandExists(this.binary)) return { ok: false, details: [`${this.binary} not found`] };
     const models = execSyncText(this.binary, ['models']);
@@ -70,8 +82,13 @@ export class CursorExecutorHarness implements ExecutorHarness {
     return { ok: true, details };
   }
 
-  /** Creates, starts, and returns a live ACP session bound to the target workspace. */
-  async createSession(opts: any) {
+  /**
+   * Creates, starts, and returns a live ACP session bound to the target workspace.
+   *
+   * @param opts - Session options including workspace path, log targets, and event callbacks.
+   * @returns Initialized and connected {@link CursorAcpSession}.
+   */
+  async createSession(opts: any): Promise<CursorAcpSession> {
     const s = new CursorAcpSession({
       ...opts,
       binary: this.binary,
@@ -87,6 +104,10 @@ export class CursorExecutorHarness implements ExecutorHarness {
 
 /**
  * Long-lived Cursor ACP subprocess session: JSON-RPC over stdio, tool accumulation, and orchestrator callbacks.
+ *
+ * @remarks
+ * Manages the bidirectional JSON-RPC 2.0 connection to the Cursor `agent` process.
+ * Routes streaming progress, tool execution tracking, and interactive callback requests.
  */
 export class CursorAcpSession implements ExecutorSession {
   id = '';
@@ -625,8 +646,15 @@ export class CursorAcpSession implements ExecutorSession {
 }
 
 /**
- * Replays `SERVER` lines from an ACP JSONL log into {@link CommandObservation} records.
- * Used when resuming sessions to rebuild the observation journal from historical events.
+ * Replays `SERVER` JSON-RPC lines from an ACP JSONL log into {@link CommandObservation} records.
+ *
+ * @remarks
+ * Used during session resumption and post-mortem recovery to rebuild the observation journal
+ * from historical event streams without duplicating entries on disk.
+ *
+ * @param eventsFilePath - Absolute path to the `events.jsonl` log file.
+ * @param opts - Contextual run, stage, attempt, and workspace metadata to attach to recovered observations.
+ * @returns Array of authoritative {@link CommandObservation} records extracted from historical events.
  */
 export function parseAcpEvents(
   eventsFilePath: string,

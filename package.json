@@ -65,6 +65,7 @@
     "test": "npm run test:unit",
     "check:changed": "node scripts/check-changed.mjs",
     "check:touched": "node scripts/check-changed.mjs",
+    "docs:check": "node scripts/docs/list-undocumented-exports.mjs",
     "pre-push": "node scripts/pre-push.mjs",
     "changelog:add": "node scripts/changelog/record-unreleased-change.mjs",
     "update-version": "node scripts/versioning/increase-version.mjs",

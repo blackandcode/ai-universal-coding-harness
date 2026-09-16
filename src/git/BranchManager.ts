@@ -9,12 +9,19 @@ import { iso } from '../core/time.js';
 import { GitLifecycleError } from '../errors.js';
 
 /**
- * Keeps persisted {@link RunState} aligned with the dedicated AI branch and pre-run stash metadata.
+ * Branch lifecycle manager for AI Universal Coding Harness runs.
+ *
+ * @remarks
+ * Invariants:
+ * - One run equals one dedicated AI branch (`ai/<run_id>-<summary>`).
+ * - Stashes uncommitted pre-run working tree changes cleanly before creating the AI branch.
+ * - Asserts the dedicated AI branch is active before stage planning or execution mutations occur.
+ * - Throws {@link GitLifecycleError} if the repository leaves the AI branch with dirty modifications.
  */
 export class BranchManager {
   /**
    * @param git - Repository wrapper for the target workspace.
-   * @param save - Persists run state after branch reconciliation mutations.
+   * @param save - Persistence callback to save updated {@link RunState} after branch mutations.
    */
   constructor(
     private git: GitRepository,

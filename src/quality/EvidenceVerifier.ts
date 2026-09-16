@@ -25,12 +25,16 @@ export interface VerificationContext {
 }
 
 /**
- * Validates the schema and syntactic structure of an evidence.json file.
+ * Validates the schema and syntactic structure of an `evidence.json` file.
  *
- * @param file - Path to evidence.json file
- * @param stage - Expected stage name
- * @param attempt - Expected attempt number
- * @returns Result object containing ok flag, error reason, and parsed evidence
+ * @remarks
+ * External disk file enters as untrusted JSON. Asserts stage name, attempt counter,
+ * status enums (`PASS` | `FAIL`), and numeric exit codes before evidence can be corroborated.
+ *
+ * @param file - Absolute filesystem path to `evidence.json`.
+ * @param stage - Expected canonical stage name.
+ * @param attempt - Expected attempt counter.
+ * @returns Result object containing `ok` flag, diagnostic failure reason, and parsed {@link ExecutionEvidence}.
  */
 export function validateEvidence(
   file: string,
@@ -109,12 +113,20 @@ export function commandMatches(observedCmd: string, targetCmd: string): boolean 
 }
 
 /**
- * Corroborates an evidence claim against observed command executions.
+ * Verifies executor evidence against command observations collected for the current attempt.
  *
- * @param e - Execution evidence from executor
- * @param commands - Observed command events
- * @param context - Optional verification context
- * @returns Corroboration report with issue diagnostics and matched quality/diff observations.
+ * @remarks
+ * Invariants:
+ * - Evidence from previous attempts or mismatched quality epochs must not be accepted.
+ * - This component corroborates evidence claims against ground truth observations but must
+ *   NEVER execute project quality commands on behalf of the executor.
+ * - Quality commands executed prior to the latest file mutation sequence are rejected as stale.
+ * - Patch fingerprints must match the current Git working tree state.
+ *
+ * @param e - Declared {@link ExecutionEvidence} submitted by the executor.
+ * @param commands - Observed command execution events recorded during the session.
+ * @param context - Verification context containing stage identity, attempt, mutation sequences, and expected fingerprint.
+ * @returns Corroboration report describing whether all claims were corroborated, with issues and observed quality.
  */
 export function verifyEvidenceAgainstObserved(
   e: ExecutionEvidence,

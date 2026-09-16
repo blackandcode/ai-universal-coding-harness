@@ -13,7 +13,14 @@ import type { PlanReviewVerdict, SelectedStage } from '../types.js';
 import { iso } from '../core/time.js';
 
 /**
- * Bounded plan-review loop: deduplicates plan hashes, enforces reviewer budgets, and records carry-over findings.
+ * Bounded plan-review coordinator: deduplicates plan hashes, enforces reviewer budgets, and records carry-over findings.
+ *
+ * @remarks
+ * Architectural Invariants:
+ * - Plan review limits are financial/cost controls, not blockers.
+ * - When regular review iterations reach `maxPlanReviews`, final consolidation proceeds with carryover findings.
+ * - Identical plans are deduplicated by SHA256 digest to prevent wasteful model calls.
+ * - Reusable plan validation asserts that frozen specification hashes and plan hashes match persisted state.
  */
 export class PlanCoordinator {
   private regularReviews = 0;
@@ -24,7 +31,9 @@ export class PlanCoordinator {
   private acceptedPlan = '';
   private carryover = '';
 
-  /** @param opts - Run/stage context, reviewer harness, and state store for artifacts. */
+  /**
+   * @param opts - Run and stage context, reviewer adapter, and persistent state store for artifacts.
+   */
   constructor(
     private opts: {
       runId: string;

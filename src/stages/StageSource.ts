@@ -11,27 +11,52 @@ import { sha256File, removeTree } from '../core/fs.js';
 import type { StageManifest } from '../types.js';
 import { StageSourceError } from '../errors.js';
 
+/**
+ * The canonical set of markdown specification files required to exist within every stage folder.
+ */
 export const REQUIRED_STAGE_FILES = [
   'functional-spec.md',
   'technical-spec.md',
   'prompt.md'
 ] as const;
 
+/**
+ * Union of required stage file names.
+ */
 export type RequiredStageFile = (typeof REQUIRED_STAGE_FILES)[number];
 
+/**
+ * Diagnostic issue identified during structural stage validation.
+ */
 export interface StageValidationIssue {
+  /** Severity level of the issue. */
   level: 'error' | 'warning';
+  /** Path or filename associated with the issue, if file-specific. */
   file?: string;
+  /** Detailed description of the validation failure. */
   message: string;
 }
 
+/**
+ * Diagnostic validation report for a single stage directory.
+ */
 export interface StageValidationReport {
+  /** Name of the validated stage. */
   stage: string;
+  /** Filesystem directory path where the stage was validated. */
   dir: string;
+  /** True if the stage passed all required file and format checks without errors. */
   valid: boolean;
+  /** Array of validation issues found. */
   issues: StageValidationIssue[];
 }
 
+/**
+ * Validates that a string adheres to canonical stage folder naming conventions (`stage-NN-kebab-name`).
+ *
+ * @param s - Candidate folder name.
+ * @returns True if valid canonical stage directory name.
+ */
 export const stageNameOk = (s: string): boolean => /^stage-[0-9]{2}-[a-z0-9][a-z0-9-]*$/.test(s);
 
 /** Normalizes a stage selector to a two-digit stage number string. */

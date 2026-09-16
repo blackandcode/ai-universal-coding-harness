@@ -19,29 +19,58 @@ import { verifyEvidenceAgainstObserved } from '../quality/EvidenceVerifier.js';
 import { parseAcpEvents } from '../harness/cursor/CursorExecutorHarness.js';
 import type { ExecutionEvidence, StagePhase } from '../types.js';
 
+/**
+ * Options configuring run recovery evaluation and state transitions.
+ */
 export interface RecoveryOptions {
+  /** Identifier of the target run to recover (defaults to the latest recorded run). */
   runId?: string;
+  /** Canonical name or substring of the stage to recover (defaults to the current or failed stage). */
   stageName?: string;
+  /** When true, modifies persisted state on disk; when false, runs in read-only dry-run simulation mode. */
   apply?: boolean;
+  /** When true, ignores certain non-fatal working tree or dirty checks to force recovery. */
   force?: boolean;
 }
 
+/**
+ * Diagnostic outcome of a recovery evaluation or modification attempt.
+ */
 export interface RecoveryResult {
+  /** True if recovery evaluation or state transition succeeded. */
   ok: boolean;
+  /** True if the operation was executed as a read-only simulation without disk state mutations. */
   dryRun: boolean;
+  /** Identifier of the recovered run. */
   runId: string;
+  /** Canonical name of the recovered stage. */
   stageName: string;
+  /** Index of the stage within the run's selected stages list. */
   stageIndex: number;
+  /** Phase where orchestration should safely resume (`'quality'` or `'review'`). */
   resumePhase?: 'quality' | 'review';
+  /** Audit trail log entries detailing checks, comparisons, and state transitions performed. */
   details: string[];
+  /** Error description if recovery could not proceed. */
   error?: string;
 }
 
+/**
+ * Autonomous recovery manager for AI Universal Coding Harness.
+ *
+ * @remarks
+ * Invariants:
+ * - Deterministically recovers from process crashes, machine reboots, and stage failures.
+ * - Inspects provable evidence against observed ACP logs and authoritative Git checks.
+ * - Resumes at REVIEW when corroborated green evidence matches the patch fingerprint.
+ * - Resets to QUALITY when evidence is missing, uncorroborated, or stale, avoiding re-planning costs.
+ * - Always creates an atomic timestamped backup snapshot before mutating persisted state on disk.
+ */
 export class RecoveryManager {
   /**
-   * @param root - Target repository workspace.
-   * @param store - Run state reader/writer (injectable for tests).
-   * @param git - Git wrapper aligned with `root` (defaults to {@link ROOT}).
+   * @param root - Target repository workspace path.
+   * @param store - Run state persistence store (injectable for testing).
+   * @param git - Git CLI repository wrapper aligned with `root`.
    */
   constructor(
     private root = ROOT,
@@ -52,8 +81,12 @@ export class RecoveryManager {
   /**
    * Evaluates or applies recovery for an interrupted or failed run and stage.
    *
-   * @param opts - Recovery flags (target run, stage, dry-run vs apply, force)
-   * @returns Recovery outcome with detailed audit trail
+   * @remarks
+   * When `opts.apply` is false (default), evaluates whether evidence is reusable without writing changes.
+   * When `opts.apply` is true, persists a backup snapshot and updates `state.json` to enable clean resumption.
+   *
+   * @param opts - Recovery options detailing target run, stage, and dry-run flag.
+   * @returns Detailed {@link RecoveryResult} containing the safe resume phase and audit logs.
    */
   async recover(opts: RecoveryOptions): Promise<RecoveryResult> {
     const details: string[] = [];

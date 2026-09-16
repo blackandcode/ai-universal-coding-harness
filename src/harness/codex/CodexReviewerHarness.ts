@@ -1,9 +1,14 @@
 /**
  * @fileoverview Codex reviewer harness coordinating prompt building, subprocess execution, and verdict parsing.
  *
- * Implements the ReviewerHarness contract for OpenAI Codex CLI, strictly enforcing
+ * Implements the {@link ReviewerHarness} contract for OpenAI Codex CLI, strictly enforcing
  * reviewer role boundaries, ephemeral sandbox execution, schema-enforced output,
  * and token accounting without mutating repository state.
+ *
+ * @remarks
+ * Architectural Invariants:
+ * - Reviewers judge changes and evidence; they must NEVER modify repository files or execute code.
+ * - Spawns Codex CLI in an isolated sandbox with `--sandbox read-only` and strict JSON schemas.
  */
 
 import type { ReviewerHarness, HarnessInfo, HarnessPreflightResult } from '../types.js';
@@ -59,7 +64,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
   /**
    * Applies harness context overrides for binary, model, and display labels.
    *
-   * @param ctx - Run-scoped harness context (run dir, stage, events, optional reviewer overrides).
+   * @param ctx - Run-scoped harness context containing workspace paths, stage context, and logger.
    */
   constructor(private ctx: any) {
     this.binary = ctx?.reviewerBinary || this.binary;
@@ -69,6 +74,8 @@ export class CodexReviewerHarness implements ReviewerHarness {
 
   /**
    * Asserts that Codex binary is installed, accessible, and supports required schema flags.
+   *
+   * @returns Preflight validation result detailing binary presence and CLI capability checks.
    */
   async preflight(): Promise<HarnessPreflightResult> {
     const details: string[] = [];
@@ -86,10 +93,12 @@ export class CodexReviewerHarness implements ReviewerHarness {
   /**
    * Internal coordinator delegating prompt construction and runner execution.
    *
+   * @typeParam T - Expected verdict type.
    * @param kind - Reviewer decision kind (plan, question, permission, final).
    * @param payload - Structured input forwarded to the prompt builder.
    * @param schemaFile - JSON Schema filename under `schemas/`.
    * @param extra - Additional reviewer instructions appended to the prompt.
+   * @returns Parsed and validated verdict object.
    */
   private async decide<T>(
     kind: CodexDecisionKind,
@@ -132,8 +141,14 @@ export class CodexReviewerHarness implements ReviewerHarness {
   /**
    * Reviews executor plan against frozen stage specifications and architecture invariants.
    *
+   * @remarks
+   * Invariant: Plan reviews evaluate plans against immutable frozen specifications.
+   * When regular review rounds are exhausted (`opts.finalConsolidation`), the reviewer
+   * approves with carryover findings rather than indefinitely blocking stage progress.
+   *
    * @param input - Plan review payload from the orchestrator.
    * @param opts - When `finalConsolidation` is set, instructs the reviewer not to request another replan cycle.
+   * @returns Evaluated {@link PlanReviewVerdict}.
    */
   reviewPlan(input: any, opts: any = {}): Promise<PlanReviewVerdict> {
     const extra = opts.finalConsolidation
@@ -143,9 +158,13 @@ export class CodexReviewerHarness implements ReviewerHarness {
   }
 
   /**
-   * Answers blocking questions posed by the executor.
+   * Answers blocking questions posed by the executor agent.
+   *
+   * @remarks
+   * Evaluates questions against frozen stage requirements to guide implementation decisions.
    *
    * @param input - Question payload including options and executor context.
+   * @returns Evaluated {@link QuestionVerdict}.
    */
   answerQuestions(input: any): Promise<QuestionVerdict> {
     return this.decide<QuestionVerdict>(
@@ -159,7 +178,12 @@ export class CodexReviewerHarness implements ReviewerHarness {
   /**
    * Classifies and decides whether a requested permission action is safe.
    *
+   * @remarks
+   * Invariant: A reviewer denial applies strictly to the individual requested operation
+   * and must never terminate or fail the overall stage.
+   *
    * @param input - Permission request describing the proposed operation.
+   * @returns Evaluated {@link PermissionVerdict}.
    */
   decidePermission(input: any): Promise<PermissionVerdict> {
     return this.decide<PermissionVerdict>(
@@ -173,7 +197,12 @@ export class CodexReviewerHarness implements ReviewerHarness {
   /**
    * Reviews final implementation diff and evidence claims against frozen requirements.
    *
+   * @remarks
+   * Evaluates the unified git diff and corroborated evidence against frozen specifications.
+   * The reviewer does not execute commands or modify files during evaluation.
+   *
    * @param input - Final review payload including diff, evidence, and plan carryover.
+   * @returns Evaluated {@link FinalVerdict}.
    */
   reviewImplementation(input: any): Promise<FinalVerdict> {
     return this.decide<FinalVerdict>(

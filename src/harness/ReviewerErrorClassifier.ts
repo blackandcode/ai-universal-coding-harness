@@ -3,6 +3,10 @@
  *
  * Evaluates process exit codes, captured stderr, JSONL wire events, and thrown errors to identify
  * provider usage limits, rate limits, quota exhaustion, process crashes, and missing verdicts.
+ *
+ * @remarks
+ * Used by {@link ReviewerRouter} to determine whether an autonomous failover from a primary
+ * reviewer model (e.g. OpenAI Codex) to a fallback model (e.g. Cursor Gemini) should be executed.
  */
 
 import type { ReviewerFallbackTrigger, HarnessInfo } from './types.js';
@@ -11,11 +15,11 @@ import type { ReviewerFallbackTrigger, HarnessInfo } from './types.js';
  * Result of error classification indicating whether fallback is warranted and the normalized trigger.
  */
 export interface ReviewerClassificationResult {
-  /** True if the failure matches a configured infrastructure or provider fallback trigger */
+  /** True if the failure matches a configured infrastructure or provider fallback trigger. */
   isTrigger: boolean;
-  /** Normalized trigger identifier if matched, or null */
+  /** Normalized trigger identifier if matched, or null if no trigger matched. */
   trigger: ReviewerFallbackTrigger | null;
-  /** Diagnostic human-readable explanation of the detected failure */
+  /** Diagnostic human-readable explanation of the detected failure condition. */
   reason: string;
 }
 
@@ -45,11 +49,15 @@ export class ReviewerErrorClassifier {
   /**
    * Classifies reviewer process execution signals into structured fallback triggers.
    *
-   * @param exitCode - Subprocess exit code (null if killed or timed out)
-   * @param stderr - Captured standard error output
-   * @param eventLines - Array of raw stdout event lines (typically JSONL)
-   * @param resultFileExists - True if the expected result.json file was written
-   * @returns Classification outcome with trigger and reason
+   * @remarks
+   * Evaluates standard error lines, raw wire events, exit codes, and result file existence
+   * to distinguish between benign empty outputs, expected denials, and infrastructure failures.
+   *
+   * @param exitCode - Subprocess exit code, or null if terminated by signal or timeout.
+   * @param stderr - Captured standard error output stream text.
+   * @param eventLines - Array of raw stdout event lines (typically JSONL wire events).
+   * @param resultFileExists - True if the expected schema-constrained result JSON file was generated.
+   * @returns Structured {@link ReviewerClassificationResult} detailing whether a fallback trigger was matched.
    */
   static classify(
     exitCode: number | null,
@@ -144,9 +152,9 @@ export class ReviewerErrorClassifier {
   /**
    * Classifies an Error object or thrown exception into a structured fallback trigger.
    *
-   * @param err - Thrown error or rejection reason
-   * @param _harnessInfo - Optional metadata identifying the failing harness adapter
-   * @returns Classification outcome with trigger and reason
+   * @param err - Thrown error instance or rejection reason.
+   * @param _harnessInfo - Optional metadata identifying the failing harness adapter.
+   * @returns Structured {@link ReviewerClassificationResult} detailing whether a fallback trigger was matched.
    */
   static classifyError(err: unknown, _harnessInfo?: HarnessInfo): ReviewerClassificationResult {
     const message = err instanceof Error ? err.message : String(err);

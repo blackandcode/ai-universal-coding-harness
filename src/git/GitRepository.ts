@@ -10,18 +10,28 @@ import { GitLifecycleError } from '../errors.js';
 
 /**
  * Thin synchronous wrapper around `git` CLI invocations for a single working tree root.
+ *
+ * @remarks
+ * Core Git Invariants:
+ * - The orchestrator engine strictly owns Git repository operations and branch lifecycles.
+ * - Harness adapters are forbidden from invoking Git mutations (push, commit, merge, rebase, reset).
+ * - One run equals one dedicated AI branch; one approved stage equals one stage-named commit.
+ * - The engine never pushes to remotes or performs automatic branch merges.
  */
 export class GitRepository {
   /**
-   * @param root - Absolute path to the Git working tree.
+   * @param root - Absolute path to the Git working tree root directory.
    */
   constructor(public root: string) {}
 
   /**
    * Runs a git subcommand in `root`.
    *
-   * @param args - Git argument list (without the `git` binary name).
+   * @param args - Git argument list (without the leading `'git'` binary name).
    * @param allowFail - When false, non-zero exit codes throw {@link GitLifecycleError}.
+   * @returns Captured process execution result.
+   * @throws {@link GitLifecycleError}
+   * Thrown when git command returns a non-zero exit code and `allowFail` is false.
    */
   run(args: string[], allowFail = false): ProcessResult {
     const r = execSyncText('git', args, { cwd: this.root });

@@ -29,24 +29,46 @@ function git(args: string[]) {
   return spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
+/**
+ * Summary of created filesystem paths returned when initializing an orchestrator workspace.
+ */
 export interface WorkspaceInitResult {
+  /** Target workspace root directory. */
   root: string;
+  /** Local project configuration path (`.ai-orchestrator/config.jsonc`). */
   config: string;
+  /** Local project permissions path (`.ai-orchestrator/permissions.jsonc`). */
   permissions: string;
+  /** Directory storing historical runs (`.ai-orchestrator/runs/`). */
   runs: string;
+  /** Directory containing frozen stage specification copies (`.ai-orchestrator/stage-input/`). */
   stageInput: string;
+  /** Directory containing active stage execution evidence (`.ai-orchestrator/stage-runtime/`). */
   stageRuntime: string;
 }
 
+/**
+ * Diagnostic summary of a persisted run record.
+ */
 export interface RunSummary {
+  /** Unique run identifier. */
   id: string;
+  /** Execution status of the run, if available. */
   status?: string;
+  /** ISO 8601 timestamp of last state update, if available. */
   updated_at?: string;
+  /** Dedicated AI branch name used for this run, if available. */
   branch?: string;
 }
 
 /**
  * Manages `.ai-orchestrator/` initialization, Git exclude rules, and run history maintenance.
+ *
+ * @remarks
+ * Invariants:
+ * - `ai-harness init` creates a single `.ai-orchestrator/` workspace and adds it to `.git/info/exclude`.
+ * - No tracked files or commits are created in the target repository during initialization.
+ * - History deletion and reset operations verify lock safety to avoid corrupting active runs.
  */
 export class ProjectWorkspace {
   readonly root = ROOT;

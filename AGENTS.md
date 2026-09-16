@@ -55,4 +55,4 @@ npm run verify
 npm pack --dry-run
 ```
 
-Update documentation and `CHANGELOG.md` for user-visible changes. Preserve semantic versioning.
+Update documentation and `CHANGELOG.md` for user-visible changes. Maintain and improve TSDoc comments across `src/` following `.cursor/rules/tsdoc.mdc` and the `tsdoc-documentation` skill (`.agents/skills/tsdoc-documentation/SKILL.md`). Preserve semantic versioning.

@@ -4,6 +4,11 @@
  * Coordinates validation of runtime evidence files, corroboration against observed
  * command execution streams and authoritative git diff checks, disk persistence of corroborated
  * evidence artifacts, and assessment of evidence reusability across resumed stages.
+ *
+ * @remarks
+ * Invariant: The orchestrator requires independent proof of quality execution.
+ * Claims in `evidence.json` must be corroborated against actual ACP tool execution records
+ * before the reviewer harness is invoked for final code sign-off.
  */
 
 import fs from 'node:fs';
@@ -17,25 +22,41 @@ import {
 import { STAGE_RUNTIME_ROOT } from '../core/paths.js';
 import { ensureDir, writeJson, writeText } from '../core/fs.js';
 
+/**
+ * Outcome of corroborating executor evidence claims against recorded command observations.
+ */
 export interface CorroborationResult {
+  /** True if all quality commands, exit codes, and sequence ordering checks passed. */
   ok: boolean;
+  /** Corroborated evidence record augmented with observed quality metrics and patch fingerprint. */
   evidence?: ExecutionEvidence;
+  /** List of corroboration failure reasons or discrepancies identified. */
   issues: string[];
+  /** Observed telemetry captured during the quality command execution. */
   observedQuality?: unknown;
 }
 
+/**
+ * Service managing the lifecycle, corroboration, and persistence of stage execution evidence.
+ *
+ * @remarks
+ * Invariants:
+ * - Runtime `evidence.json` is cleared before an implementation attempt to prevent stale leakage.
+ * - Evidence claims are verified against session observation journals using {@link EvidenceVerifier}.
+ * - Corroborated evidence is persisted immutably per attempt under `.ai-orchestrator/runs/<run_id>/stages/<stage>/`.
+ */
 export class EvidenceService {
   /**
-   * @param stageRuntimeRoot - Directory where executors write per-stage `evidence.json` files.
+   * @param stageRuntimeRoot - Directory where executors write per-stage `evidence.json` files (defaults to {@link STAGE_RUNTIME_ROOT}).
    */
   constructor(private stageRuntimeRoot: string = STAGE_RUNTIME_ROOT) {}
 
   /**
-   * Validates the existence and syntactic structure of the runtime evidence.json file.
+   * Validates the existence and syntactic structure of the runtime `evidence.json` file.
    *
-   * @param stageName - Name of the stage
-   * @param attempt - Attempt counter
-   * @returns Validation report with parsed evidence if valid
+   * @param stageName - Canonical name of the active stage.
+   * @param attempt - Active stage attempt counter.
+   * @returns Report indicating whether evidence exists and conforms to required schema fields.
    */
   validateRuntimeEvidence(
     stageName: string,
@@ -46,9 +67,9 @@ export class EvidenceService {
   }
 
   /**
-   * Removes previous runtime evidence file to prevent stale results from leaking.
+   * Removes previous runtime evidence file to prevent stale results from leaking across attempts.
    *
-   * @param stageName - Name of the stage
+   * @param stageName - Canonical name of the stage whose runtime evidence should be cleared.
    */
   clearRuntimeEvidence(stageName: string): void {
     const runtimeEvidence = path.join(this.stageRuntimeRoot, stageName, 'evidence.json');
@@ -61,12 +82,17 @@ export class EvidenceService {
   }
 
   /**
-   * Corroborates an evidence file against observed ACP commands and git state.
+   * Corroborates an evidence file against observed ACP commands and Git repository state.
    *
-   * @param evidence - Parsed evidence from executor
-   * @param observations - Command observations from executor session
-   * @param context - Verification context
-   * @returns Corroboration report
+   * @remarks
+   * Invariants:
+   * - Rejects commands belonging to other attempts or quality epochs.
+   * - Rejects quality commands that ran prior to the latest file mutation.
+   *
+   * @param evidence - Parsed evidence record submitted by the executor.
+   * @param observations - Command observations recorded by the session journal.
+   * @param context - Verification context providing stage name, attempt, and expected patch fingerprint.
+   * @returns Detailed {@link CorroborationResult}.
    */
   corroborate(
     evidence: ExecutionEvidence,
@@ -96,12 +122,12 @@ export class EvidenceService {
   }
 
   /**
-   * Persists corroborated evidence JSON and Markdown documentation into stage directory.
+   * Persists corroborated evidence JSON and Markdown documentation into the stage artifact directory.
    *
-   * @param stageRunDir - Directory for stage run artifacts
-   * @param evidence - Corroborated evidence record
-   * @param attempt - Attempt counter
-   * @returns Path to saved evidence JSON file
+   * @param stageRunDir - Per-stage artifact directory in the run storage tree.
+   * @param evidence - Corroborated evidence record to serialize.
+   * @param attempt - Stage attempt counter.
+   * @returns Absolute path to the saved evidence JSON file.
    */
   saveCorroboratedEvidence(
     stageRunDir: string,
@@ -124,9 +150,14 @@ export class EvidenceService {
   /**
    * Determines if previously corroborated quality evidence can be safely reused upon stage resume.
    *
-   * @param runtime - Persisted stage runtime state
-   * @param currentPatchFingerprint - Current authoritative patch hash
-   * @returns Reusable evidence object or null if invalid/stale
+   * @remarks
+   * Reusability requires that the stage was in `quality` or `review` phase,
+   * the saved evidence file exists and is parseable, and the recorded patch fingerprint
+   * exactly matches the current authoritative patch fingerprint.
+   *
+   * @param runtime - Persisted stage runtime state.
+   * @param currentPatchFingerprint - Current authoritative patch hash.
+   * @returns Reusable evidence object or null if invalid, stale, or patch has changed.
    */
   checkReusableEvidence(
     runtime: StageRuntimeState,

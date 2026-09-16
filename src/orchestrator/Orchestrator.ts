@@ -54,6 +54,14 @@ export interface OrchestratorOptions {
 /**
  * Harness-neutral stage engine: validates inputs, drives executor/reviewer adapters,
  * corroborates evidence, and commits approved stages on the dedicated AI branch.
+ *
+ * @remarks
+ * Core Architectural Invariants:
+ * - The orchestrator engine is harness-neutral; adapters own model/binary/protocol details.
+ * - One run equals one dedicated AI branch; one approved stage equals one stage-named commit.
+ * - Never automatically push to remotes or merge branches.
+ * - Executors execute code changes and quality commands; reviewers judge changes from evidence.
+ * - Permission review denials or plan-review budget limits must not terminate a stage.
  */
 export class Orchestrator {
   git: GitRepository;
@@ -390,7 +398,18 @@ export class Orchestrator {
 
   /**
    * Runs the full stage pipeline: plan review, implementation attempts, evidence corroboration,
-   * final review, and stage-named commit on the AI branch.
+   * final review, and stage-named commit on the dedicated AI branch.
+   *
+   * @remarks
+   * Invariants:
+   * - Ensures the dedicated AI branch is active before writing code changes.
+   * - Quality evidence is corroborated against observed ACP commands before final review.
+   * - When approved, creates a commit named after the canonical stage folder (`stage-NN-kebab-name`).
+   * - Never pushes or merges automatically.
+   *
+   * @param state - Current {@link RunState}.
+   * @param index - Index of the stage to execute within `state.stages`.
+   * @returns Updated {@link RunState} reflecting stage completion or failure.
    */
   async executeStage(state: RunState, index: number) {
     const stage = state.stages[index];
@@ -731,9 +750,18 @@ export class Orchestrator {
   }
 
   /**
-   * Executes all pending stages from `startIndex`, updating run status on failure or completion.
+   * Executes all pending stages sequentially from `startIndex`, updating run state on failure or completion.
    *
-   * @returns Updated run state when every stage completes successfully.
+   * @remarks
+   * Invariant: One run equals one dedicated AI branch.
+   * If any stage fails or halts, the run transitions to an actionable blocked status
+   * (`external_dependency`, `retryable_error`, etc.) without automatically merging or pushing.
+   *
+   * @param state - Validated {@link RunState} record.
+   * @param startIndex - Array index of the stage to begin execution from (defaults to 0).
+   * @returns Updated {@link RunState} with status `'completed'` when all stages succeed.
+   * @throws Error
+   * Re-throws the underlying error after recording failure state and emitting blocked events.
    */
   async run(state: RunState, startIndex = 0) {
     await this.registry.loadConfigured();
@@ -804,7 +832,9 @@ export class Orchestrator {
     return 'failed';
   }
 
-  /** Best-effort cancellation of the active executor session (for example Ctrl+C handling). */
+  /**
+   * Initiates best-effort cancellation of the active executor session turn (e.g. on SIGINT/Ctrl+C).
+   */
   async cancel() {
     try {
       await this.activeExecutor?.cancel?.();

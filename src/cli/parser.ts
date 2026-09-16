@@ -5,6 +5,10 @@
 
 /**
  * Discriminated union of all executable CLI commands and their typed arguments.
+ *
+ * @remarks
+ * Discriminated by the `kind` field. Handled exhaustively by the CLI dispatcher
+ * to route user requests without side-effects during parsing.
  */
 export type CliCommand =
   | { kind: 'help' }

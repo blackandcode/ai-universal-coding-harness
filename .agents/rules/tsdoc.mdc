@@ -1,0 +1,155 @@
+---
+description: TSDoc documentation standards for functions, classes, interfaces, contracts, and protocol boundaries
+globs: "src/**/*.{ts,tsx}"
+alwaysApply: true
+---
+
+# TSDoc Semantic Documentation Standards
+
+As part of every implementation or refactoring task, maintain and improve code documentation using **TSDoc conventions**.
+
+## Documentation Standard
+
+Use TypeScript/TSDoc documentation comments:
+
+```ts
+/**
+ * ...
+ */
+```
+
+Do not use JSDoc-style duplicated type declarations such as:
+
+```ts
+@param {string} value
+@returns {boolean}
+```
+
+The TypeScript source code is the single source of truth for types. Documentation must explain semantics and constraints rather than repeat the type system.
+
+## What Must Be Documented
+
+Add or improve TSDoc for:
+
+1. Exported functions.
+2. Exported classes.
+3. Exported interfaces and important type aliases.
+4. Public methods that form part of an architectural contract.
+5. Executor, reviewer, adapter, and harness extension points.
+6. Protocol boundaries.
+7. JSON/ACP parsing and normalization.
+8. Permission and security-sensitive operations.
+9. Evidence collection and evidence verification.
+10. State persistence and recovery.
+11. Resume/retry behavior.
+12. Git lifecycle operations.
+13. Functions containing important invariants or non-obvious side effects.
+
+Do not mechanically add documentation to trivial private helpers.
+
+## Required Documentation Structure
+
+Start with a concise, one-line summary:
+
+```ts
+/**
+ * Verifies executor evidence against observations collected for the current attempt.
+ */
+```
+
+Add `@remarks` when behavior requires more explanation:
+
+```ts
+/**
+ * Verifies executor evidence against observations collected for the current attempt.
+ *
+ * @remarks
+ * Evidence from previous attempts or quality epochs must not be accepted.
+ * This component verifies evidence but must never execute project quality
+ * commands on behalf of the executor.
+ */
+```
+
+Use the following tags where applicable:
+
+- `@remarks`
+- `@param`
+- `@returns`
+- `@typeParam`
+- `@throws`
+- `@example`
+- `{@link ...}`
+- `@deprecated`
+
+Use `@public` / `@internal` only where API release classification is meaningful and consistent with the repository's API policy. Do not introduce `@public` / `@internal` unless an explicit API policy requires it.
+
+## Parameters
+
+Explain semantics, constraints, and operational context rather than repeating parameter types:
+
+```ts
+// Bad:
+// @param stageId - String stage ID.
+
+// Good:
+// @param stageId - Identifies the stage whose persisted execution state should be restored.
+// @param payload - Untrusted payload received from the ACP transport.
+```
+
+## Return Values
+
+Explain what the returned value represents and how callers should interpret it:
+
+```ts
+// Bad:
+// @returns VerificationResult.
+
+// Good:
+// @returns A result describing whether all required evidence was successfully corroborated.
+```
+
+## Exceptions
+
+Document expected domain failures with `{@link ErrorClass}`:
+
+```ts
+/**
+ * @throws {@link ProtocolValidationError}
+ * Thrown when an untrusted ACP payload does not satisfy the supported schema.
+ */
+```
+
+Do not document impossible or generic implementation exceptions.
+
+## Protocol Boundaries
+
+Protocol and external-data boundaries require especially clear documentation:
+
+```ts
+/**
+ * Converts an untrusted ACP payload into a validated domain event.
+ *
+ * @remarks
+ * External ACP data enters the system as `unknown`.
+ * A typed internal event must only be returned after runtime validation.
+ * Direct type assertions that bypass validation are prohibited.
+ *
+ * @param payload - Untrusted value received from the ACP transport.
+ * @returns A validated internal ACP event.
+ * @throws {@link ProtocolValidationError}
+ * Thrown when the payload does not conform to a supported ACP event.
+ */
+```
+
+## Architectural Invariants
+
+Important invariants must be stated explicitly in docblocks:
+
+- **Orchestration**: The orchestrator owns workflow, state, and Git lifecycle.
+- **Harness neutrality**: Harness adapters own model/binary/protocol details; the engine remains harness-neutral.
+- **Executor role**: Executors own implementation and execution of project quality commands.
+- **Reviewer role**: Reviewers judge changes from evidence but never modify the repository or run commands.
+- **Protocol edge**: External/protocol data enters the application as `unknown` and requires runtime validation.
+- **Evidence integrity**: Evidence must belong to the appropriate run, stage, attempt, and quality epoch.
+- **Git safety**: One run equals one AI branch; one approved stage equals one stage commit; never automatically push or merge.
+- **Permission resilience**: Reviewer denials or permission review volume must not terminate a stage.

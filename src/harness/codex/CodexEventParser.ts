@@ -32,9 +32,14 @@ export interface ParsedCodexEvent {
 /**
  * Parses a single line from Codex CLI stdout stream.
  *
- * @param line - Raw line from Codex stdout
- * @param options - Inspection context flags
- * @returns Parsed event details including token usage and role violations
+ * @remarks
+ * Invariant: Enforces reviewer role boundaries at the wire protocol level.
+ * Detects tool calls that violate the reviewer contract (e.g. file mutations, shell commands in evidence-only mode)
+ * and extracts token usage telemetry.
+ *
+ * @param line - Raw line from Codex stdout stream.
+ * @param options - Inspection context flags specifying whether read-only project access was granted.
+ * @returns Parsed event details including token usage and detected role violations.
  */
 export function parseCodexEventLine(
   line: string,
@@ -84,11 +89,16 @@ export function parseCodexEventLine(
 }
 
 /**
- * Validates that a parsed reviewer result matches the required verdict schema structure.
+ * Validates that an untrusted parsed reviewer result matches the required verdict schema structure.
  *
- * @param kind - Decision type ('plan-review', 'question', 'permission', 'final-review')
- * @param result - Parsed result object
- * @returns Validation outcome
+ * @remarks
+ * External reviewer output arrives as untrusted JSON. This function asserts verdict enum
+ * invariants for plan reviews, questions, permissions, and final code reviews before
+ * verdicts are incorporated into orchestrator state.
+ *
+ * @param kind - Decision type (`'plan-review'`, `'question'`, `'permission'`, `'final-review'`).
+ * @param result - Untrusted parsed result object from the reviewer output file.
+ * @returns Object indicating whether validation succeeded, and the failure explanation if not.
  */
 export function validateReviewerVerdict(
   kind: 'plan-review' | 'question' | 'permission' | 'final-review',

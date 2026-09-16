@@ -17,10 +17,16 @@ export class CodexResultParser {
   /**
    * Reads, parses, and validates the structured reviewer verdict from the result file.
    *
-   * @param kind - Decision type
-   * @param resultFilePath - Path to result.json written by Codex
-   * @returns Parsed and validated verdict object
-   * @throws Error if the result file is missing or contents violate schema invariants
+   * @remarks
+   * Protocol Boundary: External file on disk enters as untrusted JSON.
+   * Runtime validation via {@link validateReviewerVerdict} is enforced before returning.
+   *
+   * @typeParam T - Expected domain verdict type.
+   * @param kind - Nature of the reviewer decision being parsed.
+   * @param resultFilePath - Absolute path to `result.json` emitted by Codex CLI.
+   * @returns Parsed and validated verdict domain object.
+   * @throws Error
+   * Thrown if the result file does not exist, contains invalid JSON, or violates verdict schema invariants.
    */
   static parseResult<T>(kind: CodexDecisionKind, resultFilePath: string): T {
     if (!fs.existsSync(resultFilePath)) {

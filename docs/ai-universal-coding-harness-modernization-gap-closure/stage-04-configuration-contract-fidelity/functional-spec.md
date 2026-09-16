@@ -21,11 +21,11 @@ Stage 04 focuses on **gaps** where config is loaded or documented but behavior d
 
 ## Findings addressed
 
-| ID   | Gap |
-| ---- | --- |
-| F-12 | `maxUniqueQuestionsPerStage` is validated and exposed on `CONFIG` but is **not enforced** in the orchestrator question flow (`Orchestrator.questionDecision`). |
+| ID   | Gap                                                                                                                                                                                                                                                                                                                          |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F-12 | `maxUniqueQuestionsPerStage` is validated and exposed on `CONFIG` but is **not enforced** in the orchestrator question flow (`Orchestrator.questionDecision`).                                                                                                                                                               |
 | F-13 | `reviewer.<role>` Codex-tunable fields are merged into `HarnessContext` by `ReviewerRouter`, but **Codex** (and partially **Cursor**) adapters still read `harnesses.<adapter>` via `harnessString` / `harnessNumber` instead of role context; precedence between `reviewer.*` and `harnesses.*` is undocumented at runtime. |
-| F-14 | No **config contract** tests; examples and product docs can drift (for example dual Codex `verbosity` / `reasoningEffort` under `harnesses.codex` vs `reviewer.primary`). |
+| F-14 | No **config contract** tests; examples and product docs can drift (for example dual Codex `verbosity` / `reasoningEffort` under `harnesses.codex` vs `reviewer.primary`).                                                                                                                                                    |
 
 ## Required outcomes
 

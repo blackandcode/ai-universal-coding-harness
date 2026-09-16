@@ -16,56 +16,78 @@ export interface GitReviewProvider {
   reviewDiff(paths?: string[]): string;
 }
 
+/**
+ * Metrics describing character counts and truncation of the unified review diff.
+ */
 export interface ReviewDiffMetrics {
-  /** Character count of the attached diff */
+  /** Character count of the attached diff. */
   char_count: number;
-  /** Estimated token count approximating 4 characters per token */
+  /** Estimated token count approximating 4 characters per token. */
   estimated_tokens: number;
-  /** True if diff content was truncated to fit within maxDiffChars */
+  /** True if diff content was truncated to fit within maxDiffChars. */
   truncated: boolean;
-  /** Original un-truncated diff character count */
+  /** Original un-truncated diff character count. */
   original_chars: number;
-  /** Paths prioritized ahead of remaining repository diff lines */
+  /** Paths prioritized ahead of remaining repository diff lines. */
   prioritized_paths?: string[];
 }
 
+/**
+ * Options supplied to {@link ReviewPayloadBuilder.build} when assembling final review inputs.
+ */
 export interface BuildReviewPayloadOptions {
-  /** Repository provider supplying git status, diff_stat, and diff text */
+  /** Repository provider supplying git status, diff_stat, and diff text. */
   git: GitReviewProvider;
-  /** Approved stage implementation plan */
+  /** Approved stage implementation plan. */
   approvedPlan?: unknown;
-  /** Carry-over findings and instructions from plan review rounds */
+  /** Carry-over findings and instructions from plan review rounds. */
   planReviewerCarryover?: unknown;
-  /** Corroborated execution evidence and quality command outputs */
+  /** Corroborated execution evidence and quality command outputs. */
   evidence?: unknown;
-  /** Maximum allowable diff character count (defaults to CONFIG.maxDiffChars) */
+  /** Maximum allowable diff character count (defaults to configured limit). */
   maxDiffChars?: number;
-  /** File paths explicitly requested by reviewer in a prior NEEDS_CONTEXT verdict */
+  /** File paths explicitly requested by reviewer in a prior NEEDS_CONTEXT verdict. */
   requestedPaths?: string[];
 }
 
+/**
+ * Authoritative payload structure delivered to a reviewer harness during final stage evaluation.
+ */
 export interface FinalReviewPayload {
+  /** Approved stage implementation plan. */
   approved_plan: unknown;
+  /** Carryover instructions from plan reviews. */
   plan_reviewer_carryover: unknown;
+  /** Corroborated quality evidence claims. */
   evidence: unknown;
+  /** Short git status output showing modified and untracked files. */
   git_status: string;
+  /** Git diffstat summary. */
   diff_stat: string;
+  /** Array of file paths modified during this stage. */
   changed_files: string[];
+  /** Unified diff text bounded within configured limits. */
   diff: string;
+  /** Detailed metrics on diff size and truncation status. */
   diff_metrics: ReviewDiffMetrics;
+  /** Diff text specifically for paths requested in prior review rounds. */
   requested_context_diff?: string;
   [key: string]: unknown;
 }
 
 /**
  * Assembles bounded final-review payloads with diff metrics and NEEDS_CONTEXT path prioritization.
+ *
+ * @remarks
+ * Invariant: Prevents reviewer truncation blindness on large structural diffs by prioritizing
+ * paths requested in prior rounds and appending clear truncation notices if limits are exceeded.
  */
 export class ReviewPayloadBuilder {
   /**
-   * Constructs an authoritative FinalReviewPayload embedding diff statistics and metrics.
+   * Constructs an authoritative {@link FinalReviewPayload} embedding diff statistics and metrics.
    *
-   * @param options - Source git repository, plans, evidence, and truncation limits
-   * @returns Bounded review payload with prioritized diff content
+   * @param options - Source git provider, plans, evidence, and truncation limits.
+   * @returns Bounded review payload with prioritized diff content and metrics.
    */
   static build(options: BuildReviewPayloadOptions): FinalReviewPayload {
     const maxChars = options.maxDiffChars ?? CONFIG.maxDiffChars ?? 800_000;

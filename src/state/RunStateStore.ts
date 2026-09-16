@@ -41,9 +41,15 @@ const VALID_STAGE_PHASES = new Set<string>([
 ]);
 
 /**
- * Validates minimal structural invariants for a persisted {@link RunState} record.
+ * Validates structural invariants for an untrusted persisted {@link RunState} record loaded from disk.
  *
- * @throws {@link RunStateError} when required fields or status enums are invalid.
+ * @remarks
+ * External disk data enters as `unknown`. Direct type casting without runtime validation is prohibited.
+ *
+ * @param data - Untrusted value parsed from `state.json`.
+ * @returns Validated domain {@link RunState}.
+ * @throws {@link RunStateError}
+ * Thrown when required fields (`run_id`, `branch`, `workspace`, `stages`) or status enums are invalid.
  */
 export function validateRunState(data: unknown): RunState {
   if (typeof data !== 'object' || data === null) {
@@ -69,9 +75,15 @@ export function validateRunState(data: unknown): RunState {
 }
 
 /**
- * Validates stage runtime phase metadata loaded from disk.
+ * Validates structural invariants for an untrusted stage runtime state record loaded from disk.
  *
- * @throws {@link RunStateError} when `phase` is missing or not a known value.
+ * @remarks
+ * External disk data enters as `unknown`. Asserts valid `StagePhase` enum.
+ *
+ * @param data - Untrusted value parsed from stage `state.json`.
+ * @returns Validated domain {@link StageRuntimeState}.
+ * @throws {@link RunStateError}
+ * Thrown when `phase` is missing or not a known lifecycle phase value.
  */
 export function validateStageRuntimeState(data: unknown): StageRuntimeState {
   if (typeof data !== 'object' || data === null) {
@@ -86,6 +98,10 @@ export function validateStageRuntimeState(data: unknown): StageRuntimeState {
 
 /**
  * Filesystem-backed store for run and per-stage machine state plus human Markdown artifacts.
+ *
+ * @remarks
+ * Invariant: Machine state is saved strictly as JSON; human logs and retrospective audits are saved as Markdown.
+ * Uses atomic writes to prevent partially written state files on unexpected termination.
  */
 export class RunStateStore {
   /**

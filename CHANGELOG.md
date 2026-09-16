@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+### Added
+
+- Added repository-wide TSDoc documentation standard (`.cursor/rules/tsdoc.mdc` and `.agents/skills/tsdoc-documentation/SKILL.md`) codifying semantic descriptions, protocol boundaries, and architectural invariants.
+- Added automated TSDoc export coverage audit script (`scripts/docs/list-undocumented-exports.mjs`) and npm script `npm run docs:check` to track exported symbol documentation across `src/`.
+
+### Changed
+
+- Comprehensive semantic TSDoc overhaul across all `src/` modules: domain types, custom errors, harness adapters (Cursor ACP and Codex reviewer), orchestrator engine, recovery manager, multi-tier reviewer router, stages and plan coordination, permissions engine, evidence verification and corroboration services, Git lifecycle managers, and CLI dispatcher.
+
 ## [2.1.3] - 2026-09-16
 
 ### Added

@@ -30,17 +30,31 @@ import { HarnessRegistry } from '../../harness/registry.js';
 import { ReviewerErrorClassifier } from '../../harness/ReviewerErrorClassifier.js';
 import type { EventBus } from '../../ui/EventBus.js';
 
+/**
+ * Options configuring {@link ReviewerRouter} role tiers, adapter registry, and context.
+ */
 export interface ReviewerRouterOptions {
-  /** Authoritative reviewer router configuration */
+  /** Authoritative reviewer router configuration defining primary, fallback, largeDiff, and permission models. */
   config: ReviewerRouterConfig;
-  /** Harness registry used to resolve adapter instances */
+  /** Harness registry used to resolve adapter instances (defaults to new instance). */
   registry?: HarnessRegistry;
-  /** Ambient harness context (runDir, stageName, stageContext, etc.) */
+  /** Ambient harness context including workspace paths, stage specifications, and logs. */
   context?: HarnessContext;
-  /** Optional event bus for emitting telemetry and fallback events */
+  /** Optional event bus for emitting telemetry and fallback notification events. */
   events?: EventBus;
 }
 
+/**
+ * Multi-tier reviewer harness router providing dynamic model routing and automatic fallback failover.
+ *
+ * @remarks
+ * Invariants:
+ * - Implements {@link ReviewerHarness} so the orchestrator interacts with a single unified reviewer contract.
+ * - Routes permission reviews to fast, lightweight models.
+ * - Routes unified diffs exceeding size thresholds to large-context models.
+ * - Catches provider failures (rate limits, usage exhaustion, crashes, timeouts) and transparently
+ *   retries using configured fallback models, persisting audit metadata.
+ */
 export class ReviewerRouter implements ReviewerHarness {
   readonly config: ReviewerRouterConfig;
   private readonly registry: HarnessRegistry;

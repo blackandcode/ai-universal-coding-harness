@@ -19,23 +19,44 @@ import {
   normalizeCommand
 } from './CommandClassifier.js';
 
+/**
+ * Inbound permission request structure received from the executor harness.
+ */
 export interface PermissionRequest {
+  /** Shell command line requested by the agent. */
   command?: string;
+  /** Natural language explanation or justification of the request. */
   description?: string;
+  /** Array of file paths targeted for reading or mutation. */
   paths?: string[];
+  /** Untrusted raw request payload from the protocol transport. */
   raw: unknown;
 }
 
+/**
+ * Authoritative decision on whether a permission request is allowed or denied.
+ */
 export interface PermissionDecision {
+  /** True if the operation is permitted to proceed. */
   allow: boolean;
+  /** Origin source of the decision (`'hard-deny'`, `'workspace-boundary'`, `'allow-all'`, `'allowlist'`, `'auto-safe'`, `'reviewer'`). */
   source: string;
+  /** Supporting reason or policy justification. */
   reason: string;
+  /** Whether this decision should be cached for matching signatures during the current stage. */
   cache: boolean;
+  /** Deterministic signature hash representing this request. */
   signature: string;
 }
 
 /**
  * Classifies shell/file permission requests using mode-specific rules before optional reviewer escalation.
+ *
+ * @remarks
+ * Security Invariants:
+ * - Hard-dangerous commands (privilege escalation, system destruction, Git history mutations) are unconditionally denied.
+ * - File operations targeting paths outside workspace or inside protected Git/orchestration control directories are unconditionally denied.
+ * - Invariant: A reviewer denial applies strictly to an individual operation and must NEVER terminate or fail a stage.
  */
 export class PermissionEngine {
   private allowlist: string[] = [];

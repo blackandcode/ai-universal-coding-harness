@@ -141,7 +141,14 @@ function printValidation(src: StageSource, dirs: string[]): boolean {
 }
 
 /**
- * Dispatches a parsed CLI command to domain handlers and returns a process exit code.
+ * Dispatches a parsed CLI command to domain handlers and coordinates process exit codes.
+ *
+ * @remarks
+ * Invariants:
+ * - Acquires {@link RunLock} during mutations (`run`, `resume`, `recover`, `runs delete`, `runs reset`)
+ *   to ensure single-process execution safety.
+ * - Spawns Ink TUI for interactive visual execution when stdout is a TTY and `--no-ui` is omitted.
+ * - Translates domain exceptions into canonical exit codes (0 for success, non-zero for failure).
  *
  * @param cmd - Strongly typed command produced by {@link parseCliArgs}.
  * @returns Shell exit code (`0` success, `2` validation failure, `3` run failure, etc.).

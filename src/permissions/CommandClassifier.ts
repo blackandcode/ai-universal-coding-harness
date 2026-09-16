@@ -105,8 +105,17 @@ export function commandStartsWith(command: string, prefix: string): boolean {
 /**
  * Checks if a command text matches non-negotiable hard dangerous patterns.
  *
- * @param text - Command text or operation description
- * @returns Reason string if dangerous, empty string if not hard-denied
+ * @remarks
+ * Security Invariant: Hard-denied commands represent irreversible or dangerous operations:
+ * - Privilege escalation (`sudo`).
+ * - Git history mutations or lifecycle commands (`git push`, `commit`, `merge`, `rebase`, `reset --hard`, `stash`).
+ * - System destruction (`mkfs`, `fdisk`, `reboot`, `shutdown`, `rm -rf /`).
+ * - Infrastructure and package releases (`terraform destroy`, `kubectl delete`, `npm publish`).
+ *
+ * These operations are unconditionally blocked in all permission modes and are never escalated to the reviewer.
+ *
+ * @param text - Raw shell command string or operation description.
+ * @returns Non-empty reason string if the command is hard-denied, or empty string if not hard-denied.
  */
 export function hardDangerous(text: string): string {
   const s = normalizeCommand(text);
@@ -154,9 +163,13 @@ export function commandCategory(command: string): string {
  * Verifies that a target candidate path is strictly inside the root directory,
  * normalizing path separators across Windows and POSIX boundaries.
  *
- * @param root - Absolute root directory path
- * @param candidate - Absolute or relative candidate path
- * @returns True if candidate resides inside root
+ * @remarks
+ * Security Invariant: Enforces filesystem workspace containment, preventing directory traversal
+ * attacks or path manipulation (`../`, absolute path escapes) from escaping the workspace.
+ *
+ * @param root - Absolute root directory path representing the workspace boundary.
+ * @param candidate - Absolute or relative candidate path to validate.
+ * @returns True if candidate resides strictly within the root directory boundary.
  */
 export function pathInside(root: string, candidate: string): boolean {
   const absRoot = path.resolve(root);

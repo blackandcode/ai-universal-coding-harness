@@ -9,13 +9,21 @@ import { spawn, spawnSync } from 'node:child_process';
 import readline from 'node:readline';
 import { ProcessExecutionError } from '../errors.js';
 
+/**
+ * Normalized outcome of a child process execution.
+ */
 export interface ProcessResult {
+  /** Subprocess exit code, or null if terminated by a signal or timed out. */
   readonly exitCode: number | null;
+  /** Termination signal if killed by signal, or null if exited normally. */
   readonly signal: NodeJS.Signals | null;
+  /** Complete captured standard output stream as UTF-8 string. */
   readonly stdout: string;
+  /** Complete captured standard error stream as UTF-8 string. */
   readonly stderr: string;
+  /** True if execution was terminated because the configured timeout duration elapsed. */
   readonly timedOut: boolean;
-  /** Backwards compatibility alias for exitCode ?? 1 */
+  /** Backwards compatibility alias returning `exitCode ?? 1`. */
   readonly code: number;
 }
 
@@ -39,20 +47,37 @@ export function createProcessResult(
   };
 }
 
+/**
+ * Options configuring synchronous process execution via {@link execSyncText}.
+ */
 export interface SyncProcessOptions {
+  /** Working directory for the spawned process. */
   cwd?: string;
+  /** Environment variable map override. */
   env?: NodeJS.ProcessEnv;
+  /** Standard input data piped to the process. */
   input?: string | Buffer;
+  /** Maximum execution time in milliseconds before sending SIGTERM. */
   timeout?: number;
 }
 
+/**
+ * Options configuring asynchronous process execution via {@link runProcess}.
+ */
 export interface ProcessOptions {
+  /** Working directory for the spawned process. */
   cwd?: string;
+  /** Environment variable map override. */
   env?: NodeJS.ProcessEnv;
+  /** Standard input text fed into the process. */
   stdinText?: string;
+  /** Maximum execution time in milliseconds before sending SIGTERM. */
   timeoutMs?: number;
+  /** Abort signal for graceful or immediate process cancellation. */
   signal?: AbortSignal;
+  /** Streaming line callback invoked on stdout lines. */
   onStdoutLine?: (line: string) => void;
+  /** Streaming line callback invoked on stderr lines. */
   onStderrLine?: (line: string) => void;
 }
 

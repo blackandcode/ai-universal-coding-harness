@@ -28,8 +28,15 @@ import { validateReviewerVerdict } from '../codex/CodexEventParser.js';
  * Extracts a parsed JSON payload from raw reviewer stdout, supporting pure JSON,
  * markdown code fences, and nested wrapper objects.
  *
- * @param text - Raw stdout or response string
- * @returns Parsed JSON object
+ * @remarks
+ * Reviewer model output may include markdown wrapping or conversational wrappers.
+ * This extraction helper parses JSON directly, unwraps fenced code blocks,
+ * or locates outermost matching JSON curly braces.
+ *
+ * @param text - Raw stdout or response string returned by the reviewer model.
+ * @returns Parsed JSON object of type `T`.
+ * @throws Error
+ * Thrown if the text is empty or does not contain a valid parseable JSON object.
  */
 export function extractJsonFromText<T>(text: string): T {
   const trimmed = text.trim();

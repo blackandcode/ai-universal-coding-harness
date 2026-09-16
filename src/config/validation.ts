@@ -38,13 +38,21 @@ const DEFAULT_FALLBACK_TRIGGERS: ReviewerFallbackTrigger[] = [
 ];
 
 /**
- * Validates merged configuration, clamps numeric bounds, and normalizes nested reviewer settings.
+ * Validates merged untrusted configuration, clamps numeric bounds, and normalizes nested reviewer settings.
+ *
+ * @remarks
+ * External configuration enters as `unknown`. This function:
+ * - Clamps `maxPlanReviews` to [1, 10] and `maxExecutionAttempts` to [1, 10].
+ * - Enforces supported `permissionMode` enums, falling back to `'auto_safe'`.
+ * - Resolves relative `permissionsFile` paths against `projectRoot`.
+ * - Populates default multi-tier reviewer settings for primary, fallback, largeDiff, and permission roles.
  *
  * @param raw - Untrusted merged configuration object from layered sources.
- * @param base - Default configuration used for fallbacks and reviewer defaults.
- * @param projectRoot - Repository root for resolving relative permission file paths.
- * @returns Normalized {@link OrchestratorConfig}.
- * @throws ConfigError when the top-level layer is not an object.
+ * @param base - Default baseline configuration used for fallbacks and reviewer defaults.
+ * @param projectRoot - Target repository root for resolving relative permission file paths.
+ * @returns Normalized and validated domain {@link OrchestratorConfig}.
+ * @throws {@link ConfigError}
+ * Thrown when the top-level configuration layer is not a valid object.
  */
 export function validateAndNormalizeConfig(
   raw: unknown,

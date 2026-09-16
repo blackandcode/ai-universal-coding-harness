@@ -4,6 +4,15 @@
  * Merges partial rawInput and rawOutput objects across tool_call and tool_call_update events,
  * detects file mutations, extracts command titles, tracks exit codes, and prevents
  * false exit 0 inferences on completed status.
+ *
+ * @remarks
+ * Protocol Boundary Invariants:
+ * - Tool calls in ACP arrive as fragmented chunks with incremental input and output payloads.
+ * - This accumulator unifies fragments keyed by session and tool call identifiers.
+ * - Invariant: A tool status of `'completed'` without an explicit numeric exit code must NEVER
+ *   be assumed to have exited with code 0.
+ * - Sequence numbers are incremented on each chunk to enable ordering corroboration
+ *   between file mutations and quality check executions.
  */
 
 import type {
@@ -24,7 +33,9 @@ export class AcpToolAccumulator {
   private lastMutationSequence = 0;
 
   /**
-   * Returns the current overall sequence counter.
+   * Returns the current overall sequence counter for the session.
+   *
+   * @returns Monotonically increasing sequence number.
    */
   currentSequence(): number {
     return this.sequence;
@@ -32,16 +43,22 @@ export class AcpToolAccumulator {
 
   /**
    * Returns the sequence counter corresponding to the most recent detected file mutation.
+   *
+   * @remarks
+   * Quality checks executed at sequence numbers prior to `lastMutationSeq` are invalidated
+   * because subsequent edits may have broken previously passing tests.
+   *
+   * @returns Sequence number of the last observed repository mutation.
    */
   lastMutationSeq(): number {
     return this.lastMutationSequence;
   }
 
   /**
-   * Sets or steps the internal sequence number.
+   * Steps the internal sequence counter or overrides it with an explicit value.
    *
-   * @param seq - Optional sequence number to set
-   * @returns Current sequence number
+   * @param seq - Optional sequence number override.
+   * @returns Updated current sequence number.
    */
   stepSequence(seq?: number): number {
     if (seq != null) {
@@ -55,18 +72,22 @@ export class AcpToolAccumulator {
   /**
    * Explicitly marks a file mutation at the current or specified sequence.
    *
-   * @param seq - Optional mutation sequence (defaults to current sequence)
+   * @param seq - Sequence number at which mutation occurred (defaults to current sequence).
    */
   markMutation(seq?: number): void {
     this.lastMutationSequence = seq ?? this.sequence;
   }
 
   /**
-   * Processes a single tool payload update from an ACP protocol message.
+   * Processes a single tool payload update chunk from an ACP protocol message.
    *
-   * @param updatePayload - Raw update object from session/update params
-   * @param options - Execution context options
-   * @returns Processed tool state and associated observation if an execution occurred
+   * @remarks
+   * Merges partial arguments and outputs, tracks mutation semantics, and produces
+   * authoritative {@link CommandObservation} records when shell executions finish.
+   *
+   * @param updatePayload - Untrusted raw update object from `session/update` params.
+   * @param options - Execution context options linking observations to run, stage, and epoch.
+   * @returns Processed {@link ProcessToolResult} containing merged state and optional observation.
    */
   processUpdate(
     updatePayload: any,
@@ -223,7 +244,7 @@ export class AcpToolAccumulator {
   }
 
   /**
-   * Resets in-memory accumulator state.
+   * Resets all in-memory accumulator state and sequence counters.
    */
   clear(): void {
     this.tools.clear();
