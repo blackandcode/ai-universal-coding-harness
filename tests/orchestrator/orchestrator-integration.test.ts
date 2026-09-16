@@ -25,8 +25,13 @@ import { RecoveryManager } from '../../src/orchestrator/RecoveryManager.js';
 import { RunStateStore } from '../../src/state/RunStateStore.js';
 import { removeTree, sha256Text } from '../../src/core/fs.js';
 import { CONFIG } from '../../src/core/config.js';
-import type { ExecutorSession } from '../../src/harness/types.js';
-import type { CommandObservation, FinalVerdict, ExecutionEvidence } from '../../src/types.js';
+import type { ExecutorSession, FinalReviewInput } from '../../src/harness/types.js';
+import type {
+  CommandObservation,
+  FinalVerdict,
+  ExecutionEvidence,
+  UiEvent
+} from '../../src/types.js';
 
 /**
  * Creates an isolated temporary Git repository configured for testing.
@@ -993,7 +998,7 @@ test('orchestrator integration: handles executor question and reviewer context r
         rationale: 'PostgreSQL preferred for persistence requirements'
       }),
       decidePermission: async () => ({ verdict: 'ALLOW', reason: 'Safe' }),
-      reviewImplementation: async (payload: any) => {
+      reviewImplementation: async (payload: FinalReviewInput) => {
         reviewCall++;
         if (reviewCall === 1) {
           contextRequested = true;
@@ -1194,7 +1199,7 @@ test('orchestrator integration: reviewer fallback failover on usage limit enable
   try {
     const registry = new HarnessRegistry();
     let fallbackEmitted = false;
-    events.emitter.on('event', (e: any) => {
+    events.emitter.on('event', (e: UiEvent) => {
       if (e.type === 'reviewer.fallback') {
         fallbackEmitted = true;
       }
@@ -1644,7 +1649,7 @@ test('orchestrator integration: accepts plan submitted only via prompt text fall
     registry.registerExecutor('test-exec', () => ({
       info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
       preflight: async () => ({ ok: true, details: [] }),
-      createSession: async (opts) => ({
+      createSession: async (_opts) => ({
         id: 'plan-text-session',
         setMode: async () => {},
         observedCommands: () => [

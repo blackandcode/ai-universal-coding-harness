@@ -10,6 +10,8 @@
  * and produces structured JSON outputs validated against designated schemas.
  */
 
+import type { HarnessEventEmitter } from '../cursor/types.js';
+
 /**
  * Categorical type of reviewer decision being requested from Codex.
  *
@@ -70,7 +72,7 @@ export interface CodexExecutionOptions {
   /** File name of the JSON schema enforcing structured output. */
   schemaFileName: string;
   /** Event bus instance for UI event emission. */
-  events?: any;
+  events?: HarnessEventEmitter;
   /** Absolute path to the run log file. */
   runLog?: string;
 }

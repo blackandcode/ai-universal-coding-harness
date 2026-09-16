@@ -7,6 +7,7 @@
  */
 
 import { CONFIG } from '../../core/config.js';
+import type { FinalReviewInput } from '../../harness/types.js';
 
 /** Minimal git surface required to assemble a final review payload. */
 export interface GitReviewProvider {
@@ -53,7 +54,7 @@ export interface BuildReviewPayloadOptions {
 /**
  * Authoritative payload structure delivered to a reviewer harness during final stage evaluation.
  */
-export interface FinalReviewPayload {
+export interface FinalReviewPayload extends FinalReviewInput {
   /** Approved stage implementation plan. */
   approved_plan: unknown;
   /** Carryover instructions from plan reviews. */

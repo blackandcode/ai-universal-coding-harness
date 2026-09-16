@@ -4,9 +4,12 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [2.1.5] - 2026-09-16
+
 ### Changed
 
 - Replaced root `prepare` with `npm run setup` so `npm i -g` and `npm link` avoid npm `allow-scripts` warnings; updated development and publishing setup docs.
+- Promoted Oxlint rule typescript/no-explicit-any to error and eliminated all 84 warnings by strongly typing Cursor ACP, Codex reviewer, orchestrator boundaries, and test suites
 
 ## [2.1.4] - 2026-09-16
 

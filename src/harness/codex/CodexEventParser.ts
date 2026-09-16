@@ -6,12 +6,7 @@
  * and token accounting.
  */
 
-import type {
-  FinalVerdict,
-  PermissionVerdict,
-  PlanReviewVerdict,
-  QuestionVerdict
-} from '../../types.js';
+import { isRecord } from '../cursor/types.js';
 
 /** Token accounting extracted from Codex JSONL usage events. */
 export interface TokenUsage {
@@ -54,16 +49,20 @@ export function parseCodexEventLine(
     return result;
   }
 
-  let event: any;
+  let event: unknown;
   try {
     event = JSON.parse(line.trim());
   } catch {
     return result;
   }
+  if (!isRecord(event)) {
+    return result;
+  }
 
-  const typ = event?.item?.type || event?.item_type;
+  const item = isRecord(event.item) ? event.item : {};
+  const typ = String(item.type || event.item_type || '');
   if (typ) {
-    result.itemType = String(typ);
+    result.itemType = typ;
 
     const violatingTypes = ['file_change', 'mcp_tool_call', 'web_search', 'collab_tool_call'];
     if (violatingTypes.includes(typ)) {
@@ -76,7 +75,7 @@ export function parseCodexEventLine(
     }
   }
 
-  if (event?.usage && typeof event.usage === 'object') {
+  if (isRecord(event.usage)) {
     result.hasTokenUsage = true;
     result.tokenUsage = {
       input: Number(event.usage.input_tokens || 0),
@@ -102,48 +101,46 @@ export function parseCodexEventLine(
  */
 export function validateReviewerVerdict(
   kind: 'plan-review' | 'question' | 'permission' | 'final-review',
-  result: any
+  result: unknown
 ): { ok: boolean; error?: string } {
-  if (!result || typeof result !== 'object') {
+  if (!isRecord(result)) {
     return { ok: false, error: `Reviewer ${kind} returned non-object or null result` };
   }
 
+  const verdict = typeof result.verdict === 'string' ? result.verdict : '';
+
   if (kind === 'plan-review') {
-    const v = result as PlanReviewVerdict;
-    if (!['APPROVE', 'REPLAN', 'BLOCKED'].includes(v.verdict)) {
+    if (!['APPROVE', 'REPLAN', 'BLOCKED'].includes(verdict)) {
       return {
         ok: false,
-        error: `Reviewer plan-review has missing or invalid verdict: ${v.verdict}`
+        error: `Reviewer plan-review has missing or invalid verdict: ${verdict}`
       };
     }
     return { ok: true };
   }
 
   if (kind === 'question') {
-    const v = result as QuestionVerdict;
-    if (!['ANSWER', 'BLOCKED'].includes(v.verdict)) {
-      return { ok: false, error: `Reviewer question has missing or invalid verdict: ${v.verdict}` };
+    if (!['ANSWER', 'BLOCKED'].includes(verdict)) {
+      return { ok: false, error: `Reviewer question has missing or invalid verdict: ${verdict}` };
     }
     return { ok: true };
   }
 
   if (kind === 'permission') {
-    const v = result as PermissionVerdict;
-    if (!['ALLOW', 'DENY'].includes(v.verdict)) {
+    if (!['ALLOW', 'DENY'].includes(verdict)) {
       return {
         ok: false,
-        error: `Reviewer permission has missing or invalid verdict: ${v.verdict}`
+        error: `Reviewer permission has missing or invalid verdict: ${verdict}`
       };
     }
     return { ok: true };
   }
 
   if (kind === 'final-review') {
-    const v = result as FinalVerdict;
-    if (!['APPROVE', 'REWORK', 'NEEDS_CONTEXT', 'BLOCKED'].includes(v.verdict)) {
+    if (!['APPROVE', 'REWORK', 'NEEDS_CONTEXT', 'BLOCKED'].includes(verdict)) {
       return {
         ok: false,
-        error: `Reviewer final-review has missing or invalid verdict: ${v.verdict}`
+        error: `Reviewer final-review has missing or invalid verdict: ${verdict}`
       };
     }
     return { ok: true };

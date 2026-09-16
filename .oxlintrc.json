@@ -25,6 +25,6 @@
     "react/rules-of-hooks": "error",
     "react/jsx-key": "error",
     "react/jsx-no-duplicate-props": "error",
-    "typescript/no-explicit-any": "warn"
+    "typescript/no-explicit-any": "error"
   }
 }

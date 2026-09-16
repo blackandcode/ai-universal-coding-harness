@@ -155,3 +155,19 @@ export class ProcessExecutionError extends HarnessError {
     this.timedOut = details?.timedOut ?? false;
   }
 }
+
+/**
+ * Extracts a human-readable error message safely from an unknown caught value.
+ *
+ * @param error - Caught error value of unknown type.
+ * @returns Formatted error message string.
+ */
+export function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return String(error ?? 'Unknown error');
+}

@@ -41,7 +41,8 @@ import type {
   QuestionVerdict,
   FinalVerdict,
   ExecutionEvidence,
-  RunStatus
+  RunStatus,
+  HarnessContext
 } from '../types.js';
 
 /** Dependency injection and test overrides for {@link Orchestrator}. */
@@ -203,7 +204,7 @@ export class Orchestrator {
   }
 
   /** Returns a {@link ReviewerRouter} when configured, otherwise a direct registry reviewer. */
-  private createReviewerHarness(reviewerId: string, context: any): ReviewerHarness {
+  private createReviewerHarness(reviewerId: string, context: HarnessContext): ReviewerHarness {
     if (CONFIG.reviewer) {
       const isCustomHarness =
         reviewerId !== 'codex' &&
@@ -483,7 +484,7 @@ export class Orchestrator {
         'Plan/spec hashes matched; planning and plan review were skipped.'
       );
     }
-    const qcache = new Map<string, any>();
+    const qcache = new Map<string, QuestionVerdict>();
     const executorHarness = this.registry.executor(state.executor_harness, { events: this.events });
     const session = await executorHarness.createSession({
       workspace: this.workspace,
@@ -673,7 +674,7 @@ export class Orchestrator {
           evidence: activeEvidence,
           maxDiffChars: CONFIG.maxDiffChars
         });
-        let verdict = await reviewer.reviewImplementation(payload as any);
+        let verdict = await reviewer.reviewImplementation(payload);
         // One follow-up review with path-scoped diff when the reviewer requests more context.
         if (verdict.verdict === 'NEEDS_CONTEXT' && verdict.requested_paths?.length) {
           const followUpPayload = ReviewPayloadBuilder.build({
@@ -684,7 +685,7 @@ export class Orchestrator {
             maxDiffChars: CONFIG.maxDiffChars,
             requestedPaths: verdict.requested_paths
           });
-          verdict = await reviewer.reviewImplementation(followUpPayload as any);
+          verdict = await reviewer.reviewImplementation(followUpPayload);
         }
         this.events.emit('review.result', { verdict: verdict.verdict, summary: verdict.summary });
         writeJson(path.join(stageRunDir, `review-attempt-${attempt}.json`), verdict);

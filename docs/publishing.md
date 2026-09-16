@@ -112,10 +112,10 @@ Commit, then tag:
 
 ```bash
 git add package.json package-lock.json CHANGELOG.md src/version.ts
-git commit -m "chore: release v2.1.4"
-git tag v2.1.4
+git commit -m "chore: release v2.1.5"
+git tag v2.1.5
 git push origin main
-git push origin v2.1.4
+git push origin v2.1.5
 ```
 
 `release.yml` creates the GitHub Release and package tarball. Publishing the GitHub Release triggers `publish-npm.yml`.

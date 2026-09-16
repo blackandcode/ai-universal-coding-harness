@@ -7,6 +7,7 @@
 
 import fs from 'node:fs';
 import { readJson } from '../../core/fs.js';
+import { errorMessage } from '../../errors.js';
 import { validateReviewerVerdict } from './CodexEventParser.js';
 import type { CodexDecisionKind } from './types.js';
 
@@ -36,8 +37,8 @@ export class CodexResultParser {
     let parsed: T;
     try {
       parsed = readJson<T>(resultFilePath);
-    } catch (e: any) {
-      throw new Error(`Reviewer ${kind} produced invalid JSON: ${e.message}`);
+    } catch (e: unknown) {
+      throw new Error(`Reviewer ${kind} produced invalid JSON: ${errorMessage(e)}`);
     }
 
     const validation = validateReviewerVerdict(kind, parsed);

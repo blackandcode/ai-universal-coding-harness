@@ -12,7 +12,8 @@ import {
   GitLifecycleError,
   LockConflictError,
   RunStateError,
-  ProcessExecutionError
+  ProcessExecutionError,
+  errorMessage
 } from '../src/errors.js';
 
 test('domain error hierarchy correctly identifies error instances', () => {
@@ -61,4 +62,13 @@ test('domain errors preserve cause', () => {
   assert.equal(procErr.stdout, 'out');
   assert.equal(procErr.stderr, 'err');
   assert.equal(procErr.timedOut, false);
+});
+
+test('errorMessage extracts message from various error representations', () => {
+  assert.equal(errorMessage(new Error('explicit error')), 'explicit error');
+  assert.equal(errorMessage('raw error string'), 'raw error string');
+  assert.equal(errorMessage(null), 'Unknown error');
+  assert.equal(errorMessage(undefined), 'Unknown error');
+  assert.equal(errorMessage(123), '123');
+  assert.equal(errorMessage({ toString: () => 'custom' }), 'custom');
 });

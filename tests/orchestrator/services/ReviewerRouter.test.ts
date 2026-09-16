@@ -13,19 +13,29 @@ import type {
   ReviewerRouterConfig,
   ReviewerHarness,
   HarnessInfo,
-  HarnessPreflightResult
+  HarnessPreflightResult,
+  PlanReviewInput,
+  QuestionReviewInput,
+  PermissionReviewInput,
+  FinalReviewInput
 } from '../../../src/harness/types.js';
-import type { PlanReviewVerdict, PermissionVerdict, FinalVerdict } from '../../../src/types.js';
+import type {
+  PlanReviewVerdict,
+  QuestionVerdict,
+  PermissionVerdict,
+  FinalVerdict,
+  HarnessContext
+} from '../../../src/types.js';
 import { HarnessRegistry } from '../../../src/harness/registry.js';
-import { EventEmitter } from 'node:events';
+import type { EventBus } from '../../../src/ui/EventBus.js';
 
 function createMockReviewer(
   info: HarnessInfo,
   handlers: {
-    reviewPlan?: (input: any) => Promise<PlanReviewVerdict>;
-    answerQuestions?: (input: any) => Promise<any>;
-    decidePermission?: (input: any) => Promise<PermissionVerdict>;
-    reviewImplementation?: (input: any) => Promise<FinalVerdict>;
+    reviewPlan?: (input: PlanReviewInput) => Promise<PlanReviewVerdict>;
+    answerQuestions?: (input: QuestionReviewInput) => Promise<QuestionVerdict>;
+    decidePermission?: (input: PermissionReviewInput) => Promise<PermissionVerdict>;
+    reviewImplementation?: (input: FinalReviewInput) => Promise<FinalVerdict>;
     preflight?: () => Promise<HarnessPreflightResult>;
   }
 ): ReviewerHarness {
@@ -187,17 +197,18 @@ test('ReviewerRouter: automatic fallback failover on usage limit with event emis
     )
   );
 
-  const events = new EventEmitter() as any;
-  const emittedEvents: Array<{ type: string; payload: any }> = [];
-  events.emit = (type: string, payload: any) => {
-    emittedEvents.push({ type, payload });
-    return true;
-  };
+  const emittedEvents: Array<{ type: string; payload: Record<string, unknown> }> = [];
+  const events = {
+    emit(type: string, payload?: Record<string, unknown>) {
+      emittedEvents.push({ type, payload: payload ?? {} });
+      return true;
+    }
+  } as unknown as EventBus;
 
   const router = new ReviewerRouter({
     config: mockRouterConfig,
     registry,
-    context: { stageName: 'stage-06', attempt: 1 } as any,
+    context: { stageName: 'stage-06', attempt: 1 } as HarnessContext,
     events
   });
 

@@ -13,6 +13,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { CodexReviewerHarness } from '../../../src/harness/codex/CodexReviewerHarness.js';
 import { CodexProcessRunner } from '../../../src/harness/codex/CodexProcessRunner.js';
+import type { CodexExecutionOptions } from '../../../src/harness/codex/types.js';
 
 function createMockCodexPreflightBinary(
   tmpDir: string,
@@ -110,39 +111,24 @@ test('CodexReviewerHarness: executes decision flows through runner delegation', 
   const origRun = CodexProcessRunner.run;
   try {
     let capturedKind = '';
-    CodexProcessRunner.run = (async (opts: any) => {
+    CodexProcessRunner.run = (async <T>(opts: CodexExecutionOptions) => {
       capturedKind = opts.decisionKind;
+      let res: unknown;
       if (opts.decisionKind === 'plan-review') {
-        return {
-          result: { verdict: 'APPROVE', summary: 'Plan OK' },
-          eventsFile: '',
-          inputFile: '',
-          resultFile: ''
-        };
-      }
-      if (opts.decisionKind === 'question') {
-        return {
-          result: { verdict: 'ANSWER', answers: [], rationale: 'Answered' },
-          eventsFile: '',
-          inputFile: '',
-          resultFile: ''
-        };
-      }
-      if (opts.decisionKind === 'permission') {
-        return {
-          result: { verdict: 'ALLOW', reason: 'Safe' },
-          eventsFile: '',
-          inputFile: '',
-          resultFile: ''
-        };
+        res = { verdict: 'APPROVE', summary: 'Plan OK' };
+      } else if (opts.decisionKind === 'question') {
+        res = { verdict: 'ANSWER', answers: [], rationale: 'Answered' };
+      } else if (opts.decisionKind === 'permission') {
+        res = { verdict: 'ALLOW', reason: 'Safe' };
+      } else {
+        res = { verdict: 'APPROVE', summary: 'Final OK' };
       }
       return {
-        result: { verdict: 'APPROVE', summary: 'Final OK' },
-        eventsFile: '',
-        inputFile: '',
-        resultFile: ''
+        result: res as T,
+        eventsFilePath: '',
+        decisionDir: ''
       };
-    }) as any;
+    }) as typeof CodexProcessRunner.run;
 
     const planVerdict = await harness.reviewPlan({ plan: 'test' });
     assert.equal(capturedKind, 'plan-review');

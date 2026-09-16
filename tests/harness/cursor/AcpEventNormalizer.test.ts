@@ -11,15 +11,33 @@ import assert from 'node:assert/strict';
 import { AcpEventNormalizer } from '../../../src/harness/cursor/AcpEventNormalizer.js';
 import { AcpToolAccumulator } from '../../../src/harness/cursor/AcpToolAccumulator.js';
 import { ObservationJournal } from '../../../src/harness/cursor/ObservationJournal.js';
+import { isRecord } from '../../../src/harness/cursor/types.js';
+
+interface TestEmittedEvent {
+  type: string;
+  payload?: {
+    text?: string;
+    todos?: unknown[];
+    merge?: boolean;
+    title?: string;
+    summary?: string;
+    id?: string;
+    detail?: string;
+    status?: string;
+    exit_code?: number | null;
+    updatedAt?: number;
+    [key: string]: unknown;
+  };
+}
 
 test('AcpEventNormalizer: routes agent message and thought chunks', async () => {
-  const emitted: Array<{ type: string; payload: any }> = [];
+  const emitted: TestEmittedEvent[] = [];
   let agentText = '';
   let focusDelta = '';
 
   const normalizer = new AcpEventNormalizer({
     events: {
-      emit: (type: string, payload: any) => emitted.push({ type, payload })
+      emit: (type: string, payload?: Record<string, unknown>) => emitted.push({ type, payload })
     },
     accumulator: new AcpToolAccumulator(),
     journal: new ObservationJournal(),
@@ -43,8 +61,8 @@ test('AcpEventNormalizer: routes agent message and thought chunks', async () => 
   });
   assert.equal(agentText, 'Hello from agent');
   assert.equal(emitted.length, 1);
-  assert.equal(emitted[0].type, 'executor.message');
-  assert.equal(emitted[0].payload.text, 'Hello from agent');
+  assert.equal(emitted[0]?.type, 'executor.message');
+  assert.equal(emitted[0]?.payload?.text, 'Hello from agent');
 
   // Thought chunk
   await normalizer.handleMessage({
@@ -78,13 +96,13 @@ test('AcpEventNormalizer: routes agent message and thought chunks', async () => 
 });
 
 test('AcpEventNormalizer: handles todos, tasks, and tool call updates', async () => {
-  const emitted: Array<{ type: string; payload: any }> = [];
+  const emitted: TestEmittedEvent[] = [];
   const journal = new ObservationJournal();
   const accumulator = new AcpToolAccumulator();
 
   const normalizer = new AcpEventNormalizer({
     events: {
-      emit: (type: string, payload: any) => emitted.push({ type, payload })
+      emit: (type: string, payload?: Record<string, unknown>) => emitted.push({ type, payload })
     },
     accumulator,
     journal,
@@ -100,8 +118,8 @@ test('AcpEventNormalizer: handles todos, tasks, and tool call updates', async ()
       merge: false
     }
   });
-  assert.equal(emitted[0].type, 'executor.todos');
-  assert.equal(emitted[0].payload.todos.length, 1);
+  assert.equal(emitted[0]?.type, 'executor.todos');
+  assert.equal(emitted[0]?.payload?.todos?.length, 1);
 
   // Task
   await normalizer.handleMessage({
@@ -111,8 +129,8 @@ test('AcpEventNormalizer: handles todos, tasks, and tool call updates', async ()
       summary: 'Task summary'
     }
   });
-  assert.equal(emitted[1].type, 'executor.task');
-  assert.equal(emitted[1].payload.title, 'Current task');
+  assert.equal(emitted[1]?.type, 'executor.task');
+  assert.equal(emitted[1]?.payload?.title, 'Current task');
 
   // Tool call update
   await normalizer.handleMessage({
@@ -129,10 +147,10 @@ test('AcpEventNormalizer: handles todos, tasks, and tool call updates', async ()
     }
   });
 
-  assert.equal(emitted[2].type, 'executor.tool');
-  assert.equal(emitted[2].payload.id, 'tool-1');
-  assert.equal(emitted[2].payload.title, 'Run');
-  assert.equal(emitted[2].payload.detail, 'npm test');
+  assert.equal(emitted[2]?.type, 'executor.tool');
+  assert.equal(emitted[2]?.payload?.id, 'tool-1');
+  assert.equal(emitted[2]?.payload?.title, 'Run');
+  assert.equal(emitted[2]?.payload?.detail, 'npm test');
 });
 
 test('AcpEventNormalizer: delegates plan, question, and permission requests', async () => {
@@ -168,4 +186,15 @@ test('AcpEventNormalizer: delegates plan, question, and permission requests', as
   await normalizer.handleMessage(null);
   await normalizer.handleMessage('not-an-object');
   await normalizer.handleMessage({ method: 'unknown/method' });
+});
+
+test('isRecord accurately differentiates objects from primitives and arrays', () => {
+  assert.equal(isRecord({}), true);
+  assert.equal(isRecord({ key: 'val' }), true);
+  assert.equal(isRecord([]), false);
+  assert.equal(isRecord(null), false);
+  assert.equal(isRecord(undefined), false);
+  assert.equal(isRecord('string'), false);
+  assert.equal(isRecord(42), false);
+  assert.equal(isRecord(true), false);
 });

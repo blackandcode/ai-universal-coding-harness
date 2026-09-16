@@ -12,6 +12,8 @@ import {
   CursorReviewerHarness,
   extractJsonFromText
 } from '../../../src/harness/cursor/CursorReviewerHarness.js';
+import type { ProcessOptions, ProcessResult } from '../../../src/core/process.js';
+import { ProcessExecutionError } from '../../../src/errors.js';
 
 test('CursorReviewerHarness: initializes harness metadata and handles overrides', () => {
   const harness = new CursorReviewerHarness({
@@ -20,7 +22,7 @@ test('CursorReviewerHarness: initializes harness metadata and handles overrides'
     thinking: 'high',
     timeoutMinutes: 12,
     timeoutSeconds: 45
-  } as any);
+  });
 
   assert.equal(harness.info.id, 'cursor');
   assert.equal(harness.info.role, 'reviewer');
@@ -103,12 +105,17 @@ test('CursorReviewerHarness: executes decision flows through mocked runProcess',
   const origRunner = CursorReviewerHarness.runner;
   try {
     let capturedArgs: string[] = [];
-    CursorReviewerHarness.runner = (async (_bin: string, args: string[], opts: any) => {
+    CursorReviewerHarness.runner = (async (
+      _bin: string,
+      args: string[],
+      opts?: ProcessOptions
+    ): Promise<ProcessResult> => {
       capturedArgs = args;
       opts?.onStdoutLine?.('stdout line');
       opts?.onStderrLine?.('stderr warning');
       return {
         code: 0,
+        exitCode: 0,
         stdout: JSON.stringify({
           verdict: 'APPROVE',
           summary: 'Review passed successfully',
@@ -124,7 +131,7 @@ test('CursorReviewerHarness: executes decision flows through mocked runProcess',
         signal: null,
         timedOut: false
       };
-    }) as any;
+    }) as typeof CursorReviewerHarness.runner;
 
     // Plan review
     const planVerdict = await harness.reviewPlan(
@@ -136,8 +143,9 @@ test('CursorReviewerHarness: executes decision flows through mocked runProcess',
     assert.ok(capturedArgs.includes('plan'));
 
     // Question
-    CursorReviewerHarness.runner = (async () => ({
+    CursorReviewerHarness.runner = (async (): Promise<ProcessResult> => ({
       code: 0,
+      exitCode: 0,
       stdout: JSON.stringify({
         verdict: 'ANSWER',
         answers: [{ question_id: 'q1', selected_option_ids: ['opt-1'] }],
@@ -146,26 +154,28 @@ test('CursorReviewerHarness: executes decision flows through mocked runProcess',
       stderr: '',
       signal: null,
       timedOut: false
-    })) as any;
+    })) as typeof CursorReviewerHarness.runner;
     const questionVerdict = await harness.answerQuestions({
       questions: [{ id: 'q1', prompt: 'Choose?' }]
     });
     assert.equal(questionVerdict.verdict, 'ANSWER');
 
     // Permission
-    CursorReviewerHarness.runner = (async () => ({
+    CursorReviewerHarness.runner = (async (): Promise<ProcessResult> => ({
       code: 0,
+      exitCode: 0,
       stdout: JSON.stringify({ verdict: 'ALLOW', reason: 'Safe command' }),
       stderr: '',
       signal: null,
       timedOut: false
-    })) as any;
+    })) as typeof CursorReviewerHarness.runner;
     const permVerdict = await harness.decidePermission({ command: 'git status' });
     assert.equal(permVerdict.verdict, 'ALLOW');
 
     // Final implementation review
-    CursorReviewerHarness.runner = (async () => ({
+    CursorReviewerHarness.runner = (async (): Promise<ProcessResult> => ({
       code: 0,
+      exitCode: 0,
       stdout: JSON.stringify({
         verdict: 'APPROVE',
         summary: 'Final review approved',
@@ -177,7 +187,7 @@ test('CursorReviewerHarness: executes decision flows through mocked runProcess',
       stderr: '',
       signal: null,
       timedOut: false
-    })) as any;
+    })) as typeof CursorReviewerHarness.runner;
     const finalVerdict = await harness.reviewImplementation({ diff: 'test diff' });
     assert.equal(finalVerdict.verdict, 'APPROVE');
   } finally {
@@ -195,20 +205,24 @@ test('CursorReviewerHarness: throws ProcessExecutionError on non-zero exit', asy
 
   const origRunner = CursorReviewerHarness.runner;
   try {
-    CursorReviewerHarness.runner = (async () => ({
+    CursorReviewerHarness.runner = (async (): Promise<ProcessResult> => ({
       code: 1,
+      exitCode: 1,
       stdout: '',
       stderr: 'Agent crashed due to rate limit 429',
       signal: null,
       timedOut: false
-    })) as any;
+    })) as typeof CursorReviewerHarness.runner;
 
     await assert.rejects(
       () => harness.reviewPlan({ plan: 'Test plan' }),
-      (err: any) => {
-        assert.equal(err.exitCode, 1);
-        assert.match(err.stderr, /429/);
-        return true;
+      (err: unknown) => {
+        if (err instanceof ProcessExecutionError) {
+          assert.equal(err.exitCode, 1);
+          assert.match(err.stderr, /429/);
+          return true;
+        }
+        return false;
       }
     );
   } finally {

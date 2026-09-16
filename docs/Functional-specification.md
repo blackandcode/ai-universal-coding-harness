@@ -27,7 +27,7 @@ The core architectural separation is:
 - **Mechanical verifier:** corroborates evidence independently before reviewer approval is trusted as a path to commit.
 - **Human:** chooses stages, configures policy, inspects results, and ultimately decides whether to merge/push the AI branch.
 
-The current public repository baseline is version **2.1.4**, requires **Node.js 24.18+**, and currently declares **TypeScript 7.0.2**, **React 19.2.8**, Ink 7.1.1, and Node's built-in test runner. The default executor/reviewer pairing is currently **Cursor** as executor and **Codex** as reviewer, while the adapter system is designed to remain harness-neutral.
+The current public repository baseline is version **2.1.5**, requires **Node.js 24.18+**, and currently declares **TypeScript 7.0.2**, **React 19.2.8**, Ink 7.1.1, and Node's built-in test runner. The default executor/reviewer pairing is currently **Cursor** as executor and **Codex** as reviewer, while the adapter system is designed to remain harness-neutral.
 
 ---
 

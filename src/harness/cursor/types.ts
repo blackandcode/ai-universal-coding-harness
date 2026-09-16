@@ -11,6 +11,169 @@
  */
 
 import type { CommandObservation } from '../../types.js';
+import { errorMessage } from '../../errors.js';
+
+export { errorMessage };
+
+/**
+ * Determines whether an unknown value is a non-null object record.
+ *
+ * @param value - Untrusted value to test.
+ * @returns True if value is a non-array, non-null Record object.
+ */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Event emitter interface decoupling harness modules from concrete UI event bus implementations.
+ */
+export interface HarnessEventEmitter {
+  /**
+   * Emits a typed semantic event with an optional payload.
+   *
+   * @param type - Semantic event name.
+   * @param payload - Structured event payload.
+   */
+  emit(type: string, payload?: Record<string, unknown>): unknown;
+}
+
+/**
+ * Valid identifier for JSON-RPC 2.0 requests and responses.
+ */
+export type JsonRpcId = string | number;
+
+/**
+ * Structure of a JSON-RPC 2.0 request envelope.
+ */
+export interface JsonRpcRequest {
+  jsonrpc?: string;
+  id: JsonRpcId;
+  method: string;
+  params?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/**
+ * Structure of a JSON-RPC 2.0 notification envelope without an ID.
+ */
+export interface JsonRpcNotification {
+  jsonrpc?: string;
+  method: string;
+  params?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/**
+ * Structure of a JSON-RPC 2.0 response envelope.
+ */
+export interface JsonRpcResponse {
+  jsonrpc?: string;
+  id: JsonRpcId;
+  result?: unknown;
+  error?: {
+    code?: number;
+    message?: string;
+    data?: unknown;
+  };
+  [key: string]: unknown;
+}
+
+/**
+ * In-flight RPC request tracking resolver, rejecter, and timeout handle.
+ *
+ * @typeParam T - Expected resolution type.
+ */
+export interface PendingJsonRpcRequest<T = unknown> {
+  resolve: (value: T) => void;
+  reject: (reason: Error) => void;
+  timer: NodeJS.Timeout;
+  method?: string;
+}
+
+/**
+ * An individual option entry within an ACP config option group.
+ */
+export interface AcpConfigOptionItem {
+  id?: string;
+  value?: string;
+  name?: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * A group of configuration options exposed by the ACP server.
+ */
+export interface AcpConfigOptionGroup {
+  id?: string;
+  options?: AcpConfigOptionItem[];
+  [key: string]: unknown;
+}
+
+/**
+ * Capabilities and session configuration returned from ACP `session/new`.
+ */
+export interface AcpNewSessionResult {
+  sessionId?: string;
+  configOptions?: AcpConfigOptionGroup[];
+  config_options?: AcpConfigOptionGroup[];
+  capabilities?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/**
+ * Question item inside an ACP ask_question request.
+ */
+export interface AcpPlanQuestionItem {
+  prompt?: string;
+  id?: string;
+  options?: Array<{ id?: string; label?: string; [key: string]: unknown }>;
+  [key: string]: unknown;
+}
+
+/**
+ * Parameters for an incoming `cursor/ask_question` server-initiated request.
+ */
+export interface AcpQuestionParams {
+  title?: string;
+  questions?: AcpPlanQuestionItem[];
+  [key: string]: unknown;
+}
+
+/**
+ * An option presented in an ACP permission request.
+ */
+export interface AcpPermissionOption {
+  id?: string;
+  kind?: string;
+  optionKind?: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Tool call details within an ACP permission request.
+ */
+export interface AcpPermissionToolCall {
+  title?: string;
+  kind?: string;
+  toolCallId?: string;
+  id?: string;
+  rawInput?: Record<string, unknown>;
+  input?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/**
+ * Parameters for an incoming `session/request_permission` server-initiated request.
+ */
+export interface AcpPermissionParams {
+  toolCall?: AcpPermissionToolCall;
+  tool_call?: AcpPermissionToolCall;
+  options?: AcpPermissionOption[];
+  [key: string]: unknown;
+}
 
 /**
  * Status lifecycle of a tool invocation received over the ACP protocol.

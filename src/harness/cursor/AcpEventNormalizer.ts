@@ -15,13 +15,14 @@
 
 import type { AcpToolAccumulator } from './AcpToolAccumulator.js';
 import type { ObservationJournal } from './ObservationJournal.js';
+import { isRecord, type HarnessEventEmitter, type JsonRpcRequest } from './types.js';
 
 /**
  * Callbacks and context options wired into ACP message normalization.
  */
 export interface AcpEventNormalizerOptions {
   /** Event bus instance for UI event emission. */
-  events: any;
+  events?: HarnessEventEmitter | null;
   /** Streaming tool accumulator tracking multi-chunk tool calls. */
   accumulator: AcpToolAccumulator;
   /** Journal recording authoritative command observations for corroboration. */
@@ -43,11 +44,11 @@ export interface AcpEventNormalizerOptions {
   /** Callback invoked when streaming agent text chunks arrive. */
   onAgentText?: (text: string) => void;
   /** Callback invoked when the agent requests plan evaluation. */
-  onPlanRequest?: (payload: any) => Promise<void>;
+  onPlanRequest?: (payload: JsonRpcRequest) => Promise<void>;
   /** Callback invoked when the agent asks blocking questions. */
-  onQuestionRequest?: (payload: any) => Promise<void>;
+  onQuestionRequest?: (payload: JsonRpcRequest) => Promise<void>;
   /** Callback invoked when the agent requests command or file permissions. */
-  onPermissionRequest?: (payload: any) => Promise<void>;
+  onPermissionRequest?: (payload: JsonRpcRequest) => Promise<void>;
 }
 
 /**
@@ -68,46 +69,50 @@ export class AcpEventNormalizer {
    *
    * @param message - Untrusted parsed JSON object received from Cursor ACP stdout.
    */
-  async handleMessage(message: any): Promise<void> {
-    if (!message || typeof message !== 'object') return;
+  async handleMessage(message: unknown): Promise<void> {
+    if (!isRecord(message)) return;
 
-    if (message.method === 'session/update') {
-      const u = message.params?.update;
-      if (u && message.params?.sessionId && !u.sessionId) {
-        u.sessionId = message.params.sessionId;
+    if (message.method === 'session/update' && isRecord(message.params)) {
+      const u = message.params.update;
+      if (isRecord(u)) {
+        if (message.params.sessionId && !u.sessionId) {
+          u.sessionId = message.params.sessionId;
+        }
+        this.handleSessionUpdate(u);
       }
-      this.handleSessionUpdate(u);
       return;
     }
 
     if (message.method === 'cursor/update_todos') {
+      const p = isRecord(message.params) ? message.params : {};
       this.options.events?.emit?.('executor.todos', {
-        todos: message.params?.todos || [],
-        merge: Boolean(message.params?.merge)
+        todos: p.todos || [],
+        merge: Boolean(p.merge)
       });
       return;
     }
 
     if (message.method === 'cursor/task') {
+      const p = isRecord(message.params) ? message.params : {};
       this.options.events?.emit?.('executor.task', {
-        title: message.params?.title || '',
-        summary: message.params?.summary || ''
+        title: p.title || '',
+        summary: p.summary || ''
       });
       return;
     }
 
     if (message.method === 'cursor/create_plan' && this.options.onPlanRequest) {
-      await this.options.onPlanRequest(message);
+      await this.options.onPlanRequest(message as JsonRpcRequest);
       return;
     }
 
     if (message.method === 'cursor/ask_question' && this.options.onQuestionRequest) {
-      await this.options.onQuestionRequest(message);
+      await this.options.onQuestionRequest(message as JsonRpcRequest);
       return;
     }
 
     if (message.method === 'session/request_permission' && this.options.onPermissionRequest) {
-      await this.options.onPermissionRequest(message);
+      await this.options.onPermissionRequest(message as JsonRpcRequest);
       return;
     }
   }
@@ -117,19 +122,21 @@ export class AcpEventNormalizer {
    *
    * @param u - Untrusted session update payload containing message chunks or tool call structures.
    */
-  private handleSessionUpdate(u: any): void {
-    if (!u) return;
+  private handleSessionUpdate(u: unknown): void {
+    if (!isRecord(u)) return;
 
-    const t = u.sessionUpdate || u.type || '';
+    const t = String(u.sessionUpdate || u.type || '');
     if (t === 'agent_message_chunk') {
-      const text = u.content?.text || u.text || '';
+      const content = isRecord(u.content) ? u.content : {};
+      const text = String(content.text || u.text || '');
       this.options.onAgentText?.(text);
       this.options.events?.emit?.('executor.message', { text, stream: true });
       return;
     }
 
     if (t === 'agent_thought_chunk' || t === 'agent_progress_chunk') {
-      const text = u.content?.text || u.text || '';
+      const content = isRecord(u.content) ? u.content : {};
+      const text = String(content.text || u.text || '');
       this.options.onFocusDelta?.(text);
       return;
     }

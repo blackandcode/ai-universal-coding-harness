@@ -57,6 +57,20 @@ test('CodexResultParser: throws descriptive error on missing file or invalid jso
       () => CodexResultParser.parseResult('plan-review', corruptFile),
       /produced invalid JSON/
     );
+
+    const nonObjectFile = path.join(tmpDir, 'non-object.json');
+    fs.writeFileSync(nonObjectFile, '"just a string"');
+    assert.throws(
+      () => CodexResultParser.parseResult('plan-review', nonObjectFile),
+      /returned non-object or null result/
+    );
+
+    const invalidVerdictFile = path.join(tmpDir, 'invalid-verdict.json');
+    fs.writeFileSync(invalidVerdictFile, JSON.stringify({ verdict: 'UNKNOWN_VERDICT' }));
+    assert.throws(
+      () => CodexResultParser.parseResult('plan-review', invalidVerdictFile),
+      /missing or invalid verdict/
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

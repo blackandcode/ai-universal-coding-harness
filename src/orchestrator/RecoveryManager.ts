@@ -18,6 +18,7 @@ import { GitRepository } from '../git/GitRepository.js';
 import { verifyEvidenceAgainstObserved } from '../quality/EvidenceVerifier.js';
 import { parseAcpEvents } from '../harness/cursor/CursorExecutorHarness.js';
 import type { ExecutionEvidence, StagePhase } from '../types.js';
+import { errorMessage } from '../errors.js';
 
 /**
  * Options configuring run recovery evaluation and state transitions.
@@ -109,7 +110,7 @@ export class RecoveryManager {
     let state;
     try {
       state = this.store.load(runId);
-    } catch (e: any) {
+    } catch (e: unknown) {
       return {
         ok: false,
         dryRun: !isApply,
@@ -117,7 +118,7 @@ export class RecoveryManager {
         stageName: '',
         stageIndex: -1,
         details,
-        error: `Failed to load run ${runId}: ${e.message}`
+        error: `Failed to load run ${runId}: ${errorMessage(e)}`
       };
     }
 

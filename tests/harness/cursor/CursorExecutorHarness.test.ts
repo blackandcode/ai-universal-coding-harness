@@ -553,12 +553,28 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
           if (plan.includes('needing changes')) {
             return {
               accepted: false,
+              outcome: 'needs_revision',
               status: 'REPLAN',
               feedback: 'Please add X',
-              verdict: { summary: 'Needs X' }
+              verdict: {
+                verdict: 'REPLAN',
+                summary: 'Needs X',
+                missing_items: [],
+                feedback_for_cursor: ''
+              }
             };
           }
-          return { accepted: true, status: 'APPROVE', verdict: { summary: 'Plan ok' } };
+          return {
+            accepted: true,
+            outcome: 'accepted',
+            status: 'APPROVE',
+            verdict: {
+              verdict: 'APPROVE',
+              summary: 'Plan ok',
+              missing_items: [],
+              feedback_for_cursor: ''
+            }
+          };
         },
         onQuestion: async (p: { questions?: Array<{ prompt: string }> }) => {
           const prompt = p.questions?.[0]?.prompt || '';
@@ -571,14 +587,15 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
             rationale: 'Reasoning'
           };
         },
-        onPermission: async (req: { command: string }) => {
-          if (req.command.includes('throwing')) {
+        onPermission: async (req: { command?: string }) => {
+          const cmd = req.command || '';
+          if (cmd.includes('throwing')) {
             throw new Error('Permission classifier exploded');
           }
-          if (req.command.includes('risky-file')) {
+          if (cmd.includes('risky-file')) {
             return { allow: false, reason: 'Denied by policy' };
           }
-          permissionsGranted.push(req.command);
+          permissionsGranted.push(cmd);
           return { allow: true, reason: 'Allowed' };
         }
       }
@@ -644,7 +661,7 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
       focusFile: path.join(tmpDir, 'focus.txt'),
       resumeSessionId: 'resumed-sess-99',
       callbacks: {
-        onPlan: async () => ({ accepted: true }),
+        onPlan: async () => ({ accepted: true, outcome: 'accepted', status: 'APPROVE' }),
         onQuestion: async () => ({ answers: [], rationale: '' }),
         onPermission: async () => ({ allow: true, reason: '' })
       }
@@ -676,7 +693,7 @@ test('parseAcpEvents replays tool observations and ignores malformed server line
   });
   fs.writeFileSync(
     eventsFile,
-    `SERVER not-json\nSERVER ${toolLine}\nSERVER ${JSON.stringify({ method: 'session/update', params: { update: { sessionUpdate: 'agent_message_chunk' } } })}\n`
+    `SERVER not-json\nSERVER "scalar string"\nSERVER {"method":"session/update"}\nSERVER {"method":"session/update","params":{}}\nSERVER {"method":"session/update","params":{"update":null}}\nSERVER ${toolLine}\nSERVER ${JSON.stringify({ method: 'session/update', params: { update: { sessionUpdate: 'agent_message_chunk' } } })}\n`
   );
 
   try {

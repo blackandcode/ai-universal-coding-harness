@@ -5,13 +5,18 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
 import {
   verifyEvidenceAgainstObserved,
   normalizeCommand,
-  commandMatches
+  commandMatches,
+  validateEvidence
 } from '../../src/quality/EvidenceVerifier.js';
+import type { ExecutionEvidence } from '../../src/types.js';
 
-const evidence: any = {
+const evidence: ExecutionEvidence = {
   stage: 'stage-01',
   attempt: 1,
   status: 'PASS',
@@ -127,4 +132,33 @@ test('patch fingerprint mismatch in context causes rejection', () => {
   );
   assert.equal(r.ok, false);
   assert.match(r.issues.join(' '), /Evidence patch fingerprint mismatch/);
+});
+
+test('validateEvidence asserts schema and required fields of evidence.json', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'evidence-val-'));
+  try {
+    const missing = validateEvidence(path.join(tmpDir, 'missing.json'), 'stage-01', 1);
+    assert.equal(missing.ok, false);
+    assert.equal(missing.reason, 'evidence.json missing');
+
+    const corruptFile = path.join(tmpDir, 'corrupt.json');
+    fs.writeFileSync(corruptFile, '{ invalid json');
+    const corrupt = validateEvidence(corruptFile, 'stage-01', 1);
+    assert.equal(corrupt.ok, false);
+    assert.equal(corrupt.reason, 'evidence.json invalid JSON');
+
+    const nonObjFile = path.join(tmpDir, 'nonobj.json');
+    fs.writeFileSync(nonObjFile, '"just a string"');
+    const nonObj = validateEvidence(nonObjFile, 'stage-01', 1);
+    assert.equal(nonObj.ok, false);
+    assert.equal(nonObj.reason, 'evidence.json missing/invalid required fields');
+
+    const validFile = path.join(tmpDir, 'valid.json');
+    fs.writeFileSync(validFile, JSON.stringify(evidence));
+    const valid = validateEvidence(validFile, 'stage-01', 1);
+    assert.equal(valid.ok, true);
+    assert.equal(valid.e?.stage, 'stage-01');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

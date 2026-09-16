@@ -42,24 +42,30 @@ export function validateEvidence(
   attempt: number
 ): { ok: boolean; reason: string; e?: ExecutionEvidence } {
   if (!fs.existsSync(file)) return { ok: false, reason: 'evidence.json missing' };
-  let e: any;
+  let parsed: unknown;
   try {
-    e = JSON.parse(fs.readFileSync(file, 'utf8'));
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
     return { ok: false, reason: 'evidence.json invalid JSON' };
   }
+  const record =
+    typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
   const ok =
-    e.stage === stage &&
-    Number(e.attempt) === attempt &&
-    ['PASS', 'FAIL'].includes(e.status) &&
-    Number.isInteger(Number(e.quality_exit_code)) &&
-    Number.isInteger(Number(e.git_diff_check_exit_code)) &&
-    Array.isArray(e.changed_files) &&
-    Array.isArray(e.unresolved);
+    record !== null &&
+    record.stage === stage &&
+    Number(record.attempt) === attempt &&
+    typeof record.status === 'string' &&
+    ['PASS', 'FAIL'].includes(record.status) &&
+    Number.isInteger(Number(record.quality_exit_code)) &&
+    Number.isInteger(Number(record.git_diff_check_exit_code)) &&
+    Array.isArray(record.changed_files) &&
+    Array.isArray(record.unresolved);
   return {
     ok,
     reason: ok ? '' : 'evidence.json missing/invalid required fields',
-    e: e as ExecutionEvidence
+    e: ok ? (record as unknown as ExecutionEvidence) : undefined
   };
 }
 
@@ -152,7 +158,7 @@ export function verifyEvidenceAgainstObserved(
 
   // Filter commands by stage and attempt if scoped observations exist.
   // Also enforce that autonomous permission broker executions ('broker') cannot prove quality checks.
-  let scopedCommands = commands.filter((c) => (c as any).source !== 'broker');
+  let scopedCommands = commands.filter((c) => c.source !== 'broker');
 
   if (context?.stage) {
     scopedCommands = scopedCommands.filter((c) => !c.stage || c.stage === context.stage);

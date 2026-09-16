@@ -11,13 +11,23 @@
  * - Spawns Codex CLI in an isolated sandbox with `--sandbox read-only` and strict JSON schemas.
  */
 
-import type { ReviewerHarness, HarnessInfo, HarnessPreflightResult } from '../types.js';
+import type {
+  ReviewerHarness,
+  HarnessInfo,
+  HarnessPreflightResult,
+  PlanReviewInput,
+  QuestionReviewInput,
+  PermissionReviewInput,
+  FinalReviewInput
+} from '../types.js';
 import type {
   PlanReviewVerdict,
   QuestionVerdict,
   PermissionVerdict,
-  FinalVerdict
+  FinalVerdict,
+  HarnessContext
 } from '../../types.js';
+import type { HarnessEventEmitter } from '../cursor/types.js';
 import { harnessNumber, harnessString } from '../../core/config.js';
 import { execSyncText, commandExists } from '../../core/process.js';
 import { CodexPromptBuilder } from './CodexPromptBuilder.js';
@@ -66,7 +76,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
    *
    * @param ctx - Run-scoped harness context containing workspace paths, stage context, and logger.
    */
-  constructor(private ctx: any) {
+  constructor(private ctx: HarnessContext = {}) {
     this.binary = ctx?.reviewerBinary || this.binary;
     this.model = ctx?.reviewerModel || this.model;
     this.info = { ...this.info, model: this.model, label: `${this.model} reviewer` };
@@ -125,13 +135,13 @@ export class CodexReviewerHarness implements ReviewerHarness {
       verbosity: this.verbosity,
       timeoutMinutes: this.timeoutMinutes,
       contextMode: this.contextMode,
-      runDir: this.ctx.runDir,
+      runDir: this.ctx.runDir || '',
       stageName: this.ctx.stageName || '_run',
       decisionKind: kind,
       decisionSeq: this.seq,
       prompt,
       schemaFileName: schemaFile,
-      events: this.ctx.events,
+      events: this.ctx.events as HarnessEventEmitter | undefined,
       runLog: this.ctx.runLog
     });
 
@@ -150,7 +160,10 @@ export class CodexReviewerHarness implements ReviewerHarness {
    * @param opts - When `finalConsolidation` is set, instructs the reviewer not to request another replan cycle.
    * @returns Evaluated {@link PlanReviewVerdict}.
    */
-  reviewPlan(input: any, opts: any = {}): Promise<PlanReviewVerdict> {
+  reviewPlan(
+    input: PlanReviewInput,
+    opts: { finalConsolidation?: boolean } = {}
+  ): Promise<PlanReviewVerdict> {
     const extra = opts.finalConsolidation
       ? `FINAL CONSOLIDATION REVIEW:\nThis is the final plan-review pass. Do not block or request another review cycle. Return APPROVE and put every remaining concern into feedback_for_cursor/missing_items so execution can carry it forward. Even if you would normally request REPLAN, the orchestrator will proceed after this response.`
       : `Review the ENTIRE current plan against ALL original frozen inputs. Return every material missing item together in this single response; do not drip-feed findings one at a time.`;
@@ -166,7 +179,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
    * @param input - Question payload including options and executor context.
    * @returns Evaluated {@link QuestionVerdict}.
    */
-  answerQuestions(input: any): Promise<QuestionVerdict> {
+  answerQuestions(input: QuestionReviewInput): Promise<QuestionVerdict> {
     return this.decide<QuestionVerdict>(
       'question',
       input,
@@ -185,7 +198,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
    * @param input - Permission request describing the proposed operation.
    * @returns Evaluated {@link PermissionVerdict}.
    */
-  decidePermission(input: any): Promise<PermissionVerdict> {
+  decidePermission(input: PermissionReviewInput): Promise<PermissionVerdict> {
     return this.decide<PermissionVerdict>(
       'permission',
       input,
@@ -204,7 +217,7 @@ export class CodexReviewerHarness implements ReviewerHarness {
    * @param input - Final review payload including diff, evidence, and plan carryover.
    * @returns Evaluated {@link FinalVerdict}.
    */
-  reviewImplementation(input: any): Promise<FinalVerdict> {
+  reviewImplementation(input: FinalReviewInput): Promise<FinalVerdict> {
     return this.decide<FinalVerdict>(
       'final-review',
       input,

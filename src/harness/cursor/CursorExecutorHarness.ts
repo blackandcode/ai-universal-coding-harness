@@ -8,7 +8,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import readline from 'node:readline';
 import type {
   ExecutorHarness,
@@ -17,7 +17,7 @@ import type {
   HarnessInfo,
   HarnessPreflightResult
 } from '../types.js';
-import type { CommandObservation } from '../../types.js';
+import type { CommandObservation, HarnessContext } from '../../types.js';
 import { CONFIG, harnessNumber, harnessString } from '../../core/config.js';
 import { execSyncText, commandExists, runShellCommand } from '../../core/process.js';
 import { appendBounded, ensureDir, rotateFile } from '../../core/fs.js';
@@ -27,6 +27,54 @@ import { VERSION } from '../../version.js';
 import { AcpToolAccumulator } from './AcpToolAccumulator.js';
 import { ObservationJournal } from './ObservationJournal.js';
 import { AcpEventNormalizer } from './AcpEventNormalizer.js';
+import {
+  errorMessage,
+  isRecord,
+  type AcpConfigOptionGroup,
+  type AcpConfigOptionItem,
+  type AcpNewSessionResult,
+  type AcpQuestionParams,
+  type HarnessEventEmitter,
+  type JsonRpcId,
+  type JsonRpcRequest,
+  type PendingJsonRpcRequest
+} from './types.js';
+
+/**
+ * Options supplied to initialize an interactive {@link CursorAcpSession}.
+ */
+export interface CursorAcpSessionOptions {
+  /** Target repository workspace path. */
+  workspace: string;
+  /** Path to output run log. */
+  runLog: string;
+  /** Path to output ACP events JSONL file. */
+  eventsFile: string;
+  /** Path to focus log file. */
+  focusFile: string;
+  /** Session identifier to resume if supported. */
+  resumeSessionId?: string;
+  /** Orchestrator callbacks for plans, questions, permissions. */
+  callbacks: ExecutorSessionCallbacks;
+  /** Executable binary to spawn. */
+  binary: string;
+  /** Model identifier. */
+  model: string;
+  /** Thinking mode string. */
+  thinking: string;
+  /** Turn timeout in minutes. */
+  turnTimeoutMinutes: number;
+  /** Optional event emitter for UI logs and status. */
+  events?: HarnessEventEmitter | null;
+  /** Canonical name of the active stage. */
+  stageName?: string;
+  /** Active attempt counter. */
+  attempt?: number;
+  /** Active run identifier. */
+  runId?: string;
+  /** Optional path to observations file overriding default location. */
+  observationsFile?: string;
+}
 
 /**
  * Cursor CLI adapter implementing {@link ExecutorHarness} and spawning {@link CursorAcpSession} instances.
@@ -62,7 +110,7 @@ export class CursorExecutorHarness implements ExecutorHarness {
   /**
    * @param ctx - Harness context containing semantic event bus and optional model/binary overrides.
    */
-  constructor(private ctx: any) {
+  constructor(private ctx: HarnessContext = {}) {
     this.binary = ctx?.executorBinary || this.binary;
     this.model = ctx?.executorModel || this.model;
     this.info = { ...this.info, model: this.model, label: `${this.model} ${this.thinking}` };
@@ -88,14 +136,25 @@ export class CursorExecutorHarness implements ExecutorHarness {
    * @param opts - Session options including workspace path, log targets, and event callbacks.
    * @returns Initialized and connected {@link CursorAcpSession}.
    */
-  async createSession(opts: any): Promise<CursorAcpSession> {
+  async createSession(opts: {
+    workspace: string;
+    runLog: string;
+    eventsFile: string;
+    focusFile: string;
+    resumeSessionId?: string;
+    callbacks: ExecutorSessionCallbacks;
+    stageName?: string;
+    attempt?: number;
+    runId?: string;
+    observationsFile?: string;
+  }): Promise<CursorAcpSession> {
     const s = new CursorAcpSession({
       ...opts,
       binary: this.binary,
       model: this.model,
       thinking: this.thinking,
       turnTimeoutMinutes: this.turnTimeoutMinutes,
-      events: this.ctx.events
+      events: this.ctx.events as HarnessEventEmitter | undefined
     });
     await s.start();
     return s;
@@ -111,39 +170,21 @@ export class CursorExecutorHarness implements ExecutorHarness {
  */
 export class CursorAcpSession implements ExecutorSession {
   id = '';
-  private child: any;
-  private rl: any;
-  private er: any;
+  private child: ChildProcess | null = null;
+  private rl: readline.Interface | null = null;
+  private er: readline.Interface | null = null;
   private nextId = 1;
-  private pending = new Map<number, any>();
+  private pending = new Map<number, PendingJsonRpcRequest<unknown>>();
   private agentText = '';
-  private capabilities: any = {};
-  private externalResults: any[] = [];
+  private capabilities: Record<string, unknown> = {};
+  private externalResults: Array<{ command: string; code: number; output: string }> = [];
   private qualityEpochId = '';
   private accumulator: AcpToolAccumulator;
   private journal: ObservationJournal;
   private normalizer: AcpEventNormalizer;
 
   /** Wires ACP normalizer, observation journal, and optional session resume metadata. */
-  constructor(
-    private o: {
-      workspace: string;
-      runLog: string;
-      eventsFile: string;
-      focusFile: string;
-      resumeSessionId?: string;
-      callbacks: ExecutorSessionCallbacks;
-      binary: string;
-      model: string;
-      thinking: string;
-      turnTimeoutMinutes: number;
-      events: any;
-      stageName?: string;
-      attempt?: number;
-      runId?: string;
-      observationsFile?: string;
-    }
-  ) {
+  constructor(private o: CursorAcpSessionOptions) {
     ensureDir(path.dirname(o.eventsFile));
     ensureDir(path.dirname(o.focusFile));
     const journalFile =
@@ -224,32 +265,41 @@ export class CursorAcpSession implements ExecutorSession {
       }
       const current = this.journal.getObservations();
       if (current.length > 0) {
-        this.o.events?.emit?.('log', {
+        this.emit('log', {
           level: 'info',
           message: `Replayed ${current.length} executor observations from historical ACP log.`
         });
       }
-    } catch (e: any) {
-      appendBounded(this.o.runLog, `[executor replay failed] ${e.message}`, CONFIG.runLogMaxBytes);
+    } catch (e: unknown) {
+      appendBounded(
+        this.o.runLog,
+        `[executor replay failed] ${errorMessage(e)}`,
+        CONFIG.runLogMaxBytes
+      );
     }
   }
 
+  /** Emits a semantic UI event when an event emitter is configured. */
+  private emit(type: string, payload?: Record<string, unknown>) {
+    this.o.events?.emit(type, payload);
+  }
+
   /** Writes a JSON-RPC line to the ACP subprocess and mirrors it in the events log. */
-  private raw(obj: any) {
+  private raw(obj: unknown) {
     const line = JSON.stringify(obj);
     this.child?.stdin?.write(line + '\n');
     fs.appendFileSync(this.o.eventsFile, `CLIENT ${line}\n`);
   }
   /** Sends a JSON-RPC response for a server-initiated request id. */
-  private respond(id: any, result: any) {
+  private respond(id: JsonRpcId, result: unknown) {
     this.raw({ jsonrpc: '2.0', id, result });
   }
   /** Issues a JSON-RPC request and resolves when the matching response arrives or times out. */
-  private request(
+  private request<T = unknown>(
     method: string,
-    params: any,
+    params: Record<string, unknown>,
     timeoutMs = this.o.turnTimeoutMinutes * 60_000
-  ): Promise<any> {
+  ): Promise<T> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -257,7 +307,7 @@ export class CursorAcpSession implements ExecutorSession {
         if (method === 'session/prompt') this.cancel().catch(() => {});
         reject(new Error(`Cursor ACP request timed out: ${method}`));
       }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timer, method });
+      this.pending.set(id, { resolve: resolve as (val: unknown) => void, reject, timer, method });
       this.raw({ jsonrpc: '2.0', id, method, params });
     });
   }
@@ -269,16 +319,20 @@ export class CursorAcpSession implements ExecutorSession {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: process.env
     });
-    this.child.stdin?.on?.('error', (e: any) => {
-      if (e?.code !== 'EPIPE')
-        this.o.events.emit('log', { level: 'warn', message: `Executor stdin: ${e.message}` });
+    this.child.stdin?.on?.('error', (e: unknown) => {
+      const err = isRecord(e) ? e : {};
+      if (err.code !== 'EPIPE')
+        this.emit('log', {
+          level: 'warn',
+          message: `Executor stdin: ${errorMessage(e)}`
+        });
     });
-    this.rl = readline.createInterface({ input: this.child.stdout });
+    this.rl = readline.createInterface({ input: this.child.stdout! });
     this.rl.on('line', (l: string) => this.handleLine(l));
-    this.er = readline.createInterface({ input: this.child.stderr });
+    this.er = readline.createInterface({ input: this.child.stderr! });
     this.er.on('line', (l: string) => {
       appendBounded(this.o.runLog, `[executor-stderr] ${l}`, CONFIG.runLogMaxBytes);
-      this.o.events.emit('log', { level: 'warn', message: `Executor: ${l}` });
+      this.emit('log', { level: 'warn', message: `Executor: ${l}` });
     });
     this.child.on('exit', (code: number) => {
       for (const [, p] of this.pending) {
@@ -287,7 +341,7 @@ export class CursorAcpSession implements ExecutorSession {
       }
       this.pending.clear();
     });
-    const init = await this.request(
+    const init = await this.request<Record<string, unknown>>(
       'initialize',
       {
         protocolVersion: 1,
@@ -296,37 +350,44 @@ export class CursorAcpSession implements ExecutorSession {
       },
       60_000
     );
-    this.capabilities = init?.agentCapabilities || init?.agent_capabilities || {};
+    this.capabilities = (init?.agentCapabilities || init?.agent_capabilities || {}) as Record<
+      string,
+      unknown
+    >;
     try {
       await this.request('authenticate', { methodId: 'cursor_login' }, 60_000);
     } catch {}
-    let ns: any = null;
+    let ns: AcpNewSessionResult | null = null;
     if (
       this.o.resumeSessionId &&
       (this.capabilities.loadSession === true || this.capabilities.load_session === true)
     ) {
       try {
-        ns = await this.request(
+        ns = await this.request<AcpNewSessionResult>(
           'session/load',
           { sessionId: this.o.resumeSessionId, cwd: this.o.workspace, mcpServers: [] },
           60_000
         );
         this.id = this.o.resumeSessionId;
-        this.o.events.emit('log', {
+        this.emit('log', {
           level: 'info',
           message: `Resumed executor session ${this.id}.`
         });
-      } catch (e: any) {
+      } catch (e: unknown) {
         appendBounded(
           this.o.runLog,
-          `[executor session/load failed] ${e.message}`,
+          `[executor session/load failed] ${errorMessage(e)}`,
           CONFIG.runLogMaxBytes
         );
       }
     }
     if (!this.id) {
-      ns = await this.request('session/new', { cwd: this.o.workspace, mcpServers: [] }, 60_000);
-      this.id = ns.sessionId;
+      ns = await this.request<AcpNewSessionResult>(
+        'session/new',
+        { cwd: this.o.workspace, mcpServers: [] },
+        60_000
+      );
+      this.id = ns?.sessionId || '';
     }
     this.normalizer = new AcpEventNormalizer({
       events: this.o.events,
@@ -348,10 +409,12 @@ export class CursorAcpSession implements ExecutorSession {
     });
     this.o.callbacks.onSessionId?.(this.id);
     const cfg = ns?.configOptions || ns?.config_options || [];
-    const thinking = cfg.find((x: any) => x.id === 'thinking');
+    const thinking = cfg.find((x: AcpConfigOptionGroup) => x.id === 'thinking');
     if (
       thinking &&
-      (thinking.options || []).some((x: any) => (x.value || x.id) === this.o.thinking)
+      (thinking.options || []).some(
+        (x: AcpConfigOptionItem) => (x.value || x.id) === this.o.thinking
+      )
     ) {
       try {
         await this.request(
@@ -359,7 +422,7 @@ export class CursorAcpSession implements ExecutorSession {
           { sessionId: this.id, configId: 'thinking', value: this.o.thinking },
           60_000
         );
-        this.o.events.emit('log', {
+        this.emit('log', {
           level: 'info',
           message: `Executor thinking set to ${this.o.thinking}.`
         });
@@ -372,13 +435,13 @@ export class CursorAcpSession implements ExecutorSession {
   async setMode(mode: 'plan' | 'agent' | 'ask') {
     try {
       await this.request('session/set_mode', { sessionId: this.id, modeId: mode }, 60_000);
-    } catch (e: any) {
-      this.o.events.emit('log', {
+    } catch (e: unknown) {
+      this.emit('log', {
         level: 'warn',
-        message: `Unable to set executor mode ${mode}: ${e.message}`
+        message: `Unable to set executor mode ${mode}: ${errorMessage(e)}`
       });
     }
-    this.o.events.emit('executor.mode', { mode });
+    this.emit('executor.mode', { mode });
   }
 
   /**
@@ -440,17 +503,20 @@ export class CursorAcpSession implements ExecutorSession {
   private async handleLine(line: string) {
     this.accumulator.stepSequence();
     fs.appendFileSync(this.o.eventsFile, `SERVER ${line}\n`);
-    let m: any;
+    let m: unknown;
     try {
       m = JSON.parse(line);
     } catch {
       return;
     }
+    if (!isRecord(m)) return;
+
     if (m.id != null && (Object.hasOwn(m, 'result') || Object.hasOwn(m, 'error'))) {
-      const p = this.pending.get(m.id);
+      const id = typeof m.id === 'number' ? m.id : Number(m.id);
+      const p = this.pending.get(id);
       if (!p) return;
       clearTimeout(p.timer);
-      this.pending.delete(m.id);
+      this.pending.delete(id);
       if (m.error) {
         p.reject(new Error(JSON.stringify(m.error)));
       } else {
@@ -461,7 +527,9 @@ export class CursorAcpSession implements ExecutorSession {
 
     await this.normalizer.handleMessage(m);
 
-    if (m.id != null) this.respond(m.id, { outcome: { outcome: 'cancelled' } });
+    if (m.id != null) {
+      this.respond(m.id as JsonRpcId, { outcome: { outcome: 'cancelled' } });
+    }
   }
 
   /** Appends streamed focus text to the focus log and emits a debounced UI delta event. */
@@ -469,14 +537,22 @@ export class CursorAcpSession implements ExecutorSession {
     if (!text) return;
     rotateFile(this.o.focusFile, CONFIG.focusLogMaxBytes);
     fs.appendFileSync(this.o.focusFile, text);
-    this.o.events.emit('executor.focus.delta', { text, focus_file: this.o.focusFile });
+    this.emit('executor.focus.delta', { text, focus_file: this.o.focusFile });
   }
 
   /** Bridges ACP plan submissions to orchestrator {@link PlanCoordinator} via callbacks. */
-  private async handlePlan(m: any) {
-    const p = m.params || {};
+  private async handlePlan(m: JsonRpcRequest) {
+    const p = (m.params || {}) as {
+      plan?: string;
+      name?: string;
+      overview?: string;
+      [key: string]: unknown;
+    };
     const plan = String(p.plan || '').trim();
-    this.o.events.emit('executor.plan.request', { name: p.name || '', overview: p.overview || '' });
+    this.emit('executor.plan.request', {
+      name: p.name || '',
+      overview: p.overview || ''
+    });
     if (!plan) {
       this.respond(m.id, {
         outcome: { outcome: 'rejected', reason: 'Plan is empty. Submit a complete plan.' }
@@ -487,7 +563,7 @@ export class CursorAcpSession implements ExecutorSession {
       const d = await this.o.callbacks.onPlan(plan, p);
       if (d.accepted) {
         this.respond(m.id, { outcome: { outcome: 'accepted' } });
-        this.o.events.emit('reviewer.plan', {
+        this.emit('reviewer.plan', {
           verdict: d.status || 'APPROVE',
           summary: d.verdict?.summary || 'Plan accepted.',
           feedback: d.carryover || ''
@@ -499,71 +575,82 @@ export class CursorAcpSession implements ExecutorSession {
             reason: `Revise the entire current plan and incorporate ALL consolidated feedback below in one revision:\n\n${d.feedback || ''}`
           }
         });
-        this.o.events.emit('reviewer.plan', {
+        this.emit('reviewer.plan', {
           verdict: 'REPLAN',
           summary: d.verdict?.summary || '',
           feedback: d.feedback || ''
         });
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       this.respond(m.id, {
         outcome: {
           outcome: 'rejected',
-          reason: `Reviewer unavailable or plan review failed. Keep the current complete plan and resubmit once. Error: ${e.message}`
+          reason: `Reviewer unavailable or plan review failed. Keep the current complete plan and resubmit once. Error: ${errorMessage(e)}`
         }
       });
     }
   }
 
   /** Forwards executor multiple-choice questions to the reviewer decision callback. */
-  private async handleQuestion(m: any) {
-    const p = m.params || {};
-    this.o.events.emit('executor.question', {
+  private async handleQuestion(m: JsonRpcRequest) {
+    const p = (m.params || {}) as AcpQuestionParams;
+    const questions = p.questions || [];
+    this.emit('executor.question', {
       title: p.title || '',
-      prompt: (p.questions || []).map((q: any) => q.prompt).join(' | '),
-      questions: p.questions || []
+      prompt: questions.map((q) => q.prompt || '').join(' | '),
+      questions
     });
     try {
-      const a = await this.o.callbacks.onQuestion(p);
+      const a = await this.o.callbacks.onQuestion({
+        title: p.title || '',
+        questions: questions.map((q) => ({
+          id: String(q.id || ''),
+          prompt: String(q.prompt || ''),
+          options: (q.options || []).map((opt) => ({
+            id: String(opt.id || ''),
+            label: opt.label ? String(opt.label) : undefined
+          }))
+        }))
+      });
       this.respond(m.id, { outcome: { outcome: 'answered', answers: a.answers } });
-      this.o.events.emit('reviewer.question', {
+      this.emit('reviewer.question', {
         answer: a.answers.map((x) => x.selectedOptionIds.join(',')).join(' | '),
         rationale: a.rationale
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       this.respond(m.id, { outcome: { outcome: 'cancelled' } });
-      this.o.events.emit('log', {
+      this.emit('log', {
         level: 'warn',
-        message: `Question could not be resolved automatically: ${e.message}`
+        message: `Question could not be resolved automatically: ${errorMessage(e)}`
       });
     }
   }
 
   /** Maps an ACP permission tool call payload into a {@link PermissionRequest}. */
-  private permissionRequest(p: any): PermissionRequest {
-    const tc = p.toolCall || p.tool_call || {};
-    const raw = tc.rawInput || tc.raw_input || p.rawInput || {};
+  private permissionRequest(p: Record<string, unknown>): PermissionRequest {
+    const tc = (p.toolCall || p.tool_call || {}) as Record<string, unknown>;
+    const raw = (tc.rawInput || tc.raw_input || p.rawInput || {}) as Record<string, unknown>;
     const command = raw.command || raw.cmd || p.command || '';
     const paths: string[] = [];
     for (const k of ['path', 'file', 'target', 'destination'])
       if (raw[k]) paths.push(String(raw[k]));
     return {
       command: String(command || ''),
-      description: tc.title || p.description || '',
+      description: String(tc.title || p.description || ''),
       paths,
       raw: p
     };
   }
 
   /** Selects an allow/deny ACP permission option id when the agent exposes standard option kinds. */
-  private pickOption(p: any, allow: boolean) {
-    const opts = p.options || [];
+  private pickOption(p: Record<string, unknown>, allow: boolean): string | null {
+    const opts = (Array.isArray(p.options) ? p.options : []) as Array<Record<string, unknown>>;
     const words = allow
       ? ['allow_once', 'allow_always', 'allow', 'approve']
       : ['reject_once', 'deny', 'reject'];
     for (const o of opts) {
       const kind = String(o.kind || o.name || o.optionId || '').toLowerCase();
-      if (words.some((w) => kind.includes(w))) return o.optionId || o.id;
+      if (words.some((w) => kind.includes(w))) return String(o.optionId || o.id || '');
     }
     return null;
   }
@@ -572,22 +659,22 @@ export class CursorAcpSession implements ExecutorSession {
    * Resolves permission prompts via orchestrator policy; may broker approved shell commands
    * when ACP exposes no direct allow option.
    */
-  private async handlePermission(m: any) {
-    const p = m.params || {};
+  private async handlePermission(m: JsonRpcRequest) {
+    const p = (m.params || {}) as Record<string, unknown>;
     const req = this.permissionRequest(p);
-    this.o.events.emit('executor.permission', {
+    this.emit('executor.permission', {
       summary: req.command || req.description || 'permission request'
     });
     let decision: { allow: boolean; reason: string };
     try {
       decision = await this.o.callbacks.onPermission(req, p);
-    } catch (e: any) {
+    } catch (e: unknown) {
       decision = {
         allow: false,
-        reason: `Permission reviewer failed: ${e.message}. Denying this operation only; continue with another approach.`
+        reason: `Permission reviewer failed: ${errorMessage(e)}. Denying this operation only; continue with another approach.`
       };
     }
-    this.o.events.emit('reviewer.permission', {
+    this.emit('reviewer.permission', {
       verdict: decision.allow ? 'ALLOW' : 'DENY',
       summary: decision.reason
     });
@@ -599,9 +686,8 @@ export class CursorAcpSession implements ExecutorSession {
           cwd: this.o.workspace,
           timeoutMs: 20 * 60_000,
           onStdoutLine: (l: string) =>
-            this.o.events.emit('log', { level: 'info', message: `Command: ${l}` }),
-          onStderrLine: (l: string) =>
-            this.o.events.emit('log', { level: 'warn', message: `Command: ${l}` })
+            this.emit('log', { level: 'info', message: `Command: ${l}` }),
+          onStderrLine: (l: string) => this.emit('log', { level: 'warn', message: `Command: ${l}` })
         });
         this.externalResults.push({
           command: req.command,
@@ -669,28 +755,28 @@ export function parseAcpEvents(
 
   for (const line of lines) {
     if (!line.startsWith('SERVER ')) continue;
-    let m: any;
+    let m: unknown;
     try {
       m = JSON.parse(line.slice(7));
     } catch {
       continue;
     }
+    if (!isRecord(m)) continue;
 
-    if (m.method === 'session/update') {
-      const u = m.params?.update;
-      if (
-        !u ||
-        !(
-          u.sessionUpdate === 'tool_call' ||
-          u.sessionUpdate === 'tool_call_update' ||
-          u.toolCallId ||
-          u.toolCall
-        )
-      ) {
+    if (m.method === 'session/update' && isRecord(m.params)) {
+      const u = m.params.update;
+      if (!isRecord(u)) continue;
+
+      const isToolUpdate =
+        u.sessionUpdate === 'tool_call' ||
+        u.sessionUpdate === 'tool_call_update' ||
+        Boolean(u.toolCallId) ||
+        Boolean(u.toolCall);
+      if (!isToolUpdate) {
         continue;
       }
 
-      const sid = m.params?.sessionId || u.sessionId || 'default';
+      const sid = String(m.params.sessionId || u.sessionId || 'default');
       const result = accumulator.processUpdate(
         { ...u, sessionId: sid },
         {

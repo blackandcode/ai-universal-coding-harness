@@ -14,6 +14,7 @@ import type {
   ReviewerRole,
   ReviewerRouterConfig,
   ReviewerFallbackMetadata,
+  ReviewerFallbackTrigger,
   PlanReviewInput,
   QuestionReviewInput,
   PermissionReviewInput,
@@ -215,14 +216,14 @@ export class ReviewerRouter implements ReviewerHarness {
     result: unknown,
     failedInfo: HarnessInfo,
     fallbackInfo: HarnessInfo,
-    trigger: string,
+    trigger: ReviewerFallbackTrigger,
     originalError: string
   ): void {
     if (result && typeof result === 'object') {
       const meta: ReviewerFallbackMetadata = {
         executed_by: `${fallbackInfo.id}:${fallbackInfo.model}`,
         fallback_from: `${failedInfo.id}:${failedInfo.model}`,
-        trigger: trigger as any,
+        trigger,
         original_error: originalError,
         timestamp: new Date().toISOString()
       };

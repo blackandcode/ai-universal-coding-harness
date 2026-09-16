@@ -15,11 +15,12 @@
  *   between file mutations and quality check executions.
  */
 
-import type {
-  AccumulatedToolState,
-  ProcessToolResult,
-  ToolStatus,
-  CommandConfidence
+import {
+  isRecord,
+  type AccumulatedToolState,
+  type ProcessToolResult,
+  type ToolStatus,
+  type CommandConfidence
 } from './types.js';
 import type { CommandObservation } from '../../types.js';
 import { iso } from '../../core/time.js';
@@ -90,7 +91,7 @@ export class AcpToolAccumulator {
    * @returns Processed {@link ProcessToolResult} containing merged state and optional observation.
    */
   processUpdate(
-    updatePayload: any,
+    updatePayload: unknown,
     options: {
       defaultSessionId?: string;
       runId?: string;
@@ -103,8 +104,8 @@ export class AcpToolAccumulator {
   ): ProcessToolResult {
     this.sequence++;
 
-    const u = updatePayload || {};
-    const tc = u.toolCall || {};
+    const u = isRecord(updatePayload) ? updatePayload : {};
+    const tc = isRecord(u.toolCall) ? u.toolCall : {};
     const id = String(u.toolCallId || tc.toolCallId || tc.id || u.id || `tool-${Date.now()}`);
     const sid = String(u.sessionId || tc.sessionId || options.defaultSessionId || 'default');
     const compositeKey = `${sid}:${id}`;
