@@ -109,3 +109,18 @@ test('ReviewPayloadBuilder: handles requested_paths when full diff is within lim
   assert.equal(payload.diff, fullDiff);
   assert.equal(payload.requested_context_diff, requestedDiff);
 });
+
+test('ReviewPayloadBuilder: truncates prioritized context when prefix alone exceeds maxDiffChars', () => {
+  const fullDiff = 'f'.repeat(5000);
+  const hugeRequestedDiff = 'r'.repeat(1000);
+  const git = createMockGit({ fullDiff, requestedDiff: hugeRequestedDiff });
+
+  const payload = ReviewPayloadBuilder.build({
+    git,
+    maxDiffChars: 200,
+    requestedPaths: ['src/huge.ts'],
+  });
+
+  assert.equal(payload.diff_metrics.truncated, true);
+  assert.match(payload.diff, /prioritized context \(1000 chars\) exceeds limit 200/);
+});

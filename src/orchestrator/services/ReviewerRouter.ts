@@ -86,8 +86,9 @@ export class ReviewerRouter implements ReviewerHarness {
     const mergedContext: HarnessContext = {
       ...this.baseContext,
       reviewerModel: roleConfig.model,
-      reviewerBinary:
-        (roleConfig as unknown as Record<string, unknown>).binary as string | undefined,
+      reviewerBinary: (roleConfig as unknown as Record<string, unknown>).binary as
+        | string
+        | undefined,
       thinking: roleConfig.thinking,
       reasoningEffort: roleConfig.reasoningEffort,
       timeoutMinutes: roleConfig.timeoutMinutes,

@@ -227,3 +227,47 @@ Status: Completed (Ready for release v2.0.0)
   - Set version to `2.0.0` in `package.json`, `package-lock.json`, and `src/version.ts`.
   - Published comprehensive v2.0.0 entry in `CHANGELOG.md`.
   - Documented deprecation policies in `DECISIONS.md` for `AI_STAGE_*` environment variables, `.ai-stage-orchestrator.jsonc`, and internal uppercase config properties.
+
+## Stage 06 — Reviewer Routing, Fallback and Orchestrator Resilience
+
+Status: Completed (Ready for review / stage gate)
+
+- **Quality Commands (Measured Results)**:
+  - `npm run format:check` — Oxfmt formatting verification passed (0 violations across 270 files).
+  - `npm run lint` — Oxlint static analysis and automated rule fixture check (`scripts/verify-oxlint-rules.mjs`) passed (0 errors, all 8 rule categories verified).
+  - `npm run typecheck` — TypeScript 7 compiler verification (`tsc -p tsconfig.json --noEmit`) passed (0 errors).
+  - `npm test` — Fresh build compilation and unit test suite execution: 249 tests passing across all test suites (0 failures).
+  - `npm run test:coverage` — Native Node 24 test coverage gate passed: Line coverage 86.85% (threshold: 85%), Function coverage 88.71% (threshold: 85%), Branch coverage 80.35% (threshold: 80%).
+  - `npm run test:cli` — CLI smoke execution passing across all verification scenarios.
+  - `npm run verify` — Comprehensive quality gate passing (clean build, format check, lint, typecheck, coverage gate, CLI smoke, bidirectional lockfile verification, and packaging consumer check).
+  - `npm run check` — Standalone alias for `npm run verify` passed cleanly.
+  - `npm pack --dry-run` — Packaging inventory verified; 0 test files and 0 internal development artifacts.
+- **Reviewer Contracts & Configuration**:
+  - Defined reviewer roles (`primary`, `fallback`, `large_diff`, `permission`) and triggers (`usage_limit`, `rate_limit`, `quota_exhausted`, `process_crash`, `timeout`, `turn_failed`, `no_result`) in `src/harness/types.ts`.
+  - Added `ReviewerModelConfig`, `ReviewerRouterConfig`, and `ReviewerFallbackMetadata` contracts.
+  - Updated `FinalVerdict`, `PlanReviewVerdict`, and `QuestionVerdict` with optional `_orchestrator_meta` fallback provenance.
+  - Added `reviewer` configuration in `src/config/types.ts`, defaults in `src/config/defaults.ts`, and validation with bounds clamping in `src/config/validation.ts`.
+- **Reviewer Error Classification**:
+  - Implemented `ReviewerErrorClassifier` in `src/harness/ReviewerErrorClassifier.ts`.
+  - Accurately classifies provider usage limits, rate limits, quota limits, timeout, crashes without result, and turn failure events from exit code, stderr, event streams, and error objects.
+  - Tested with real fixture from incident run `20260915T193118Z-76e14b` in `src/harness/ReviewerErrorClassifier.test.ts`.
+- **Cursor Reviewer Harness Adapter**:
+  - Implemented `CursorReviewerHarness` in `src/harness/cursor/CursorReviewerHarness.ts` implementing `ReviewerHarness`.
+  - Enforces ephemeral sandbox execution (`--sandbox enabled`, `--mode plan`, `--trust`), schema-enforced prompt instructions, and verdict validation via `validateReviewerVerdict`.
+  - Implemented robust `extractJsonFromText` parsing direct JSON, code fences, and wrapped JSON responses.
+  - Registered `cursor` reviewer in `HarnessRegistry`.
+- **Review Payload Builder**:
+  - Implemented `ReviewPayloadBuilder` in `src/orchestrator/services/ReviewPayloadBuilder.ts`.
+  - Calculates diff metrics (`char_count`, `estimated_tokens`, `truncated`, `original_chars`).
+  - Preserves complete `diff_stat` and `changed_files` lists even when truncated.
+  - Prioritizes files requested in prior `NEEDS_CONTEXT` reviewer verdicts.
+- **Reviewer Router**:
+  - Implemented `ReviewerRouter` in `src/orchestrator/services/ReviewerRouter.ts` implementing `ReviewerHarness`.
+  - Dynamically dispatches permission requests to `permission`, large diffs exceeding threshold to `large_diff`, and general plan/verdicts to `primary`.
+  - Wraps execution in `executeWithFallback` to intercept failures matching triggers, emit `reviewer.fallback` UI telemetry, invoke fallback reviewer, and annotate results with `_orchestrator_meta`.
+  - Composite multi-role preflight reporting.
+- **Orchestrator Resilience & UI Integration**:
+  - Preserves stage state with `phase: 'review'` before invoking review in `src/orchestrator/Orchestrator.ts`.
+  - Classifies quota/rate/usage failures as `external_dependency` and process crashes/timeouts as `retryable_error` in `classifyError`.
+  - Handles `reviewer.fallback` event in UI reducer `src/ui/reducer.ts` and formats in `src/ui/EventBus.ts`.
+  - End-to-end integration test in `src/orchestrator/orchestrator-integration.test.ts` verifying failover on usage limits, event emission, and metadata persistence.

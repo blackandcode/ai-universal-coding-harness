@@ -9,25 +9,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ReviewerRouter } from './ReviewerRouter.js';
-import type { ReviewerRouterConfig, ReviewerHarness, HarnessInfo, HarnessPreflightResult } from '../../harness/types.js';
+import type {
+  ReviewerRouterConfig,
+  ReviewerHarness,
+  HarnessInfo,
+  HarnessPreflightResult,
+} from '../../harness/types.js';
 import type { PlanReviewVerdict, PermissionVerdict, FinalVerdict } from '../../types.js';
 import { HarnessRegistry } from '../../harness/registry.js';
 import { EventEmitter } from 'node:events';
 
-function createMockReviewer(info: HarnessInfo, handlers: {
-  reviewPlan?: (input: any) => Promise<PlanReviewVerdict>;
-  answerQuestions?: (input: any) => Promise<any>;
-  decidePermission?: (input: any) => Promise<PermissionVerdict>;
-  reviewImplementation?: (input: any) => Promise<FinalVerdict>;
-  preflight?: () => Promise<HarnessPreflightResult>;
-}): ReviewerHarness {
+function createMockReviewer(
+  info: HarnessInfo,
+  handlers: {
+    reviewPlan?: (input: any) => Promise<PlanReviewVerdict>;
+    answerQuestions?: (input: any) => Promise<any>;
+    decidePermission?: (input: any) => Promise<PermissionVerdict>;
+    reviewImplementation?: (input: any) => Promise<FinalVerdict>;
+    preflight?: () => Promise<HarnessPreflightResult>;
+  },
+): ReviewerHarness {
   return {
     info,
     preflight: handlers.preflight ?? (async () => ({ ok: true, details: [`${info.id} ready`] })),
-    reviewPlan: handlers.reviewPlan ?? (async () => ({ verdict: 'APPROVE', summary: 'Plan OK', missing_items: [] })),
+    reviewPlan:
+      handlers.reviewPlan ??
+      (async () => ({ verdict: 'APPROVE', summary: 'Plan OK', missing_items: [] })),
     answerQuestions: handlers.answerQuestions ?? (async () => ({ verdict: 'ANSWER', answers: [] })),
-    decidePermission: handlers.decidePermission ?? (async () => ({ verdict: 'ALLOW', reason: 'Perm OK' })),
-    reviewImplementation: handlers.reviewImplementation ?? (async () => ({ verdict: 'APPROVE', summary: 'Final OK' })),
+    decidePermission:
+      handlers.decidePermission ?? (async () => ({ verdict: 'ALLOW', reason: 'Perm OK' })),
+    reviewImplementation:
+      handlers.reviewImplementation ?? (async () => ({ verdict: 'APPROVE', summary: 'Final OK' })),
   };
 }
 
@@ -62,14 +74,26 @@ test('ReviewerRouter: dispatches permission requests to permission role', async 
 
   const registry = new HarnessRegistry();
   registry.registerReviewer('mock-primary', () =>
-    createMockReviewer({ id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'gpt-6-astra' }, {
-      decidePermission: async () => { primaryCalled = true; return { verdict: 'DENY' }; },
-    }),
+    createMockReviewer(
+      { id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'gpt-6-astra' },
+      {
+        decidePermission: async () => {
+          primaryCalled = true;
+          return { verdict: 'DENY' };
+        },
+      },
+    ),
   );
   registry.registerReviewer('mock-perm', () =>
-    createMockReviewer({ id: 'mock-perm', label: 'Perm', role: 'reviewer', model: 'composer-2.5-fast' }, {
-      decidePermission: async () => { permCalled = true; return { verdict: 'ALLOW' }; },
-    }),
+    createMockReviewer(
+      { id: 'mock-perm', label: 'Perm', role: 'reviewer', model: 'composer-2.5-fast' },
+      {
+        decidePermission: async () => {
+          permCalled = true;
+          return { verdict: 'ALLOW' };
+        },
+      },
+    ),
   );
 
   const router = new ReviewerRouter({
@@ -89,14 +113,26 @@ test('ReviewerRouter: routes small diffs to primary and large diffs to largeDiff
 
   const registry = new HarnessRegistry();
   registry.registerReviewer('mock-primary', () =>
-    createMockReviewer({ id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'gpt-6-astra' }, {
-      reviewImplementation: async () => { primaryCalled = true; return { verdict: 'APPROVE', summary: 'Primary approval' }; },
-    }),
+    createMockReviewer(
+      { id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'gpt-6-astra' },
+      {
+        reviewImplementation: async () => {
+          primaryCalled = true;
+          return { verdict: 'APPROVE', summary: 'Primary approval' };
+        },
+      },
+    ),
   );
   registry.registerReviewer('mock-large', () =>
-    createMockReviewer({ id: 'mock-large', label: 'Large', role: 'reviewer', model: 'gemini-3.8-flash' }, {
-      reviewImplementation: async () => { largeCalled = true; return { verdict: 'APPROVE', summary: 'Large diff approval' }; },
-    }),
+    createMockReviewer(
+      { id: 'mock-large', label: 'Large', role: 'reviewer', model: 'gemini-3.8-flash' },
+      {
+        reviewImplementation: async () => {
+          largeCalled = true;
+          return { verdict: 'APPROVE', summary: 'Large diff approval' };
+        },
+      },
+    ),
   );
 
   const router = new ReviewerRouter({
@@ -126,17 +162,29 @@ test('ReviewerRouter: automatic fallback failover on usage limit with event emis
   const registry = new HarnessRegistry();
   // Primary throws usage limit error matching incident run 20260915T193118Z-76e14b
   registry.registerReviewer('mock-primary', () =>
-    createMockReviewer({ id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'gpt-6-astra' }, {
-      reviewPlan: async () => {
-        throw new Error("You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro) or visit settings to purchase more credits");
+    createMockReviewer(
+      { id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'gpt-6-astra' },
+      {
+        reviewPlan: async () => {
+          throw new Error(
+            "You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro) or visit settings to purchase more credits",
+          );
+        },
       },
-    }),
+    ),
   );
   // Fallback succeeds
   registry.registerReviewer('mock-fallback', () =>
-    createMockReviewer({ id: 'mock-fallback', label: 'Fallback', role: 'reviewer', model: 'gemini-3.8-flash' }, {
-      reviewPlan: async () => ({ verdict: 'APPROVE', summary: 'Fallback plan approved', missing_items: [] }),
-    }),
+    createMockReviewer(
+      { id: 'mock-fallback', label: 'Fallback', role: 'reviewer', model: 'gemini-3.8-flash' },
+      {
+        reviewPlan: async () => ({
+          verdict: 'APPROVE',
+          summary: 'Fallback plan approved',
+          missing_items: [],
+        }),
+      },
+    ),
   );
 
   const events = new EventEmitter() as any;
@@ -183,11 +231,14 @@ test('ReviewerRouter: re-throws error when fallback is disabled', async () => {
 
   const registry = new HarnessRegistry();
   registry.registerReviewer('mock-primary', () =>
-    createMockReviewer({ id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'gpt-6-astra' }, {
-      reviewPlan: async () => {
-        throw new Error('You have hit your usage limit');
+    createMockReviewer(
+      { id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'gpt-6-astra' },
+      {
+        reviewPlan: async () => {
+          throw new Error('You have hit your usage limit');
+        },
       },
-    }),
+    ),
   );
 
   const router = new ReviewerRouter({
@@ -195,25 +246,34 @@ test('ReviewerRouter: re-throws error when fallback is disabled', async () => {
     registry,
   });
 
-  await assert.rejects(
-    () => router.reviewPlan({ plan: 'Test plan' }),
-    /usage limit/i,
-  );
+  await assert.rejects(() => router.reviewPlan({ plan: 'Test plan' }), /usage limit/i);
 });
 
 test('ReviewerRouter: preflight checks all active roles and reports composite diagnostics', async () => {
   const registry = new HarnessRegistry();
   registry.registerReviewer('mock-primary', () =>
-    createMockReviewer({ id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'gpt-6-astra' }, {}),
+    createMockReviewer(
+      { id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'gpt-6-astra' },
+      {},
+    ),
   );
   registry.registerReviewer('mock-fallback', () =>
-    createMockReviewer({ id: 'mock-fallback', label: 'Fallback', role: 'reviewer', model: 'gemini-3.8-flash' }, {}),
+    createMockReviewer(
+      { id: 'mock-fallback', label: 'Fallback', role: 'reviewer', model: 'gemini-3.8-flash' },
+      {},
+    ),
   );
   registry.registerReviewer('mock-large', () =>
-    createMockReviewer({ id: 'mock-large', label: 'Large', role: 'reviewer', model: 'gemini-3.8-flash' }, {}),
+    createMockReviewer(
+      { id: 'mock-large', label: 'Large', role: 'reviewer', model: 'gemini-3.8-flash' },
+      {},
+    ),
   );
   registry.registerReviewer('mock-perm', () =>
-    createMockReviewer({ id: 'mock-perm', label: 'Perm', role: 'reviewer', model: 'composer-2.5-fast' }, {}),
+    createMockReviewer(
+      { id: 'mock-perm', label: 'Perm', role: 'reviewer', model: 'composer-2.5-fast' },
+      {},
+    ),
   );
 
   const router = new ReviewerRouter({
@@ -226,4 +286,66 @@ test('ReviewerRouter: preflight checks all active roles and reports composite di
   assert.equal(preflight.details.length, 4);
   assert.ok(preflight.details.some((d) => d.includes('[primary:mock-primary]')));
   assert.ok(preflight.details.some((d) => d.includes('[fallback:mock-fallback]')));
+
+  // Test preflight failure behavior
+  const failingRegistry = new HarnessRegistry();
+  failingRegistry.registerReviewer('mock-primary', () =>
+    createMockReviewer(
+      { id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'm' },
+      {
+        preflight: async () => ({ ok: false, details: ['binary missing'] }),
+      },
+    ),
+  );
+  failingRegistry.registerReviewer('mock-fallback', () =>
+    createMockReviewer(
+      { id: 'mock-fallback', label: 'Fallback', role: 'reviewer', model: 'm' },
+      {
+        preflight: async () => ({ ok: false, details: ['fallback missing'] }),
+      },
+    ),
+  );
+  failingRegistry.registerReviewer('mock-large', () =>
+    createMockReviewer({ id: 'mock-large', label: 'Large', role: 'reviewer', model: 'm' }, {}),
+  );
+  failingRegistry.registerReviewer('mock-perm', () =>
+    createMockReviewer({ id: 'mock-perm', label: 'Perm', role: 'reviewer', model: 'm' }, {}),
+  );
+  const failingRouter = new ReviewerRouter({ config: mockRouterConfig, registry: failingRegistry });
+  const failingPreflight = await failingRouter.preflight();
+  assert.equal(failingPreflight.ok, false);
+});
+
+test('ReviewerRouter: re-throws non-trigger errors immediately without invoking fallback', async () => {
+  const registry = new HarnessRegistry();
+  let fallbackInvoked = false;
+
+  registry.registerReviewer('mock-primary', () =>
+    createMockReviewer(
+      { id: 'mock-primary', label: 'Primary', role: 'reviewer', model: 'm' },
+      {
+        reviewPlan: async () => {
+          throw new Error('Unrelated internal application bug');
+        },
+      },
+    ),
+  );
+  registry.registerReviewer('mock-fallback', () =>
+    createMockReviewer(
+      { id: 'mock-fallback', label: 'Fallback', role: 'reviewer', model: 'm' },
+      {
+        reviewPlan: async () => {
+          fallbackInvoked = true;
+          return { verdict: 'APPROVE', summary: 'OK', missing_items: [] };
+        },
+      },
+    ),
+  );
+
+  const router = new ReviewerRouter({ config: mockRouterConfig, registry });
+  await assert.rejects(
+    () => router.reviewPlan({ plan: 'Test' }),
+    /Unrelated internal application bug/,
+  );
+  assert.equal(fallbackInvoked, false);
 });

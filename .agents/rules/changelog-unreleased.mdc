@@ -1,0 +1,36 @@
+---
+description: Mandatory 100% unreleased changelog recording rule on every agent run
+alwaysApply: true
+---
+
+# Mandatory Unreleased Changelog Recording (100% Invariant)
+
+## Core Directive
+
+On **EVERY** agent run or session that modifies project files (TypeScript source, React/Ink UI, configuration, tests, schemas, or documentation), the agent **MUST** record concise, descriptive summary bullets under `## [Unreleased]` in `CHANGELOG.md` as the **final step** before concluding the task.
+
+This ensures continuous, zero-drift change tracking and enables the automated release packaging workflow where `npm run update-version` converts staged `## [Unreleased]` items into the release entry.
+
+---
+
+## Execution Instructions
+
+1. **When to Execute:**
+   - At the very end of the task, immediately after all implementation steps, linting, and automated tests pass.
+   - Do not stop a session without verifying that `CHANGELOG.md` reflects the changes made during that session.
+
+2. **How to Record:**
+   - Follow the `changelog` skill (`.agents/skills/changelog/SKILL.md`).
+   - Use the deterministic helper script:
+     ```bash
+     npm run changelog:add -- -t Added "Added new CLI flag --quiet"
+     npm run changelog:add -- -t Fixed "Fixed recovery state transition on aborted stage"
+     npm run changelog:add -- -t Changed "Refactored ReviewerRouter to support dynamic fallback"
+     ```
+   - Or directly edit `CHANGELOG.md` under `## [Unreleased]` under the appropriate category (`### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`, `### Security`).
+
+3. **Rules & Constraints:**
+   - **Never Overwrite:** Never erase existing unreleased entries from earlier tasks; append new bullets cleanly.
+   - **Concise & Outcome-Oriented:** Write 1–2 bullet points per logical change focusing on user or developer outcomes.
+   - **Exact Symbols:** Use backticks for file paths, CLI commands, and TypeScript symbols (`src/version.ts`, `scripts/versioning/increase-version.mjs`).
+   - **Never Edit `.env` for Versioning:** Version numbers and releases are completely decoupled from `.env`.

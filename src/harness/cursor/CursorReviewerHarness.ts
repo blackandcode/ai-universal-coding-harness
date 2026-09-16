@@ -220,7 +220,11 @@ export class CursorReviewerHarness implements ReviewerHarness {
         },
         onStderrLine: (line: string) => {
           if (this.ctx.runLog) {
-            appendBounded(this.ctx.runLog, `[cursor-reviewer-stderr] ${line}`, CONFIG.runLogMaxBytes);
+            appendBounded(
+              this.ctx.runLog,
+              `[cursor-reviewer-stderr] ${line}`,
+              CONFIG.runLogMaxBytes,
+            );
           }
         },
       });
@@ -243,7 +247,9 @@ export class CursorReviewerHarness implements ReviewerHarness {
       const parsed = extractJsonFromText<T>(r.stdout);
       const validation = validateReviewerVerdict(kind, parsed);
       if (!validation.ok) {
-        throw new Error(validation.error || `Cursor reviewer ${kind} returned invalid verdict payload`);
+        throw new Error(
+          validation.error || `Cursor reviewer ${kind} returned invalid verdict payload`,
+        );
       }
 
       writeJson(path.join(decisionDir, 'result.json'), parsed);

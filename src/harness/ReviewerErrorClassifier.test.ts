@@ -86,9 +86,7 @@ test('ReviewerErrorClassifier.classifyError: classifies structured ProcessExecut
     stderr: '',
   });
   Object.assign(err, {
-    eventLines: [
-      '{"type":"error","message":"You\'ve hit your usage limit. Upgrade to Pro"}',
-    ],
+    eventLines: ['{"type":"error","message":"You\'ve hit your usage limit. Upgrade to Pro"}'],
     resultFileExists: false,
   });
 
@@ -121,4 +119,62 @@ test('ReviewerErrorClassifier.classifyError: extracts triggers from generic erro
   const unknownRes = ReviewerErrorClassifier.classifyError(unknownErr);
   assert.equal(unknownRes.isTrigger, false);
   assert.equal(unknownRes.trigger, null);
+
+  // Additional triggers in message
+  assert.equal(
+    ReviewerErrorClassifier.classifyError(new Error('exceeded your current quota')).trigger,
+    'quota_exhausted',
+  );
+  assert.equal(
+    ReviewerErrorClassifier.classifyError(new Error('turn.failed reported by reviewer')).trigger,
+    'turn_failed',
+  );
+  assert.equal(
+    ReviewerErrorClassifier.classifyError(new Error('timed out waiting for response')).trigger,
+    'timeout',
+  );
+  assert.equal(
+    ReviewerErrorClassifier.classifyError(new Error('produced no structured result')).trigger,
+    'no_result',
+  );
+});
+
+test('ReviewerErrorClassifier: classifies stderr signals and error formats', () => {
+  // Stderr usage limit
+  const res1 = ReviewerErrorClassifier.classify(
+    1,
+    'Hit usage limit please upgrade to pro',
+    [],
+    false,
+  );
+  assert.equal(res1.trigger, 'usage_limit');
+
+  // Stderr timeout
+  const res2 = ReviewerErrorClassifier.classify(1, 'operation timed out', [], false);
+  assert.equal(res2.trigger, 'timeout');
+
+  // Event line with type: turn.failed and parsed.error string
+  const eventLine1 = JSON.stringify({
+    type: 'turn.failed',
+    error: 'turn_failed with fatal syntax error',
+  });
+  const res3 = ReviewerErrorClassifier.classify(0, '', [eventLine1], false);
+  assert.equal(res3.trigger, 'turn_failed');
+
+  // Event line with quota message
+  const eventLine2 = JSON.stringify({
+    error: { message: 'insufficient_quota on your plan' },
+  });
+  const res4 = ReviewerErrorClassifier.classify(0, '', [eventLine2], false);
+  assert.equal(res4.trigger, 'quota_exhausted');
+
+  // Structured object with no triggers
+  const nonTriggerErr = {
+    exitCode: 0,
+    stderr: '',
+    eventLines: [],
+    resultFileExists: true,
+  };
+  const res5 = ReviewerErrorClassifier.classifyError(nonTriggerErr);
+  assert.equal(res5.isTrigger, false);
 });

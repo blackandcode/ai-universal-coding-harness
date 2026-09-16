@@ -269,14 +269,17 @@ export class Orchestrator {
     const exec = this.registry.executor(stateOrInput.executor_harness || CONFIG.executorHarness, {
       events: this.events,
     });
-    const rev = this.createReviewerHarness(stateOrInput.reviewer_harness || CONFIG.reviewerHarness, {
-      events: this.events,
-      runDir: this.workspace,
-      stageName: '_preflight',
-      stageContext: '',
-      skillsText: '',
-      runLog: path.join(this.workspace, '.ai-orchestrator', 'preflight.log'),
-    });
+    const rev = this.createReviewerHarness(
+      stateOrInput.reviewer_harness || CONFIG.reviewerHarness,
+      {
+        events: this.events,
+        runDir: this.workspace,
+        stageName: '_preflight',
+        stageContext: '',
+        skillsText: '',
+        runLog: path.join(this.workspace, '.ai-orchestrator', 'preflight.log'),
+      },
+    );
     const [a, b] = await Promise.all([exec.preflight(), rev.preflight()]);
     if (!a.ok || !b.ok)
       throw new Error(

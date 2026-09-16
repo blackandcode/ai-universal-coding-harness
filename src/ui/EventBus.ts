@@ -148,6 +148,8 @@ export class EventBus {
         `⚡ ${String(p.text ?? '')
           .replace(/\s+/g, ' ')
           .trim()}`,
+      'reviewer.fallback': () =>
+        `🔄 Reviewer failover [${(p.trigger as string) ?? 'failure'}]: ${(p.failed_harness as string) ?? 'primary'} → ${(p.fallback_harness as string) ?? 'fallback'}`,
       'reviewer.plan': () =>
         `🧠 Plan ${(p.verdict as string) ?? ''}: ${(p.summary as string) ?? ''}`,
       'reviewer.permission': () =>

@@ -106,16 +106,16 @@ export function validateAndNormalizeConfig(
         Number(rawReviewer?.primary?.timeoutMinutes ?? baseReviewer?.primary?.timeoutMinutes ?? 8),
       ),
       contextMode:
-        rawReviewer?.primary?.contextMode ??
-        baseReviewer?.primary?.contextMode ??
-        'evidence_only',
+        rawReviewer?.primary?.contextMode ?? baseReviewer?.primary?.contextMode ?? 'evidence_only',
     },
     fallback: {
       enabled:
         typeof rawReviewer?.fallback?.enabled === 'boolean'
           ? rawReviewer.fallback.enabled
           : (baseReviewer?.fallback?.enabled ?? true),
-      harness: String(rawReviewer?.fallback?.harness ?? baseReviewer?.fallback?.harness ?? 'cursor'),
+      harness: String(
+        rawReviewer?.fallback?.harness ?? baseReviewer?.fallback?.harness ?? 'cursor',
+      ),
       model: String(
         rawReviewer?.fallback?.model ?? baseReviewer?.fallback?.model ?? 'gemini-3.8-flash',
       ),
@@ -147,9 +147,7 @@ export function validateAndNormalizeConfig(
       timeoutMinutes: Math.max(
         1,
         Number(
-          rawReviewer?.largeDiff?.timeoutMinutes ??
-            baseReviewer?.largeDiff?.timeoutMinutes ??
-            10,
+          rawReviewer?.largeDiff?.timeoutMinutes ?? baseReviewer?.largeDiff?.timeoutMinutes ?? 10,
         ),
       ),
     },
@@ -168,9 +166,7 @@ export function validateAndNormalizeConfig(
       timeoutSeconds: Math.max(
         5,
         Number(
-          rawReviewer?.permission?.timeoutSeconds ??
-            baseReviewer?.permission?.timeoutSeconds ??
-            30,
+          rawReviewer?.permission?.timeoutSeconds ?? baseReviewer?.permission?.timeoutSeconds ?? 30,
         ),
       ),
     },

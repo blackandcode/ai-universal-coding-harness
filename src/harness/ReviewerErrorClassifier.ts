@@ -148,10 +148,7 @@ export class ReviewerErrorClassifier {
    * @param _harnessInfo - Optional metadata identifying the failing harness adapter
    * @returns Classification outcome with trigger and reason
    */
-  static classifyError(
-    err: unknown,
-    _harnessInfo?: HarnessInfo,
-  ): ReviewerClassificationResult {
+  static classifyError(err: unknown, _harnessInfo?: HarnessInfo): ReviewerClassificationResult {
     const message = err instanceof Error ? err.message : String(err);
     const lowerMessage = message.toLowerCase();
 
@@ -162,7 +159,9 @@ export class ReviewerErrorClassifier {
     if (/rate limit|too many requests|\b429\b/i.test(lowerMessage)) {
       return { isTrigger: true, trigger: 'rate_limit', reason: message };
     }
-    if (/exceeded your current quota|insufficient_quota|\bquota\b|\bcredits\b/i.test(lowerMessage)) {
+    if (
+      /exceeded your current quota|insufficient_quota|\bquota\b|\bcredits\b/i.test(lowerMessage)
+    ) {
       return { isTrigger: true, trigger: 'quota_exhausted', reason: message };
     }
     if (/turn\.failed|turn_failed/i.test(lowerMessage)) {
@@ -195,7 +194,12 @@ export class ReviewerErrorClassifier {
           };
         }
 
-        const res = ReviewerErrorClassifier.classify(exitCode, stderr, eventLines, resultFileExists);
+        const res = ReviewerErrorClassifier.classify(
+          exitCode,
+          stderr,
+          eventLines,
+          resultFileExists,
+        );
         if (res.isTrigger) return res;
       }
     }

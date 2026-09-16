@@ -104,7 +104,31 @@ export {
   type QuestionReviewInput,
   type PermissionReviewInput,
   type FinalReviewInput,
+  type ExecutorHarnessFactory,
+  type ReviewerHarnessFactory,
+  type ReviewerRole,
+  type ReviewerFallbackTrigger,
+  type ReviewerModelConfig,
+  type ReviewerRouterConfig,
+  type ReviewerFallbackMetadata,
 } from './harness/types.js';
+export {
+  ReviewerErrorClassifier,
+  type ReviewerClassificationResult,
+} from './harness/ReviewerErrorClassifier.js';
+export {
+  CursorReviewerHarness,
+  extractJsonFromText,
+} from './harness/cursor/CursorReviewerHarness.js';
+export {
+  ReviewPayloadBuilder,
+  type ReviewDiffMetrics,
+  type BuildReviewPayloadOptions,
+} from './orchestrator/services/ReviewPayloadBuilder.js';
+export {
+  ReviewerRouter,
+  type ReviewerRouterOptions,
+} from './orchestrator/services/ReviewerRouter.js';
 
 // Stages & Planning
 export {

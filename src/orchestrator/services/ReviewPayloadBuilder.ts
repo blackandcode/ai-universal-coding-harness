@@ -147,7 +147,9 @@ export class ReviewPayloadBuilder {
       changed_files: changedFiles,
       diff,
       diff_metrics: metrics,
-      ...(requestedContextDiff !== undefined ? { requested_context_diff: requestedContextDiff } : {}),
+      ...(requestedContextDiff !== undefined
+        ? { requested_context_diff: requestedContextDiff }
+        : {}),
     };
   }
 }

@@ -432,3 +432,41 @@ To ensure high reliability, Stage 05 requires establishing rigorous code coverag
 ### Consequences
 
 Deterministic, zero-dependency coverage gates enforced across CI and local verification runs with zero external tooling overhead.
+
+---
+
+## 2026-09-16 — Stage 06: Reviewer Routing, Autonomous Fallback, and Orchestrator Review Resilience
+
+### Context
+
+In earlier versions, reviewer execution was tightly coupled to a single hardcoded reviewer adapter (Codex), leading to unmitigated failures when encountering provider rate limits, quota exhaustion, usage limits (as recorded in incident run `20260915T193118Z-76e14b`), process crashes, or diff truncation. Additionally, interrupting a run during review lost the review phase state, causing redundant re-execution of executor quality commands upon resumption.
+
+### Decision
+
+1. **Multi-Tier Reviewer Routing Contract**:
+   - Implemented `ReviewerRouter` conforming to the generic `ReviewerHarness` contract.
+   - Decomposed reviewer roles into `primary` (Codex `gpt-6-astra`), `fallback` (Cursor `gemini-3.8-flash`), `large_diff` (Cursor `gemini-3.8-flash` for diffs > 300,000 characters), and `permission` (Cursor `composer-2.5-fast` for fast lightweight command approvals).
+   - Dynamically routes requests based on request type and diff metrics.
+2. **Reviewer Error Classification & Automatic Failover**:
+   - Implemented `ReviewerErrorClassifier` to accurately map subprocess exit codes, stderr signals, and event streams to structured `ReviewerFallbackTrigger` types (`usage_limit`, `rate_limit`, `quota_exhausted`, `process_crash`, `timeout`, `turn_failed`, `no_result`).
+   - When a trigger matches and fallback is enabled, `ReviewerRouter` transparently failovers to the backup reviewer, annotating the verdict with `_orchestrator_meta` provenance and emitting a `reviewer.fallback` UI telemetry event.
+3. **Cursor Reviewer Harness Adapter**:
+   - Implemented `CursorReviewerHarness` adhering to `ReviewerHarness` using the Cursor `agent` CLI binary.
+   - Strictly enforces read-only operation in an ephemeral isolated workspace sandbox (`--sandbox enabled`, `--mode plan`, `--trust`), embedding JSON schemas into prompts and validating structured verdicts with `validateReviewerVerdict`.
+   - Registered `cursor` as a default reviewer in `HarnessRegistry`.
+4. **Context Prioritization & Bounded Diff Metrics**:
+   - Implemented `ReviewPayloadBuilder` to build authoritative review payloads.
+   - Computes diff metrics (`char_count`, `estimated_tokens`, `truncated`, `original_chars`).
+   - Preserves complete `diff_stat` and `changed_files` lists even when truncated, and prioritizes paths requested in prior `NEEDS_CONTEXT` verdicts.
+5. **Orchestrator Review-Phase Resilience & Error Classification**:
+   - Orchestrator persists `phase: 'review'` before invoking review, ensuring interrupted runs resume directly at the review step when corroborated evidence matches the patch fingerprint.
+   - Updated `classifyError` using `ReviewerErrorClassifier` to categorize quota/usage/rate limit failures as `external_dependency` and process crashes/timeouts as `retryable_error`.
+
+### Alternatives considered
+
+- Hardcoding fallback logic inside `Orchestrator`: Rejected because it violates harness-neutral architecture; the router sits behind the generic `ReviewerHarness` interface.
+- Using a single model for all review duties: Rejected because large diffs require high-context models, while routine permission checks benefit from low-latency, lower-cost models.
+
+### Consequences
+
+High-resilience reviewer orchestration with zero single points of failure from provider limits, full auditability via verdict metadata, and seamless recovery.

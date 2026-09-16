@@ -241,6 +241,24 @@ export function uiReducer(state: UiState, event: UiEvent): UiState {
       return appendMessage(state, { role: 'executor', text, ts: event.ts });
     }
 
+    case 'reviewer.fallback': {
+      const failed = String(payload.failed_harness ?? 'primary');
+      const failedModel = payload.failed_model ? ` (${payload.failed_model})` : '';
+      const fallback = String(payload.fallback_harness ?? 'fallback');
+      const fallbackModel = payload.fallback_model ? ` (${payload.fallback_model})` : '';
+      const trigger = String(payload.trigger ?? 'failure');
+      const reason = payload.reason ? `: ${payload.reason}` : '';
+      const text =
+        `Reviewer failover [${trigger}] from ${failed}${failedModel} to ${fallback}${fallbackModel}${reason}`.trim();
+
+      return appendMessage(state, {
+        role: 'system',
+        kind: 'info',
+        text,
+        ts: event.ts,
+      });
+    }
+
     case 'reviewer.plan': {
       const verdict = String(payload.verdict ?? '');
       const summary = String(payload.summary ?? payload.feedback ?? '');

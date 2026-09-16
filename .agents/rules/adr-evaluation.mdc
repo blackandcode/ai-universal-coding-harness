@@ -1,0 +1,68 @@
+---
+description: Mandatory pre-planning and in-session Architecture Decision Record (ADR) evaluation gate
+alwaysApply: true
+---
+
+# Architecture Decision Record (ADR) Evaluation & Invariant Gate
+
+## Core Directive
+
+Architectural decisions must be evaluated **before** drafting stage plans and **during** coding sessions when architectural forks emerge. Architecture Decision Records (`docs/adr/`) serve as the **durable architectural memory** of the codebase, preventing architectural drift and agent hallucinations.
+
+Stage execution plans specify *how* to implement features within the boundaries established by authoritative ADRs; they must never substitute for or contradict an ADR.
+
+---
+
+## 1. Pre-Planning ADR Gate (Before Creating Plans)
+
+Before creating or executing any stage plan:
+
+1. **Inspect Existing ADRs:**
+   Read `docs/adr/README.md` to identify all currently `accepted` architectural constraints.
+2. **Evaluate the Proposed Scope:**
+   Classify the proposed architectural impact into one of five discrete states:
+
+| Classification State | Required Action |
+|---|---|
+| `ADR_REQUIRED` | The change introduces new runtime dependencies, modifies state/recovery schemas, or alters adapter protocol boundaries. **Author and accept the ADR in `docs/adr/` BEFORE drafting implementation tasks.** |
+| `ADR_RECOMMENDED` | The change involves competing design trade-offs with multiple viable patterns. **Propose the ADR to the user and draft before planning.** |
+| `ADR_NOT_NEEDED` | Routine feature code, CLI command additions adhering to existing patterns, or UI components adhering to existing ADRs. **Proceed directly to stage planning.** |
+| `EXISTING_ADR_GOVERNS` | A prior accepted ADR already dictates this exact pattern. **Cite the ADR in the stage plan and obey its invariants.** |
+| `EXISTING_ADR_MAY_REQUIRE_SUPERSESSION` | The planned change contradicts an accepted ADR. **Draft a new ADR that supersedes the prior one before proceeding.** |
+
+---
+
+## 2. In-Session Proactive Triggers (Mid-Implementation)
+
+When executing an active coding session, if the agent encounters any of the following triggers, it **MUST PAUSE** implementation and surface the architectural decision:
+
+1. **New External Dependency:**
+   About to add a new third-party npm dependency not already present in `package.json`.
+2. **State & Storage Architecture:**
+   About to alter persisted run state schema (`.ai-orchestrator/`), lock mechanism, journal format, or recovery storage.
+3. **Harness Adapter & Protocol Boundary:**
+   About to change ACP stream normalization, reviewer verdict schemas, or external harness module contracts.
+4. **Git Lifecycle & Branch Invariants:**
+   About to alter the one-run-one-branch or one-stage-one-commit invariants, patch fingerprinting, or stash recovery.
+5. **Permission & Security Classifier:**
+   About to alter the command classification hierarchy, hard-dangerous commands list, or workspace boundary sandboxing.
+6. **Architectural Contradiction:**
+   About to implement a design pattern or file structure that contradicts an existing accepted ADR in `docs/adr/`.
+
+### Surfacing Protocol:
+When a trigger is hit:
+1. Explain the architectural fork and the trade-offs to the developer.
+2. Formulate the intent summary (title, trigger, options considered, binding invariants).
+3. Draft the ADR using `npm run adr:new -- -t "<Title>" --template <nygard|madr|harness>` and the `architecture-decision-record-skill` (`.agents/skills/architecture-decision-record-skill/SKILL.md`).
+
+---
+
+## 3. Negative Anti-Spam Criteria (Do NOT Create an ADR)
+
+Do **NOT** create an ADR for:
+- Routine bug fixes, edge-case null checks, or typo corrections.
+- Incremental test additions, fixtures, or test suite refactorings.
+- Standard Node.js or TypeScript API usage conforming to existing conventions.
+- Minor/patch dependency updates within existing constraints.
+- Internal method refactorings that preserve public class contracts.
+- Changes already tracked in `CHANGELOG.md` under `## [Unreleased]`.

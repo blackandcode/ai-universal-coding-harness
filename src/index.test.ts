@@ -46,6 +46,10 @@ test('public API exports core classes and utilities', () => {
   assert.ok(PublicApi.CodexPromptBuilder);
   assert.ok(PublicApi.CodexProcessRunner);
   assert.ok(PublicApi.CodexResultParser);
+  assert.ok(PublicApi.ReviewerErrorClassifier);
+  assert.ok(PublicApi.CursorReviewerHarness);
+  assert.ok(PublicApi.ReviewPayloadBuilder);
+  assert.ok(PublicApi.ReviewerRouter);
 });
 
 test('public API exports UI classes and utilities', () => {

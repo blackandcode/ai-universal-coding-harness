@@ -9,7 +9,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CursorReviewerHarness, extractJsonFromText } from './CursorReviewerHarness.js';
-import * as processModule from '../../core/process.js';
 
 test('CursorReviewerHarness: initializes harness metadata and handles overrides', () => {
   const harness = new CursorReviewerHarness({
@@ -54,6 +53,12 @@ test('CursorReviewerHarness.extractJsonFromText: parses direct JSON, code fences
   );
   assert.equal(wrapper.verdict, 'ALLOW');
 
+  // Result wrapper
+  const resultWrapper = extractJsonFromText<{ verdict: string }>(
+    JSON.stringify({ result: '{"verdict": "ALLOW", "reason": "Safe"}' }),
+  );
+  assert.equal(resultWrapper.verdict, 'ALLOW');
+
   // Prose with embedded JSON
   const prose = extractJsonFromText<{ verdict: string }>(
     'Review completed.\n{"verdict": "APPROVE", "summary": "Good"}\nEnd of review.',
@@ -81,8 +86,10 @@ test('CursorReviewerHarness: executes decision flows through mocked runProcess',
   const origRunner = CursorReviewerHarness.runner;
   try {
     let capturedArgs: string[] = [];
-    CursorReviewerHarness.runner = (async (_bin: string, args: string[]) => {
+    CursorReviewerHarness.runner = (async (_bin: string, args: string[], opts: any) => {
       capturedArgs = args;
+      opts?.onStdoutLine?.('stdout line');
+      opts?.onStderrLine?.('stderr warning');
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -103,7 +110,10 @@ test('CursorReviewerHarness: executes decision flows through mocked runProcess',
     }) as any;
 
     // Plan review
-    const planVerdict = await harness.reviewPlan({ plan: 'Test plan' }, { finalConsolidation: true });
+    const planVerdict = await harness.reviewPlan(
+      { plan: 'Test plan' },
+      { finalConsolidation: true },
+    );
     assert.equal(planVerdict.verdict, 'APPROVE');
     assert.ok(capturedArgs.includes('-p'));
     assert.ok(capturedArgs.includes('plan'));

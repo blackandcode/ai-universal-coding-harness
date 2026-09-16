@@ -1067,62 +1067,96 @@ test('orchestrator integration: reviewer fallback failover on usage limit enable
   try {
     const registry = new HarnessRegistry();
     let fallbackEmitted = false;
-    events.emitter.on('reviewer.fallback', () => {
-      fallbackEmitted = true;
+    events.emitter.on('event', (e: any) => {
+      if (e.type === 'reviewer.fallback') {
+        fallbackEmitted = true;
+      }
     });
 
     registry.registerExecutor('test-exec', () => ({
       info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
       preflight: async () => ({ ok: true, details: [] }),
-      createSession: (async () => {
-        return {
-          id: 'sess-failover-1',
-          sendUserMessage: async () => {
-            const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', 'stage-01-failover');
-            fs.mkdirSync(runtimeDir, { recursive: true });
+      createSession: async (opts) => {
+        const stageName = 'stage-01-failover';
+        const runtimeDir = path.join(repoDir, '.ai-orchestrator', 'stage-runtime', stageName);
+        fs.mkdirSync(runtimeDir, { recursive: true });
 
+        const session: ExecutorSession = {
+          id: 'test-session-failover',
+          setMode: async () => {},
+          prompt: async (text) => {
+            if (text.includes('Work in PLAN mode')) {
+              await opts.callbacks.onPlan('1. Comprehensive plan with failover\n', {});
+              return { text: 'Plan submitted', result: {} };
+            }
+
+            // Make repository edit
             fs.writeFileSync(path.join(repoDir, 'failover-feature.txt'), 'Feature implemented\n');
 
-            const obs = [
-              {
-                id: 'obs-cmd-1',
-                type: 'terminal_command',
-                command: 'npm test',
-                exit_code: 0,
-                stdout: 'All checks green',
-                stderr: '',
-                working_directory: repoDir,
-              },
-            ];
-            fs.writeFileSync(path.join(runtimeDir, 'observations.jsonl'), obs.map((o) => JSON.stringify(o)).join('\n') + '\n');
-
+            // Write green evidence
             const evidence: ExecutionEvidence = {
-              stage: 'stage-01-failover',
+              stage: stageName,
               attempt: 1,
               status: 'PASS',
               quality_command: 'npm test',
               quality_exit_code: 0,
               git_diff_check_exit_code: 0,
               focused_tests: [],
-              quality_summary: 'All checks green',
+              quality_summary: 'All checks passed',
               changed_files: ['failover-feature.txt'],
               unresolved: [],
             };
-            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+            fs.writeFileSync(
+              path.join(runtimeDir, 'evidence.json'),
+              JSON.stringify(evidence, null, 2),
+            );
 
-            return { text: 'Done', result: {} };
+            return { text: 'Implementation finished', result: {} };
           },
-          setMode: async () => {},
-          prompt: async () => ({ text: '' }),
-          observedCommands: [],
           stop: async () => {},
+          observedCommands: () => [
+            {
+              observation_id: 'obs-1',
+              session_id: 's1',
+              tool_id: 'bash',
+              tool_call_id: 'call-1',
+              sequence: 1,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'npm test',
+              normalized_command: 'npm test',
+              status: 'completed',
+              exit_code: 0,
+              command_confidence: 'high',
+            },
+            {
+              observation_id: 'obs-2',
+              session_id: 's1',
+              tool_id: 'bash',
+              tool_call_id: 'call-2',
+              sequence: 2,
+              timestamp: new Date().toISOString(),
+              source: 'acp',
+              command: 'git diff --check',
+              normalized_command: 'git diff --check',
+              status: 'completed',
+              exit_code: 0,
+              command_confidence: 'high',
+            },
+          ],
         };
-      }) as any,
+        return session;
+      },
     }));
 
     // Primary reviewer: plan review succeeds, but final review hits usage limit
     registry.registerReviewer('primary-rev', () => ({
-      info: { id: 'primary-rev', label: 'Primary Reviewer', role: 'reviewer', model: 'gpt-6-astra' },
+      info: {
+        id: 'primary-rev',
+        label: 'Primary Reviewer',
+        role: 'reviewer',
+        model: 'gpt-6-astra',
+      },
       preflight: async () => ({ ok: true, details: [] }),
       reviewPlan: async () => ({
         verdict: 'APPROVE',
@@ -1132,15 +1166,26 @@ test('orchestrator integration: reviewer fallback failover on usage limit enable
       answerQuestions: async () => ({ verdict: 'ANSWER', answers: [] }),
       decidePermission: async () => ({ verdict: 'ALLOW' }),
       reviewImplementation: async () => {
-        throw new Error("You've hit your usage limit. Upgrade to Pro or visit settings to purchase more credits");
+        throw new Error(
+          "You've hit your usage limit. Upgrade to Pro or visit settings to purchase more credits",
+        );
       },
     }));
 
     // Fallback reviewer: succeeds on final review
     registry.registerReviewer('fallback-rev', () => ({
-      info: { id: 'fallback-rev', label: 'Fallback Reviewer', role: 'reviewer', model: 'gemini-3.8-flash' },
+      info: {
+        id: 'fallback-rev',
+        label: 'Fallback Reviewer',
+        role: 'reviewer',
+        model: 'gemini-3.8-flash',
+      },
       preflight: async () => ({ ok: true, details: [] }),
-      reviewPlan: async () => ({ verdict: 'APPROVE', summary: 'Fallback plan OK', missing_items: [] }),
+      reviewPlan: async () => ({
+        verdict: 'APPROVE',
+        summary: 'Fallback plan OK',
+        missing_items: [],
+      }),
       answerQuestions: async () => ({ verdict: 'ANSWER', answers: [] }),
       decidePermission: async () => ({ verdict: 'ALLOW' }),
       reviewImplementation: async () => ({

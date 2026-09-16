@@ -268,6 +268,25 @@ test('uiReducer handles reviewer plan, questions, and permissions', () => {
     payload: { verdict: 'ALLOW', summary: 'Safe cache clean' },
   });
   assert.equal(state.messages.at(-1)?.text, 'Permission ALLOW: Safe cache clean');
+
+  // Fallback
+  state = uiReducer(state, {
+    ts: '2026-09-16T00:06:00.000Z',
+    type: 'reviewer.fallback',
+    payload: {
+      failed_harness: 'codex',
+      failed_model: 'gpt-6-astra',
+      fallback_harness: 'cursor',
+      fallback_model: 'gemini-3.8-flash',
+      trigger: 'usage_limit',
+      reason: 'Hit usage limit',
+    },
+  });
+  assert.equal(state.messages.at(-1)?.kind, 'info');
+  assert.equal(
+    state.messages.at(-1)?.text,
+    'Reviewer failover [usage_limit] from codex (gpt-6-astra) to cursor (gemini-3.8-flash): Hit usage limit',
+  );
 });
 
 test('uiReducer handles quality results, review verdicts, and commit events', () => {

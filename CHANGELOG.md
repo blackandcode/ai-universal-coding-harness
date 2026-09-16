@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [Unreleased]
+
+## [2.1.0] - 2026-09-16
+
+### Added
+
+- Added ADR scaffolding tool (scripts/adr/new-adr.mjs) and comprehensive script test suites
+
+### Changed
+
+- Modernized versioning, changelog, and ADR rules, skills, and scripts for TypeScript CLI project
+
 ## [2.0.0] - 2026-09-16
 
 ### Breaking Changes
@@ -27,6 +39,11 @@ All notable changes to this project are documented here. The project follows Sem
 - **Hardened Autonomous Recovery**: `RecoveryManager` with dry-run inspection, timestamped backup snapshots, automatic observation reconstruction from raw ACP session logs, and dual resume points (`REVIEW` vs `QUALITY`).
 - **Oxfmt & Oxlint Quality Toolchain**: Modern formatting via Oxfmt (0.68.0) and fast AST-based linting via Oxlint (1.83.0) with custom verification for Promise, Node correctness, and React rules.
 - **Repository-wide Docblock Audit**: Complete `@fileoverview` header blocks and comprehensive JSDoc/TSDoc annotations across all source, test, script, and configuration files.
+- **Multi-Tier Reviewer Routing & Automatic Fallback**: `ReviewerRouter` coordinating specialized reviewer roles (`primary`, `fallback`, `large_diff`, `permission`) with automatic error interception and failover.
+- **Reviewer Error Classification & Telemetry**: `ReviewerErrorClassifier` categorizing usage limits, rate limits, quota exhaustion, process crashes, timeouts, and turn failures, emitting `reviewer.fallback` semantic UI events and persisting `_orchestrator_meta` audit provenance.
+- **Cursor Reviewer Harness Adapter**: `CursorReviewerHarness` implementing schema-enforced, read-only reviewer operations in an isolated sandbox.
+- **Diff Truncation Management & Context Prioritization**: `ReviewPayloadBuilder` calculating token and character metrics, preserving complete `diff_stat` and `changed_files` lists, and prioritizing files requested in prior `NEEDS_CONTEXT` reviewer verdicts.
+- **Orchestrator Review-Phase Resilience**: Persisting `phase: 'review'` in stage runtime state before invoking review, enabling interrupted reviews to resume without repeating executor checks, and classifying errors into `external_dependency` and `retryable_error`.
 
 ### Changed
 

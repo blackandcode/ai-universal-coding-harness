@@ -130,7 +130,7 @@ Start with [docs/README.md](docs/README.md).
 
 ## Release
 
-Current version: **2.0.0**. See [CHANGELOG.md](CHANGELOG.md).
+Current version: **2.1.0**. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
