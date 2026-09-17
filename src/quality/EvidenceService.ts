@@ -36,6 +36,10 @@ export interface CorroborationResult {
   issues: string[];
   /** Observed telemetry captured during the quality command execution. */
   observedQuality?: unknown;
+  /** True when the executor modified quality runner scripts, test infrastructure, or configs. */
+  qualityInfrastructureMutated?: boolean;
+  /** List of quality infrastructure file paths that were modified. */
+  qualityInfrastructureFiles?: string[];
 }
 
 /**
@@ -114,14 +118,22 @@ export class EvidenceService {
       ...evidence,
       observed_quality: r.observed_quality,
       patch_fingerprint: norm.expectedPatchFingerprint || evidence.patch_fingerprint,
-      quality_epoch_id: norm.qualityEpochId || evidence.quality_epoch_id
+      quality_epoch_id: norm.qualityEpochId || evidence.quality_epoch_id,
+      ...(r.quality_infrastructure_mutated
+        ? {
+            quality_infrastructure_mutated: true,
+            quality_infrastructure_files: r.quality_infrastructure_files
+          }
+        : {})
     };
 
     return {
       ok: true,
       evidence: corroborated,
       issues: [],
-      observedQuality: r.observed_quality
+      observedQuality: r.observed_quality,
+      qualityInfrastructureMutated: r.quality_infrastructure_mutated,
+      qualityInfrastructureFiles: r.quality_infrastructure_files
     };
   }
 

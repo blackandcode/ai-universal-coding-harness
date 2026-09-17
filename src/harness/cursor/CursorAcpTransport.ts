@@ -18,6 +18,7 @@ import readline from 'node:readline';
 import { CONFIG } from '../../core/config.js';
 import { normalizeSpawnArgs } from '../../core/process.js';
 import { appendBounded } from '../../core/fs.js';
+import { retryWithBackoff, type RetryOptions } from '../../core/time.js';
 import { errorMessage } from '../../errors.js';
 import { AcpEventDecoder } from './AcpEventDecoder.js';
 import {
@@ -177,7 +178,7 @@ export class CursorAcpTransport {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         if (method === 'session/prompt') {
-          void this.cancel().catch(() => {});
+          void this.cancel();
         }
         reject(new Error(`Cursor ACP request timed out: ${method}`));
       }, timeoutMs);
@@ -190,6 +191,43 @@ export class CursorAcpTransport {
       });
 
       this.raw({ jsonrpc: '2.0', id, method, params });
+    });
+  }
+
+  /**
+   * Issues a JSON-RPC request with exponential backoff retries on failure.
+   *
+   * @remarks
+   * Invariant: Useful for idempotent lifecycle requests such as `session/new` and `session/load`
+   * where transient timeouts, process startup latency, or authentication lags can cause a single
+   * attempt to fail.
+   *
+   * @typeParam T - Expected response payload type.
+   * @param method - JSON-RPC method name.
+   * @param params - Request parameter object.
+   * @param timeoutMs - Optional timeout in milliseconds for each attempt.
+   * @param retryOptions - Optional retry configuration controlling attempts and backoff intervals.
+   * @returns Promise resolving to the server result.
+   */
+  async requestWithRetry<T = unknown>(
+    method: string,
+    params: Record<string, unknown>,
+    timeoutMs = this.options.turnTimeoutMinutes * 60_000,
+    retryOptions: RetryOptions = {}
+  ): Promise<T> {
+    return retryWithBackoff(async (_attempt) => this.request<T>(method, params, timeoutMs), {
+      maxAttempts: retryOptions.maxAttempts ?? 3,
+      initialDelayMs: retryOptions.initialDelayMs ?? 1000,
+      backoffFactor: retryOptions.backoffFactor ?? 2,
+      maxDelayMs: retryOptions.maxDelayMs ?? 15000,
+      onRetry: (err, attempt, nextDelayMs) => {
+        this.emitLog(
+          'warn',
+          `ACP request "${method}" attempt ${attempt} failed: ${errorMessage(err)}. Retrying in ${nextDelayMs}ms...`
+        );
+        retryOptions.onRetry?.(err, attempt, nextDelayMs);
+      },
+      ...retryOptions
     });
   }
 
@@ -251,15 +289,13 @@ export class CursorAcpTransport {
           finish();
         }, killTimeout);
 
-        child.once('exit', () => {
+        const onEnd = (): void => {
           clearTimeout(timer);
           finish();
-        });
+        };
 
-        child.once('close', () => {
-          clearTimeout(timer);
-          finish();
-        });
+        child.once('exit', onEnd);
+        child.once('close', onEnd);
 
         try {
           child.kill('SIGTERM');

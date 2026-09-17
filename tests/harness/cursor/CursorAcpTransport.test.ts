@@ -25,7 +25,9 @@ function createMockTransportBinary(tmpDir: string): string {
 import readline from 'node:readline';
 
 const rl = readline.createInterface({ input: process.stdin });
+setInterval(() => {}, 60000);
 
+let retryCount = 0;
 rl.on('line', (line) => {
   let msg;
   try {
@@ -36,6 +38,16 @@ rl.on('line', (line) => {
 
   if (msg.method === 'ping') {
     console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { pong: true } }));
+    return;
+  }
+
+  if (msg.method === 'retry-test') {
+    retryCount++;
+    if (retryCount < 3) {
+      console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: -32001, message: 'Transient fail' } }));
+      return;
+    }
+    console.log(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { retried: true, attempts: retryCount } }));
     return;
   }
 
@@ -130,6 +142,8 @@ test('CursorAcpTransport: full request-response lifecycle and notification routi
     // 7. Test childProcess getter and setter
     const currentChild = transport.childProcess;
     assert.ok(currentChild);
+    currentChild?.stdin?.emit('error', new Error('mock pipe err'));
+    currentChild?.stdin?.emit('error', { code: 'EPIPE' });
     transport.childProcess = currentChild;
     assert.equal(transport.childProcess, currentChild);
 
@@ -251,9 +265,13 @@ test('CursorAcpTransport: stop times out SIGTERM and issues SIGKILL', async () =
     let sigkillIssued = false;
 
     // Simulate child ignoring SIGTERM
+    const originalKill = child.kill.bind(child);
     child.kill = (sig) => {
       if (sig === 'SIGKILL') {
         sigkillIssued = true;
+        try {
+          originalKill('SIGKILL');
+        } catch {}
         child.emit('exit', 0, 'SIGKILL');
       }
       return true;
@@ -261,6 +279,57 @@ test('CursorAcpTransport: stop times out SIGTERM and issues SIGKILL', async () =
 
     await transport.stop();
     assert.equal(sigkillIssued, true);
+  } finally {
+    try {
+      await transport.stop();
+    } catch {}
+    safeRm(tmpDir);
+  }
+});
+
+test('CursorAcpTransport: requestWithRetry retries failed RPC requests with backoff', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-retry-test-'));
+  const eventsFile = path.join(tmpDir, 'events.jsonl');
+  const runLog = path.join(tmpDir, 'run.log');
+  const binary = createMockTransportBinary(tmpDir);
+
+  const transport = new CursorAcpTransport({
+    binary: process.execPath,
+    args: [binary],
+    workspace: tmpDir,
+    eventsFile,
+    runLog,
+    turnTimeoutMinutes: 1
+  });
+
+  try {
+    await transport.start();
+    let retryCallbackInvoked = false;
+    const res = await transport.requestWithRetry<{ retried: boolean; attempts: number }>(
+      'retry-test',
+      {},
+      5000,
+      {
+        maxAttempts: 4,
+        initialDelayMs: 20,
+        backoffFactor: 1.5,
+        onRetry: () => {
+          retryCallbackInvoked = true;
+        }
+      }
+    );
+    assert.equal(res.retried, true);
+    assert.equal(res.attempts, 3);
+    assert.equal(retryCallbackInvoked, true);
+
+    // Test requestWithRetry with default timeoutMs and options
+    const defaultRes = await transport.requestWithRetry<{ pong: boolean }>('ping', {});
+    assert.equal(defaultRes.pong, true);
+
+    await transport.stop();
+
+    // Test stop on already-stopped or unstarted transport
+    await transport.stop();
   } finally {
     try {
       await transport.stop();

@@ -5,7 +5,7 @@
 
 ## Context
 
-In AI Universal Coding Harness 2.1.2–2.2.0, several critical trust gaps were identified around quality evidence corroboration, persisted state validation, resume invariants, and autonomous crash recovery (Modernization Audit Findings F-03, F-04, F-05, and F-06):
+In AI Universal Coding Harness 2.1.2–2.2.1, several critical trust gaps were identified around quality evidence corroboration, persisted state validation, resume invariants, and autonomous crash recovery (Modernization Audit Findings F-03, F-04, F-05, and F-06):
 
 1. **Quality Epoch and Scope Invariants (Finding F-03)**: Although `quality_epoch_id` was generated and passed to `EvidenceVerifier`, it was never evaluated against candidate command observations. Furthermore, observation filtering accepted records with missing stage or missing attempt fields, allowing unscoped or cross-attempt commands to satisfy quality claims. Run and session identities were not enforced.
 2. **Asymmetric Resume Proof Standard (Finding F-04)**: `EvidenceService.checkReusableEvidence()` performed only `JSON.parse` on saved evidence without validating status, exit codes, or unresolved items. In `Orchestrator.ts`, the condition `if (!isResumed && !corroboration.ok)` explicitly bypassed corroboration failures for resumed runs, treating unverified cached evidence with greater trust than fresh executor output.

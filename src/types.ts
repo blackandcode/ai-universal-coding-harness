@@ -433,6 +433,10 @@ export interface ExecutionEvidence {
   patch_fingerprint?: string;
   /** Identifier of the quality epoch during which these checks were run. */
   quality_epoch_id?: string;
+  /** True when the executor modified quality runner scripts, test infrastructure, or configs. */
+  quality_infrastructure_mutated?: boolean;
+  /** List of quality infrastructure file paths that were modified. */
+  quality_infrastructure_files?: string[];
 }
 
 /**

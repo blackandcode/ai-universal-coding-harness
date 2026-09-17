@@ -62,6 +62,8 @@ export interface FinalReviewPayload extends FinalReviewInput {
   plan_reviewer_carryover?: string | null;
   /** Corroborated quality evidence claims. */
   evidence?: ExecutionEvidence | Partial<ExecutionEvidence> | null;
+  /** Advisory warning generated when quality command scripts were modified by the executor. */
+  quality_infrastructure_warning?: string;
   /** Short git status output showing modified and untracked files. */
   git_status: string;
   /** Git diffstat summary. */
@@ -166,10 +168,28 @@ export class ReviewPayloadBuilder {
       }
     }
 
+    const mutatedQualityFiles = options.evidence?.quality_infrastructure_files ?? [];
+    const isQualityMutated = Boolean(
+      options.evidence?.quality_infrastructure_mutated || mutatedQualityFiles.length > 0
+    );
+
+    let qualityWarning: string | undefined;
+    if (isQualityMutated && mutatedQualityFiles.length > 0) {
+      qualityWarning = `CRITICAL REVIEW ADVISORY - QUALITY GATE MUTATION: The implementation modified the quality command infrastructure (${mutatedQualityFiles.join(', ')}). Reviewers must verify that test suites, exit codes, coverage thresholds, or corroboration guarantees were not weakened, skipped, or bypassed.`;
+    }
+
+    const carryover = options.planReviewerCarryover;
+    const augmentedCarryover = qualityWarning
+      ? carryover
+        ? `${qualityWarning}\n\n${carryover}`
+        : qualityWarning
+      : carryover;
+
     return {
       approved_plan: options.approvedPlan,
-      plan_reviewer_carryover: options.planReviewerCarryover,
+      plan_reviewer_carryover: augmentedCarryover,
       evidence: options.evidence,
+      quality_infrastructure_warning: qualityWarning,
       git_status: gitStatus,
       diff_stat: diffStat,
       changed_files: changedFiles,

@@ -124,3 +124,37 @@ test('ReviewPayloadBuilder: truncates prioritized context when prefix alone exce
   assert.equal(payload.diff_metrics.truncated, true);
   assert.match(payload.diff, /prioritized context \(1000 chars\) exceeds limit 200/);
 });
+
+test('ReviewPayloadBuilder: attaches quality_infrastructure_warning when quality files are mutated', () => {
+  const fullDiff = 'diff --git a/check-changed.mjs b/check-changed.mjs\n+exit 0';
+  const git = createMockGit({ fullDiff });
+
+  const payload = ReviewPayloadBuilder.build({
+    git,
+    approvedPlan: { verdict: 'APPROVE' },
+    planReviewerCarryover: 'Existing carryover item',
+    evidence: {
+      status: 'PASS',
+      quality_infrastructure_mutated: true,
+      quality_infrastructure_files: ['tools/quality/check-changed.mjs']
+    }
+  });
+
+  assert.ok(payload.quality_infrastructure_warning);
+  assert.match(payload.quality_infrastructure_warning, /CRITICAL REVIEW ADVISORY/);
+  assert.match(payload.quality_infrastructure_warning, /tools\/quality\/check-changed\.mjs/);
+  assert.match(payload.plan_reviewer_carryover ?? '', /CRITICAL REVIEW ADVISORY/);
+  assert.match(payload.plan_reviewer_carryover ?? '', /Existing carryover item/);
+});
+
+test('ReviewPayloadBuilder: leaves carryover untouched when no quality files are mutated', () => {
+  const git = createMockGit({ fullDiff: 'diff' });
+  const payload = ReviewPayloadBuilder.build({
+    git,
+    planReviewerCarryover: 'Normal carryover',
+    evidence: { status: 'PASS' }
+  });
+
+  assert.equal(payload.quality_infrastructure_warning, undefined);
+  assert.equal(payload.plan_reviewer_carryover, 'Normal carryover');
+});

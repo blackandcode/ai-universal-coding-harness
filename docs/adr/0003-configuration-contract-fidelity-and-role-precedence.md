@@ -5,7 +5,7 @@
 
 ## Context
 
-In AI Universal Coding Harness 2.1.2–2.2.0, several configuration fidelity and runtime contract gaps were identified across question flow, reviewer routing, and documentation templates (Modernization Audit Findings F-12, F-13, and F-14):
+In AI Universal Coding Harness 2.1.2–2.2.1, several configuration fidelity and runtime contract gaps were identified across question flow, reviewer routing, and documentation templates (Modernization Audit Findings F-12, F-13, and F-14):
 
 1. **Unenforced Distinct Question Budget (Finding F-12)**: `maxUniqueQuestionsPerStage` was loaded, exposed in `DEFAULT_CONFIG`, and clamped in `validateAndNormalizeConfig()`, but `Orchestrator.questionDecision()` never tracked distinct question count or read `CONFIG.maxUniqueQuestionsPerStage`. An interactive executor presenting an unbounded loop of blocking multiple-choice questions could stall or drain API budgets indefinitely.
 2. **Reviewer Role Precedence Disconnect (Finding F-13)**: `ReviewerRouter.resolveHarness()` constructed `mergedContext` with basic model/binary fields but omitted tunables like `verbosity` and `contextMode`. More importantly, `CodexReviewerHarness` read its settings strictly from `harnesses.codex` via `harnessString()` and `harnessNumber()` in field initializers, ignoring role-specific tunables passed in `HarnessContext`. The precedence hierarchy between role configurations (`reviewer.<role>`) and global adapter settings (`harnesses.<adapter>`) was neither normative nor enforced at runtime.

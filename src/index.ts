@@ -195,6 +195,7 @@ export {
   validateEvidence,
   validateRawExecutionEvidence,
   validateCorroboratedEvidence,
+  detectQualityInfrastructureChanges,
   isObservationEligible,
   normalizeCommand,
   commandMatches,

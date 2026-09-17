@@ -155,7 +155,14 @@ export function validateRawExecutionEvidence(
         : undefined,
     patch_fingerprint:
       typeof data.patch_fingerprint === 'string' ? data.patch_fingerprint : undefined,
-    quality_epoch_id: typeof data.quality_epoch_id === 'string' ? data.quality_epoch_id : undefined
+    quality_epoch_id: typeof data.quality_epoch_id === 'string' ? data.quality_epoch_id : undefined,
+    quality_infrastructure_mutated:
+      typeof data.quality_infrastructure_mutated === 'boolean'
+        ? data.quality_infrastructure_mutated
+        : undefined,
+    quality_infrastructure_files: Array.isArray(data.quality_infrastructure_files)
+      ? (data.quality_infrastructure_files as unknown[]).map(String)
+      : undefined
   };
 
   return {
@@ -430,6 +437,116 @@ export function isObservationEligible(
 }
 
 /**
+ * Detects whether any changed file targets quality verification scripts, test configurations, or quality gate infrastructure.
+ *
+ * @remarks
+ * Invariant: Protects against quality-gate scope shrinkage or bypasses where an executor agent
+ * modifies test runner scripts (e.g., `check-changed.mjs`), test configuration files, or package scripts
+ * to force exit code 0 or bypass required test suites.
+ *
+ * @param changedFiles - List of relative repository file paths changed or created during the stage.
+ * @param qualityCommand - The configured quality verification command string.
+ * @param workspace - Optional path to repository workspace for inspecting package scripts.
+ * @returns Array of relative file paths that match quality verification infrastructure.
+ */
+export function detectQualityInfrastructureChanges(
+  changedFiles: string[],
+  qualityCommand?: string,
+  workspace?: string
+): string[] {
+  if (!Array.isArray(changedFiles) || changedFiles.length === 0) {
+    return [];
+  }
+
+  const detected = new Set<string>();
+  const normalizedChanged = changedFiles.map((f) =>
+    String(f)
+      .replace(/^[./\\]+/, '')
+      .replace(/\\/g, '/')
+  );
+
+  // 1. Direct path/token matches from qualityCommand
+  const cmdTokens: string[] = [];
+  if (qualityCommand) {
+    const rawTokens = qualityCommand
+      .split(/\s+/)
+      .map((t) => t.replace(/^[./\\]+/, '').replace(/\\/g, '/'));
+    for (const t of rawTokens) {
+      if (/\.(?:[cm]?[jt]sx?|sh|bash|py|php|json|xml)$/i.test(t)) {
+        cmdTokens.push(t);
+      }
+    }
+
+    // If qualityCommand is an npm/pnpm/yarn/bun script (e.g. `npm run check:changed` or `npm test`)
+    const npmScriptMatch = qualityCommand.match(
+      /(?:npm|pnpm|yarn|bun)(?:\s+run)?\s+([a-zA-Z0-9:_-]+)/i
+    );
+    if (npmScriptMatch && workspace) {
+      const scriptName = npmScriptMatch[1];
+      const pkgPath = path.join(workspace, 'package.json');
+      try {
+        if (fs.existsSync(pkgPath)) {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as {
+            scripts?: Record<string, string>;
+          };
+          const scriptBody = pkg.scripts?.[scriptName];
+          if (typeof scriptBody === 'string') {
+            const scriptTokens = scriptBody
+              .split(/\s+/)
+              .map((t) => t.replace(/^[./\\]+/, '').replace(/\\/g, '/'));
+            for (const st of scriptTokens) {
+              if (/\.(?:[cm]?[jt]sx?|sh|bash|py|php|json|xml)$/i.test(st)) {
+                cmdTokens.push(st);
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // Known test runner / quality config files and dedicated quality directories
+  const qualityDirPattern = /(?:^|\/)(?:tools\/quality|scripts\/quality|\.quality)\//i;
+  const qualityRunnerNamePattern =
+    /(?:^|\/)(?:check-changed|check-touched|run-tests|test-runner|run-critical-coverage|quality-gate|verify-changed)\.[cm]?[jt]sx?$/i;
+  const testConfigPattern =
+    /(?:^|\/)(?:phpunit\.xml(?:\.dist)?|jest\.config\.[cm]?[jt]sx?|vitest\.config\.[cm]?[jt]sx?|playwright\.config\.[cm]?[jt]sx?|\.mocharc\.[a-z]+)$/i;
+
+  for (let i = 0; i < normalizedChanged.length; i++) {
+    const norm = normalizedChanged[i];
+    const orig = changedFiles[i];
+
+    // Check against tokens extracted from qualityCommand or package.json scripts
+    for (const token of cmdTokens) {
+      if (norm === token || norm.endsWith('/' + token) || token.endsWith('/' + norm)) {
+        detected.add(orig);
+        break;
+      }
+    }
+
+    // Check directory patterns
+    if (qualityDirPattern.test(norm)) {
+      detected.add(orig);
+      continue;
+    }
+
+    // Check script runner filename patterns
+    if (qualityRunnerNamePattern.test(norm)) {
+      detected.add(orig);
+      continue;
+    }
+
+    // Check test framework configuration patterns
+    if (testConfigPattern.test(norm)) {
+      detected.add(orig);
+      continue;
+    }
+  }
+
+  return Array.from(detected);
+}
+
+/**
  * Verifies executor evidence against command observations collected for the current attempt.
  *
  * @remarks
@@ -608,10 +725,18 @@ export function verifyEvidenceAgainstObserved(
     return quality;
   }
 
+  const tamperedFiles = detectQualityInfrastructureChanges(
+    e.changed_files || [],
+    e.quality_command,
+    normCtx.workspace
+  );
+
   return {
     ok: issues.length === 0,
     issues,
     observed_quality: toObservedQuality(q),
-    observed_diff_check: toObservedQuality(d)
+    observed_diff_check: toObservedQuality(d),
+    quality_infrastructure_mutated: tamperedFiles.length > 0,
+    quality_infrastructure_files: tamperedFiles
   };
 }

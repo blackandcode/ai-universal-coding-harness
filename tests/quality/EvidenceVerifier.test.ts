@@ -14,7 +14,8 @@ import {
   commandMatches,
   validateEvidence,
   validateCorroboratedEvidence,
-  normalizeVerificationContext
+  normalizeVerificationContext,
+  detectQualityInfrastructureChanges
 } from '../../src/quality/EvidenceVerifier.js';
 import type { ExecutionEvidence } from '../../src/types.js';
 
@@ -313,4 +314,83 @@ test('git diff --check executed in wrong directory is rejected', () => {
   assert.ok(
     rWrongDiffDir.issues.some((i) => i.includes('git diff --check executed in wrong directory'))
   );
+});
+
+test('detectQualityInfrastructureChanges identifies runner scripts and quality configs', () => {
+  const tmpWs = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-quality-'));
+  try {
+    fs.writeFileSync(
+      path.join(tmpWs, 'package.json'),
+      JSON.stringify({
+        scripts: {
+          'check:changed': 'node tools/quality/check-changed.mjs',
+          test: 'node scripts/run-tests.js'
+        }
+      })
+    );
+
+    // Empty list returns empty
+    assert.deepEqual(detectQualityInfrastructureChanges([]), []);
+
+    // Regular files return empty
+    assert.deepEqual(
+      detectQualityInfrastructureChanges(
+        ['src/index.ts', 'src/models/user.ts', 'tests/unit.test.ts'],
+        'npm run check:changed',
+        tmpWs
+      ),
+      []
+    );
+
+    // Known runner filenames and test config files are detected
+    const detected = detectQualityInfrastructureChanges(
+      [
+        'src/index.ts',
+        'tools/quality/check-changed.mjs',
+        'phpunit.xml',
+        'jest.config.js',
+        'scripts/run-tests.js',
+        'custom/verify-runner.sh'
+      ],
+      'bash custom/verify-runner.sh',
+      tmpWs
+    );
+
+    assert.ok(detected.includes('tools/quality/check-changed.mjs'));
+    assert.ok(detected.includes('phpunit.xml'));
+    assert.ok(detected.includes('jest.config.js'));
+    assert.ok(detected.includes('scripts/run-tests.js'));
+    assert.ok(detected.includes('custom/verify-runner.sh'));
+    assert.equal(detected.includes('src/index.ts'), false);
+  } finally {
+    fs.rmSync(tmpWs, { recursive: true, force: true });
+  }
+});
+
+test('verifyEvidenceAgainstObserved flags quality_infrastructure_mutated when runner scripts are touched', () => {
+  const tamperedEv: ExecutionEvidence = {
+    ...evidence,
+    changed_files: ['src/controller.ts', 'tools/quality/check-changed.mjs']
+  };
+
+  const res = verifyEvidenceAgainstObserved(tamperedEv, [
+    { command: 'npm run check', exit_code: 0, status: 'completed', tool_id: '1' },
+    { command: 'git diff --check', exit_code: 0, status: 'completed', tool_id: '2' }
+  ]);
+
+  assert.equal(res.ok, true);
+  assert.equal(res.quality_infrastructure_mutated, true);
+  assert.deepEqual(res.quality_infrastructure_files, ['tools/quality/check-changed.mjs']);
+
+  // Clean changed_files
+  const cleanEv: ExecutionEvidence = {
+    ...evidence,
+    changed_files: ['src/controller.ts']
+  };
+  const cleanRes = verifyEvidenceAgainstObserved(cleanEv, [
+    { command: 'npm run check', exit_code: 0, status: 'completed', tool_id: '1' },
+    { command: 'git diff --check', exit_code: 0, status: 'completed', tool_id: '2' }
+  ]);
+  assert.equal(cleanRes.quality_infrastructure_mutated, false);
+  assert.deepEqual(cleanRes.quality_infrastructure_files, []);
 });

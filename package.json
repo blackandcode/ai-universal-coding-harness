@@ -1,6 +1,6 @@
 {
   "name": "ai-universal-coding-harness",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "A cross-platform CLI that orchestrates autonomous coding harnesses through structured stages, review, quality gates, and clean Git history.",
   "keywords": [
     "agents",

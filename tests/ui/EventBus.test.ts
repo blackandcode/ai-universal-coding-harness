@@ -119,6 +119,8 @@ test('EventBus: lineMode logs formatted summaries without error', () => {
       fallback_harness: 'cursor'
     });
     bus.emit('quality.result', { status: 'PASS', quality_summary: 'Fallback summary only' });
+    bus.emit('evidence.warning', { message: 'Quality gate script modified' });
+    bus.emit('stage.advisory', { message: 'High complexity detected' });
     bus.emit('run.started', {});
     bus.emit('unknown.event.type', { foo: 'bar' });
     bus.emit('executor.tool', { toolCallId: 'tool-from-id' });
@@ -147,6 +149,8 @@ test('EventBus: lineMode logs formatted summaries without error', () => {
     assert.ok(lineLogs.some((l) => l.includes('▶ Run')));
     assert.ok(lineLogs.some((l) => l.includes('Reviewer failover')));
     assert.ok(lineLogs.some((l) => l.includes('Quality PASS')));
+    assert.ok(lineLogs.some((l) => l.includes('! Quality warning: Quality gate script modified')));
+    assert.ok(lineLogs.some((l) => l.includes('! Stage advisory: High complexity detected')));
     assert.ok(lineLogs.some((l) => l.includes('▶ Stage started')));
   } finally {
     console.log = origLog;

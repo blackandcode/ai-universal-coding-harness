@@ -886,6 +886,160 @@ test('orchestrator integration: plan review budget exhaustion consolidates into 
   }
 });
 
+test('orchestrator integration: emits stage.advisory on excessive carryover and flags quality gate script mutation', async () => {
+  const repoDir = createTestRepo();
+  const stagesDir = createStageSource(repoDir, 'stage-01-advisory');
+  const eventLog = path.join(repoDir, '.ai-orchestrator', 'advisory-events.jsonl');
+  const events = new EventBus(eventLog);
+
+  try {
+    const registry = new HarnessRegistry();
+    let planReviewPasses = 0;
+    const capturedEvents: UiEvent[] = [];
+    events.emitter.on('event', (e) => capturedEvents.push(e));
+
+    let finalReviewPayloadReceived: Record<string, unknown> | null = null;
+
+    registry.registerExecutor('test-exec', () => ({
+      info: { id: 'test-exec', label: 'Test Executor', role: 'executor', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      createSession: async (opts) => {
+        let qualityEpoch = '';
+        const observations: CommandObservation[] = [];
+
+        return {
+          id: 'advisory-session',
+          setMode: async () => {},
+          setQualityEpoch: (epoch) => {
+            qualityEpoch = epoch;
+          },
+          observedCommands: () => observations,
+          prompt: async (promptText) => {
+            if (promptText.includes('Work in PLAN mode')) {
+              await opts.callbacks.onPlan(`Plan proposal attempt ${planReviewPasses + 1}`, {});
+              return { text: 'Submitted plan', result: {} };
+            }
+
+            // In implementation mode: create a modified quality runner script
+            const qualityScriptDir = path.join(repoDir, 'tools', 'quality');
+            fs.mkdirSync(qualityScriptDir, { recursive: true });
+            fs.writeFileSync(
+              path.join(qualityScriptDir, 'check-changed.mjs'),
+              'console.log("quality script");\n'
+            );
+
+            observations.push(
+              ...createPassingObservations({
+                sessionId: 'advisory-session',
+                stage: 'stage-01-advisory',
+                attempt: 1,
+                runId: opts.runId,
+                qualityEpoch,
+                workspace: opts.workspace
+              })
+            );
+
+            const runtimeDir = path.join(
+              repoDir,
+              '.ai-orchestrator',
+              'stage-runtime',
+              'stage-01-advisory'
+            );
+            fs.mkdirSync(runtimeDir, { recursive: true });
+            const evidence: ExecutionEvidence = {
+              stage: 'stage-01-advisory',
+              attempt: 1,
+              status: 'PASS',
+              quality_command: 'npm test',
+              quality_exit_code: 0,
+              git_diff_check_exit_code: 0,
+              focused_tests: [],
+              quality_summary: 'Implementation with quality runner update verified.',
+              changed_files: ['tools/quality/check-changed.mjs'],
+              unresolved: []
+            };
+            fs.writeFileSync(path.join(runtimeDir, 'evidence.json'), JSON.stringify(evidence));
+
+            return { text: 'Done', result: {} };
+          },
+          stop: async () => {}
+        };
+      }
+    }));
+
+    registry.registerReviewer('test-rev', () => ({
+      info: { id: 'test-rev', label: 'Test Reviewer', role: 'reviewer', model: 'fake' },
+      preflight: async () => ({ ok: true, details: [] }),
+      reviewPlan: async (_input, opts) => {
+        planReviewPasses++;
+        if (opts?.finalConsolidation) {
+          return {
+            verdict: 'APPROVE',
+            summary: 'Final consolidation accepted with excessive carryover notes.',
+            missing_items: [
+              'Item 1: Persistence concurrency CAS verification missing',
+              'Item 2: Denial destination edge routing missing',
+              'Item 3: REST authorization missing',
+              'Item 4: Frontend picker synchronization missing',
+              'Item 5: Shortcode sanitization missing'
+            ],
+            feedback_for_cursor: 'Ensure all 5 critical subsystems are tested.'
+          };
+        }
+        return {
+          verdict: 'REPLAN',
+          summary: `Plan needs further iteration pass ${planReviewPasses}.`,
+          missing_items: ['Missing comprehensive error handling'],
+          feedback_for_cursor: 'Please expand edge case handling.'
+        };
+      },
+      answerQuestions: async () => ({ verdict: 'ANSWER', answers: [], rationale: 'OK' }),
+      decidePermission: async () => ({ verdict: 'ALLOW', reason: 'Safe' }),
+      reviewImplementation: async (payload) => {
+        finalReviewPayloadReceived = payload as unknown as Record<string, unknown>;
+        return { verdict: 'APPROVE', summary: 'OK' };
+      }
+    }));
+
+    const orchestrator = new Orchestrator(events, { workspace: repoDir, registry });
+    const state = orchestrator.createRun({
+      stageSource: stagesDir,
+      selectors: ['01'],
+      executorHarness: 'test-exec',
+      reviewerHarness: 'test-rev',
+      qualityCmd: 'npm test'
+    });
+
+    const finalState = await orchestrator.run(state);
+
+    assert.equal(finalState.status, 'completed');
+
+    // Assert stage.advisory was emitted for high complexity
+    const stageAdvisoryEvent = capturedEvents.find((e) => e.type === 'stage.advisory');
+    assert.ok(stageAdvisoryEvent, 'Expected stage.advisory event to be emitted');
+    assert.equal(stageAdvisoryEvent.payload.type, 'stage_complexity');
+    assert.ok(
+      Number(stageAdvisoryEvent.payload.carryover_items_count) >= 5,
+      'Expected at least 5 carryover items'
+    );
+
+    // Assert evidence.warning was emitted for quality infrastructure mutation
+    const evidenceWarningEvent = capturedEvents.find((e) => e.type === 'evidence.warning');
+    assert.ok(evidenceWarningEvent, 'Expected evidence.warning event to be emitted');
+    assert.equal(evidenceWarningEvent.payload.type, 'quality_infrastructure_mutation');
+
+    // Assert review payload received quality_infrastructure_warning
+    assert.ok(finalReviewPayloadReceived);
+    assert.match(
+      String(finalReviewPayloadReceived['quality_infrastructure_warning']),
+      /CRITICAL REVIEW ADVISORY - QUALITY GATE MUTATION/
+    );
+  } finally {
+    events.close();
+    removeTree(repoDir);
+  }
+});
+
 test('orchestrator integration: handles executor question and reviewer context request', async () => {
   const repoDir = createTestRepo();
   const stagesDir = createStageSource(repoDir, 'stage-01-question');

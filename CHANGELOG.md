@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-09-17
+
+### Added
+
+- Added exponential backoff retry utility `retryWithBackoff` in `src/core/time.ts` with configurable delays, backoff multipliers, and retry predicates.
+- Added `requestWithRetry` to `CursorAcpTransport` in `src/harness/cursor/CursorAcpTransport.ts` with retry logging and backoff for resilient RPC calls.
+- Added quality infrastructure change detection via `detectQualityInfrastructureChanges` in `src/quality/EvidenceVerifier.ts`, identifying modifications to test runner scripts (e.g. `check-changed.mjs`), test framework configs, and package runner scripts.
+- Added `quality_infrastructure_mutated` and `quality_infrastructure_files` to `ExecutionEvidence` in `src/types.ts` and `CorroborationResult` in `src/quality/EvidenceService.ts`.
+- Added critical review advisory injection in `ReviewPayloadBuilder.build()` (`src/orchestrator/services/ReviewPayloadBuilder.ts`), alerting reviewers when quality gates or runner scripts have been altered by the executor.
+- Added `stage.advisory` semantic event in `src/orchestrator/Orchestrator.ts` and `src/ui/EventBus.ts` emitted when plan review carry-over findings are excessive, signaling that a stage may be too broad.
+
+### Changed
+
+- Deduplicated consecutive identical permission decisions in `RunStateStore.recordPermissionDecision` (`src/state/RunStateStore.ts`) to collapse repetitive permission entries in `DECISIONS.md` into single blocks with incremental counts.
+- Updated `CursorExecutorHarness` in `src/harness/cursor/CursorExecutorHarness.ts` to establish ACP sessions using `requestWithRetry` for `session/new` and `session/load`.
+- Updated `Orchestrator.permissionDecision` in `src/orchestrator/Orchestrator.ts` to invoke `recordPermissionDecision`.
+
 ## [2.2.0] - 2026-09-16
 
 ### Added

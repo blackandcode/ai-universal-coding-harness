@@ -19,7 +19,7 @@ import type { CommandObservation, HarnessContext, QualityEpochMarker } from '../
 import { CONFIG, harnessNumber, harnessString } from '../../core/config.js';
 import { execSyncText, commandExists, runShellCommand } from '../../core/process.js';
 import { appendBounded, ensureDir, rotateFile } from '../../core/fs.js';
-import { iso } from '../../core/time.js';
+import { iso, retryWithBackoff, type RetryOptions } from '../../core/time.js';
 import type { PermissionRequest } from '../../permissions/PermissionEngine.js';
 import { VERSION } from '../../version.js';
 import { validateCommandObservation } from '../../state/RunStateStore.js';
@@ -279,7 +279,12 @@ export class CursorAcpSession implements ExecutorSession {
       }
     } catch {}
 
-    this.normalizer = new AcpEventNormalizer({
+    this.normalizer = this.createNormalizer();
+  }
+
+  /** Constructs an event normalizer configured with active session callbacks and epoch bindings. */
+  private createNormalizer(): AcpEventNormalizer {
+    return new AcpEventNormalizer({
       events: this.o.events,
       accumulator: this.accumulator,
       journal: this.journal,
@@ -351,6 +356,29 @@ export class CursorAcpSession implements ExecutorSession {
     return this.transport.request<T>(method, params, timeoutMs);
   }
 
+  /** Issues a JSON-RPC request with exponential backoff retries on failure. */
+  private requestWithRetry<T = unknown>(
+    method: string,
+    params: Record<string, unknown>,
+    timeoutMs = this.o.turnTimeoutMinutes * 60_000,
+    retryOptions?: RetryOptions
+  ): Promise<T> {
+    return retryWithBackoff(async (_attempt) => this.request<T>(method, params, timeoutMs), {
+      maxAttempts: retryOptions?.maxAttempts ?? 3,
+      initialDelayMs: retryOptions?.initialDelayMs ?? 1000,
+      backoffFactor: retryOptions?.backoffFactor ?? 2,
+      maxDelayMs: retryOptions?.maxDelayMs ?? 15000,
+      onRetry: (err, attempt, nextDelayMs) => {
+        this.emit('log', {
+          level: 'warn',
+          message: `ACP request "${method}" attempt ${attempt} failed: ${errorMessage(err)}. Retrying in ${nextDelayMs}ms...`
+        });
+        retryOptions?.onRetry?.(err, attempt, nextDelayMs);
+      },
+      ...retryOptions
+    });
+  }
+
   /** Spawns the Cursor ACP subprocess, negotiates protocol, and creates or resumes a session. */
   async start() {
     await this.transport.start();
@@ -375,10 +403,21 @@ export class CursorAcpSession implements ExecutorSession {
       (this.capabilities.loadSession === true || this.capabilities.load_session === true)
     ) {
       try {
-        const raw = await this.request<unknown>(
+        const raw = await this.requestWithRetry<unknown>(
           'session/load',
           { sessionId: this.o.resumeSessionId, cwd: this.o.workspace, mcpServers: [] },
-          60_000
+          60_000,
+          {
+            maxAttempts: 3,
+            initialDelayMs: 1000,
+            onRetry: (e, attempt, delay) => {
+              appendBounded(
+                this.o.runLog,
+                `[executor session/load attempt ${attempt} failed] ${errorMessage(e)}. Retrying in ${delay}ms...`,
+                CONFIG.runLogMaxBytes
+              );
+            }
+          }
         );
         ns = narrowAcpNewSessionResult(raw);
         this.id = this.o.resumeSessionId;
@@ -395,32 +434,26 @@ export class CursorAcpSession implements ExecutorSession {
       }
     }
     if (!this.id) {
-      const raw = await this.request<unknown>(
+      const raw = await this.requestWithRetry<unknown>(
         'session/new',
         { cwd: this.o.workspace, mcpServers: [] },
-        60_000
+        60_000,
+        {
+          maxAttempts: 3,
+          initialDelayMs: 1000,
+          onRetry: (e, attempt, delay) => {
+            appendBounded(
+              this.o.runLog,
+              `[executor session/new attempt ${attempt} failed] ${errorMessage(e)}. Retrying in ${delay}ms...`,
+              CONFIG.runLogMaxBytes
+            );
+          }
+        }
       );
       ns = narrowAcpNewSessionResult(raw);
       this.id = ns?.sessionId || '';
     }
-    this.normalizer = new AcpEventNormalizer({
-      events: this.o.events,
-      accumulator: this.accumulator,
-      journal: this.journal,
-      defaultSessionId: this.id || 'default',
-      runId: this.o.runId,
-      stageName: this.o.stageName,
-      attempt: this.o.attempt,
-      workspace: this.o.workspace,
-      qualityEpochId: this.qualityEpochId,
-      onFocusDelta: (text) => this.appendFocus(text),
-      onAgentText: (text) => {
-        this.agentText += text;
-      },
-      onPlanRequest: (m) => this.handlePlan(m),
-      onQuestionRequest: (m) => this.handleQuestion(m),
-      onPermissionRequest: (m) => this.handlePermission(m)
-    });
+    this.normalizer = this.createNormalizer();
     this.o.callbacks.onSessionId?.(this.id);
     const cfg = ns?.configOptions || ns?.config_options || [];
     const thinking = cfg.find((x: AcpConfigOptionGroup) => x.id === 'thinking');

@@ -427,13 +427,12 @@ export class Orchestrator {
       d = engine.fromReviewer(req, v);
     }
     engine.remember(req, d);
-    this.store.appendHuman(
-      state.run_id,
-      stageName,
-      'DECISIONS.md',
-      'Permission decision',
-      `- **Decision:** ${d.allow ? 'ALLOW' : 'DENY'}\n- **Source:** ${d.source}\n- **Signature:** \`${d.signature}\`\n- **Reason:** ${d.reason}`
-    );
+    this.store.recordPermissionDecision(state.run_id, stageName, {
+      allow: d.allow,
+      source: d.source,
+      signature: d.signature,
+      reason: d.reason
+    });
     return { allow: d.allow, reason: d.reason || d.source };
   }
 
@@ -569,6 +568,35 @@ export class Orchestrator {
           );
       }
       const carry = planCoord.reviewerCarryover;
+      const carryoverItems = carry
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith('- '));
+      const isExcessiveCarryover =
+        carryoverItems.length >= 5 ||
+        carry.length >= 1500 ||
+        (carryoverItems.length >= 3 &&
+          (planCoord.status === 'APPROVED_AFTER_FINAL_CONSOLIDATION' ||
+            planCoord.status === 'APPROVED_AFTER_REVIEW_BUDGET'));
+
+      if (isExcessiveCarryover) {
+        const advisoryMsg = `High stage complexity detected (${carryoverItems.length} carry-over findings, ${carry.length} chars). Stage "${stage.name}" may be too broad; consider decomposing into smaller stages in future workflows.`;
+        this.events.emit('stage.advisory', {
+          stage: stage.name,
+          type: 'stage_complexity',
+          carryover_items_count: carryoverItems.length,
+          carryover_length: carry.length,
+          plan_status: planCoord.status,
+          message: advisoryMsg
+        });
+        this.store.appendHuman(
+          state.run_id,
+          stage.name,
+          'PLAN.md',
+          'Stage complexity advisory',
+          `! **Advisory:** ${advisoryMsg}`
+        );
+      }
       await session.setMode('agent');
       state.current_phase = 'implementation';
       this.store.save(state);
@@ -628,7 +656,7 @@ export class Orchestrator {
           this.store.save(state);
           continue;
         }
-        const activeEvidence: ExecutionEvidence = ev.e;
+        let activeEvidence: ExecutionEvidence = ev.e;
         const diffCheck = this.git.diffCheck();
         const activeEpochId = epochId || activeEvidence.quality_epoch_id || undefined;
         const corroboration = this.evidenceService.corroborate(
@@ -670,6 +698,11 @@ export class Orchestrator {
         }
         const finalEvidence = corroboration.evidence || activeEvidence;
         finalEvidence.patch_fingerprint = this.patchFingerprint();
+        if (corroboration.qualityInfrastructureMutated) {
+          finalEvidence.quality_infrastructure_mutated = true;
+          finalEvidence.quality_infrastructure_files = corroboration.qualityInfrastructureFiles;
+        }
+        activeEvidence = finalEvidence;
         const saved = this.evidenceService.saveCorroboratedEvidence(
           stageRunDir,
           finalEvidence,
@@ -679,12 +712,30 @@ export class Orchestrator {
           ...activeEvidence,
           summary: activeEvidence.quality_summary
         });
+        if (
+          activeEvidence.quality_infrastructure_mutated &&
+          activeEvidence.quality_infrastructure_files?.length
+        ) {
+          this.events.emit('evidence.warning', {
+            stage: stage.name,
+            type: 'quality_infrastructure_mutation',
+            files: activeEvidence.quality_infrastructure_files,
+            message: `Quality command script was modified by executor: ${activeEvidence.quality_infrastructure_files.join(', ')}`
+          });
+        }
+        let execNote = `- **Status:** ${activeEvidence.status}\n- **Quality:** ${activeEvidence.quality_command} → ${activeEvidence.quality_exit_code}\n- **git diff --check:** ${activeEvidence.git_diff_check_exit_code}\n- **Summary:** ${activeEvidence.quality_summary || ''}`;
+        if (
+          activeEvidence.quality_infrastructure_mutated &&
+          activeEvidence.quality_infrastructure_files?.length
+        ) {
+          execNote += `\n- **Warning (Quality gate modified):** ${activeEvidence.quality_infrastructure_files.join(', ')}`;
+        }
         this.store.appendHuman(
           state.run_id,
           stage.name,
           'EXECUTION.md',
           `Attempt ${attempt} — corroborated evidence`,
-          `- **Status:** ${activeEvidence.status}\n- **Quality:** ${activeEvidence.quality_command} → ${activeEvidence.quality_exit_code}\n- **git diff --check:** ${activeEvidence.git_diff_check_exit_code}\n- **Summary:** ${activeEvidence.quality_summary || ''}`
+          execNote
         );
         if (
           activeEvidence.status !== 'PASS' ||

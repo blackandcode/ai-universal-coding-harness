@@ -4,7 +4,7 @@ This document tracks the authoritative implementation status, architectural mile
 
 ## 1. Project & Release Baseline
 
-- **Current Release**: `2.2.0`
+- **Current Release**: `2.2.1`
 - **Node Runtime Target**: `>=24.18.0` (specified in `package.json`, `.nvmrc`, and enforced by runtime checks)
 - **TypeScript Baseline**: TypeScript 7 (`ES2024`, `NodeNext` modules, strict mode)
 - **Linting & Formatting**: Oxlint (with invariant rules) and Oxfmt

@@ -29,6 +29,7 @@ export class PlanCoordinator {
   private duplicateCounts = new Map<string, number>();
   private lastFeedback = '';
   private acceptedPlan = '';
+  private acceptedStatus = '';
   private carryover = '';
 
   /**
@@ -59,6 +60,11 @@ export class PlanCoordinator {
   /** Latest accepted plan text (empty until a plan is approved). */
   get plan(): string {
     return this.acceptedPlan;
+  }
+
+  /** Status code of the accepted plan (e.g. APPROVED, APPROVED_AFTER_FINAL_CONSOLIDATION). */
+  get status(): string {
+    return this.acceptedStatus;
   }
 
   /** Mandatory reviewer findings forwarded into implementation prompts. */
@@ -102,6 +108,7 @@ export class PlanCoordinator {
   /** Records an accepted plan, updates stage state hashes, and appends human plan history. */
   private accept(plan: string, status: string, reason: string, review?: PlanReviewVerdict): void {
     this.acceptedPlan = plan;
+    this.acceptedStatus = status;
     this.carryover = review ? this.feedback(review) : this.lastFeedback;
     const hash = sha256Text(plan);
     writeText(path.join(this.stageDir(), 'approved-plan.md'), plan + '\n');
@@ -141,8 +148,9 @@ export class PlanCoordinator {
     const plan = fs.readFileSync(p, 'utf8').trim();
     if (!plan || sha256Text(plan) !== s.plan_sha256) return null;
     this.acceptedPlan = plan;
+    this.acceptedStatus = s.plan_status || 'REUSED';
     this.carryover = s.reviewer_carryover || '';
-    return { plan, carryover: this.carryover, status: s.plan_status || 'REUSED' };
+    return { plan, carryover: this.carryover, status: this.acceptedStatus };
   }
 
   /** Accepts a synthetic plan when the executor never submitted via ACP within the planning budget. */

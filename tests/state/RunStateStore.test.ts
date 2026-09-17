@@ -97,6 +97,45 @@ test('RunStateStore saves, loads, and writes human-readable markdown', () => {
     const content = fs.readFileSync(planFile, 'utf8');
     assert.ok(content.includes('Test Heading'));
     assert.ok(content.includes('Test Body'));
+
+    // Test permission decision deduplication
+    const dec1 = {
+      allow: true,
+      source: 'auto-safe',
+      signature: '{"cmd":"ls"}',
+      reason: 'Reversible safe operation.'
+    };
+    store.recordPermissionDecision(runId, 'stage-01-init', dec1);
+    store.recordPermissionDecision(runId, 'stage-01-init', dec1);
+    store.recordPermissionDecision(runId, 'stage-01-init', dec1);
+
+    const decisionsFile = path.join(store.stageDir(runId, 'stage-01-init'), 'DECISIONS.md');
+    assert.ok(fs.existsSync(decisionsFile));
+    let decisionsContent = fs.readFileSync(decisionsFile, 'utf8');
+    // Should have only 1 '## Permission decision' section but with Count: 3
+    const matches = decisionsContent.match(/## Permission decision/g);
+    assert.equal(matches?.length, 1);
+    assert.ok(decisionsContent.includes('- **Count:** 3'));
+
+    // Different decision appends a new section
+    const dec2 = {
+      allow: false,
+      source: 'denylist',
+      signature: '{"cmd":"git push"}',
+      reason: 'Push blocked.'
+    };
+    store.recordPermissionDecision(runId, 'stage-01-init', dec2);
+    decisionsContent = fs.readFileSync(decisionsFile, 'utf8');
+    assert.equal(decisionsContent.match(/## Permission decision/g)?.length, 2);
+    assert.ok(decisionsContent.includes('- **Decision:** DENY'));
+    assert.ok(decisionsContent.includes('- **Count:** 1'));
+
+    // Intervening appendHuman resets deduplication so a subsequent dec2 starts a fresh block
+    store.appendHuman(runId, 'stage-01-init', 'DECISIONS.md', 'Executor question answered', 'Q&A');
+    store.recordPermissionDecision(runId, 'stage-01-init', dec2);
+    decisionsContent = fs.readFileSync(decisionsFile, 'utf8');
+    assert.equal(decisionsContent.match(/## Permission decision/g)?.length, 3);
+    assert.ok(decisionsContent.includes('## Executor question answered'));
   } finally {
     fs.rmSync(store.runDir(runId), { recursive: true, force: true });
   }

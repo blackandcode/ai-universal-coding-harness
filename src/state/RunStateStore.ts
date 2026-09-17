@@ -503,12 +503,89 @@ export class RunStateStore {
   }
 
   /**
+   * Tracks the most recent permission decision per run stage for deduplication.
+   */
+  private lastPermissionRecord = new Map<
+    string,
+    {
+      allow: boolean;
+      source: string;
+      signature: string;
+      reason: string;
+      count: number;
+      blockText: string;
+    }
+  >();
+
+  /**
+   * Records a permission decision in `DECISIONS.md`, deduplicating consecutive identical decisions
+   * into a single Markdown block with an updated occurrence count.
+   *
+   * @remarks
+   * When an agent performs tens of file operations or repeated tool calls with the identical
+   * signature, source, and decision, logging each one individually floods `DECISIONS.md`.
+   * This method replaces the trailing identical decision block in-place with an incremented count.
+   *
+   * @param runId - Run identifier.
+   * @param stage - Stage name.
+   * @param decision - Decision details including allow status, source, signature, and policy reason.
+   */
+  recordPermissionDecision(
+    runId: string,
+    stage: string,
+    decision: { allow: boolean; source: string; signature: string; reason: string }
+  ): void {
+    const key = `${safeRunId(runId)}:${safeRunId(stage)}`;
+    const p = path.join(this.stageDir(runId, stage), 'DECISIONS.md');
+    ensureDir(path.dirname(p));
+    if (!fs.existsSync(p)) writeText(p, '# Decisions\n\n');
+
+    const last = this.lastPermissionRecord.get(key);
+    const isSame =
+      last &&
+      last.allow === decision.allow &&
+      last.source === decision.source &&
+      last.signature === decision.signature &&
+      last.reason === decision.reason;
+
+    if (isSame) {
+      last.count++;
+      const current = fs.readFileSync(p, 'utf8');
+      if (current.endsWith(last.blockText)) {
+        const countLine = `- **Count:** ${last.count}`;
+        const newBlock = `## Permission decision\n\n- **Decision:** ${decision.allow ? 'ALLOW' : 'DENY'}\n- **Source:** ${decision.source}\n- **Signature:** \`${decision.signature}\`\n- **Reason:** ${decision.reason}\n${countLine}\n\n`;
+        const updated = current.slice(0, current.length - last.blockText.length) + newBlock;
+        writeText(p, updated);
+        last.blockText = newBlock;
+        return;
+      }
+    }
+
+    const countLine = '- **Count:** 1';
+    const newBlock = `## Permission decision\n\n- **Decision:** ${decision.allow ? 'ALLOW' : 'DENY'}\n- **Source:** ${decision.source}\n- **Signature:** \`${decision.signature}\`\n- **Reason:** ${decision.reason}\n${countLine}\n\n`;
+
+    this.lastPermissionRecord.set(key, {
+      allow: decision.allow,
+      source: decision.source,
+      signature: decision.signature,
+      reason: decision.reason,
+      count: 1,
+      blockText: newBlock
+    });
+
+    appendText(p, newBlock);
+  }
+
+  /**
    * Appends a dated Markdown section to a stage artifact (for example `DECISIONS.md`).
    * Creates the file with a title heading when it does not yet exist.
    */
   appendHuman(runId: string, stage: string, file: string, heading: string, body = ''): void {
     if (!/^[A-Za-z0-9._-]+$/.test(file)) {
       throw new RunStateError(`Invalid run artifact name: ${file}`);
+    }
+    if (file === 'DECISIONS.md') {
+      this.lastPermissionRecord.delete(`${safeRunId(runId)}:${safeRunId(stage)}`);
     }
     const p = path.join(this.stageDir(runId, stage), file);
     ensureDir(path.dirname(p));

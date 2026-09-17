@@ -375,7 +375,7 @@ if (args.includes('acp')) {
           id: 103,
           method: 'session/request_permission',
           params: {
-            toolCall: { rawInput: { command: 'echo perm-ok' } },
+            toolCall: { rawInput: { command: 'echo perm-ok', path: '/path/to/file', file: '/path/to/file2' } },
             options: [
               { optionId: 'opt-allow', name: 'allow_once' },
               { optionId: 'opt-deny', name: 'reject' }
@@ -392,6 +392,18 @@ if (args.includes('acp')) {
           params: {
             toolCall: { rawInput: { command: 'rm risky-file' } },
             options: [{ optionId: 'opt-deny', name: 'reject' }]
+          }
+        }));
+        registerPendingPrompt(msg.id);
+        return;
+      } else if (promptText === 'trigger-permission-deny-error') {
+        console.log(JSON.stringify({
+          jsonrpc: '2.0',
+          id: 115,
+          method: 'session/request_permission',
+          params: {
+            toolCall: { rawInput: { command: 'rm dangerous-file' } },
+            options: []
           }
         }));
         registerPendingPrompt(msg.id);
@@ -709,6 +721,7 @@ test('CursorExecutorHarness: creates session and manages interactive ACP callbac
 
     // 7. Trigger permission deny and broker fallbacks
     await session.prompt('trigger-permission-deny');
+    await session.prompt('trigger-permission-deny-error');
     await session.prompt('trigger-permission-broker');
     assert.ok(permissionsGranted.includes('echo broker-executed'));
     await session.prompt('trigger-permission-broker-git');
@@ -1075,21 +1088,28 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
           resumeSessionId: 'sess-snake-load'
         })
       );
+      let loadAttempts = 0;
       (snakeSession as unknown as { request: (m: string) => Promise<unknown> }).request = async (
         m: string
       ) => {
         if (m === 'initialize') return { agent_capabilities: { load_session: true } };
         if (m === 'authenticate') return {};
-        if (m === 'session/load')
+        if (m === 'session/load') {
+          loadAttempts++;
+          if (loadAttempts < 2) {
+            throw new Error('Transient session/load error');
+          }
           return {
             sessionId: 'sess-snake-load',
             config_options: [{ id: 'thinking', options: [{ id: 'high' }] }]
           };
+        }
         if (m === 'session/set_config_option') return {};
         return {};
       };
       await snakeSession.start();
       assert.equal(snakeSession.id, 'sess-snake-load');
+      assert.equal(loadAttempts, 2);
       await snakeSession.stop();
       snakeSession = null;
     } finally {
@@ -1113,16 +1133,24 @@ test('CursorAcpSession: start tolerates auth/load/config edge cases', async () =
           resumeSessionId: 'sess-fb-load'
         })
       );
+      let newAttempts = 0;
       (fbSession as unknown as { request: (m: string) => Promise<unknown> }).request = async (
         m: string
       ) => {
         if (m === 'initialize') return { agentCapabilities: { loadSession: false } };
         if (m === 'authenticate') return {};
-        if (m === 'session/new') return { sessionId: 'sess-new-created', configOptions: [] };
+        if (m === 'session/new') {
+          newAttempts++;
+          if (newAttempts < 2) {
+            throw new Error('Transient session/new error');
+          }
+          return { sessionId: 'sess-new-created', configOptions: [] };
+        }
         return {};
       };
       await fbSession.start();
       assert.equal(fbSession.id, 'sess-new-created');
+      assert.equal(newAttempts, 2);
       await fbSession.stop();
       fbSession = null;
     } finally {
@@ -1301,7 +1329,7 @@ test('CursorAcpSession: setQualityEpoch rebuilds normalizer and records epoch on
       })
     );
     await session.start();
-    session.setQualityEpoch('quality-epoch-42');
+    session.setQualityEpoch('quality-epoch-42', { attempt: 3, runId: 'run-custom-epoch' });
     await session.prompt('trigger-permission-broker-git');
     const obs = session.observedCommands();
     assert.ok(obs.some((o) => o.quality_epoch_id === 'quality-epoch-42'));

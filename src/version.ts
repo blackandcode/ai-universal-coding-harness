@@ -3,7 +3,7 @@
  */
 
 /** Current semantic package release version */
-export const VERSION = '2.2.0';
+export const VERSION = '2.2.1';
 
 /** Canonical npm package name */
 export const PACKAGE_NAME = 'ai-universal-coding-harness';

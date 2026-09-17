@@ -157,6 +157,8 @@ export class EventBus {
       'reviewer.question': () => `🧠 Answer: ${(p.answer as string) ?? ''}`,
       'executor.question.budget': () =>
         `! Question budget reached (${String(p.limit ?? '')}): autonomous fallback applied`,
+      'evidence.warning': () => `! Quality warning: ${(p.message as string) ?? ''}`,
+      'stage.advisory': () => `! Stage advisory: ${(p.message as string) ?? ''}`,
       'quality.result': () => {
         const status = (p.status as string) ?? '';
         const summary = (p.summary as string) ?? (p.quality_summary as string) ?? '';
